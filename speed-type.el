@@ -393,9 +393,17 @@ from a gutenberg book."
 
 START and END allow to limit to a buffer section - they default
 to (point-min) and (point-max)"
-  (unless start (setq start (point-min)))
-  (unless end (setq end (point-max)))
   (save-mark-and-excursion
+    (when (search-forward "*** START" nil t)
+      (end-of-line 1)
+      (setq start (point)))
+    (when (search-forward "*** END" nil t)
+      (beginning-of-line 1)
+      (setq end (point)))
+
+    (unless start (setq start (point-min)))
+    (unless end (setq end (point-max)))
+   
     (goto-char start)
     (forward-paragraph
      ;; count the paragraphs, and pick a random one
