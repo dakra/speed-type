@@ -388,6 +388,7 @@ START and END allow to limit to a buffer section - they default
 to (point-min) and (point-max)"
   (unless start (setq start (point-min)))
   (unless end (setq end (point-max)))
+
   (save-mark-and-excursion
     (goto-char start)
     (forward-paragraph
@@ -442,7 +443,7 @@ will be used. Else some text will be picked randomly."
   "Setup a new text sample to practice touch or speed typing."
   (interactive)
   (let ((book-num (nth (random (length speed-type-gb-book-list))
-                       speed-type-gb-book-list))
+		       speed-type-gb-book-list))
         (author nil)
         (title nil))
     (with-temp-buffer
