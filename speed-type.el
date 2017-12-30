@@ -389,9 +389,6 @@ to (point-min) and (point-max)"
   (unless start (setq start (point-min)))
   (unless end (setq end (point-max)))
 
-  ;; TEST
-  (message "Points are %s %s" start end)
-  
   (save-mark-and-excursion
     (goto-char start)
     (forward-paragraph
@@ -441,14 +438,11 @@ will be used. Else some text will be picked randomly."
       (speed-type--setup (speed-type--pick-text-to-type))
       (setq speed-type--opened-on-buffer buf))))
 
-;; TEST
-(setq book-num-test-counter 0)
-
 ;;;###autoload
 (defun speed-type-text ()
   "Setup a new text sample to practice touch or speed typing."
   (interactive)
-  (let ((book-num (nth book-num-test-counter ;; (random (length speed-type-gb-book-list))
+  (let ((book-num (nth (random (length speed-type-gb-book-list))
 		       speed-type-gb-book-list))
         (author nil)
         (title nil))
@@ -462,24 +456,16 @@ will be used. Else some text will be picked randomly."
 
       (let ((start (point))
 	    (end nil))
-	(goto-char 0)
+
+	(goto-char (point-min))
 	(when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
 	  (end-of-line 1)
-	  (setq start (point))
-	  ;; TEST
-	  (message "FOUND START")
-	  )
-	(when (re-search-forward "***.END.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)	
-  (beginning-of-line 1)
-	  (setq end (point))
-	  ;; TEST
-	  (message "FOUND END")
-	  )
-
-	(setq book-num-test-counter (+ book-num-test-counter 1))
-
-	;; TEST
-	(message "Book num %s: Starting point is %s %s" book-num start end)
+	  (forward-line 1)
+	  (setq start (point)))
+	(when (re-search-forward "***.END.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+	  (beginning-of-line 1)
+	  (forward-line -1)
+	  (setq end (point)))
 
 	(speed-type--setup (speed-type--pick-text-to-type start end)
 			   author title)))))
@@ -487,6 +473,3 @@ will be used. Else some text will be picked randomly."
 (provide 'speed-type)
 
 ;;; speed-type.el ends here
-
-;; TEST
-;; FILE NOT FOUND: 829, 768, 521
