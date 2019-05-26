@@ -308,7 +308,7 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
     (insert (propertize speed-type--title 'face 'italic))
     (when speed-type--author
       (insert (propertize
-               (format ", by %s" speed-type--title speed-type--author)
+               (format ", by %s" speed-type--author)
                'face 'italic))))
   (insert (speed-type--generate-stats
            speed-type--entries
