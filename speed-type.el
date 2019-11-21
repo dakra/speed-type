@@ -245,8 +245,6 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
   "Return buffer with wordlist for language LANG in it."
   (speed-type--retrieve lang (cdr (assoc lang speed-type-wordlist-urls))))
 
-(speed-type--wordlist-retrieve 'German)
-
 (defun speed-type--elapsed-time ()
   "Return float with the total time since start."
   (let ((end-time (float-time)))
