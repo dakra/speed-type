@@ -60,6 +60,7 @@ a book url.  E.G, https://www.gutenberg.org/ebooks/14577."
   :group 'speed-type
   :type '(repeat integer))
 
+
 (defcustom speed-type-gb-dir (locate-user-emacs-file "speed-type")
   "Directory in which the gutenberg books will be saved."
   :group 'speed-type
@@ -87,6 +88,14 @@ E.g. if you always want lowercase words, set:
   "Default language for training wordlists.  Ask when NIL."
   :type '(choice (const :tag "None" nil)
                  (symbol :tag "Language")))
+
+(defcustom speed-type-code-url "https://searchcode.com/api/codesearch_I/"
+  "Url string used to query for code snippets."
+  :type 'string)
+
+(defcustom speed-type-code-search-terms '("panda", "primality", "sci-fi")
+  "List of terms to use in the search for code snippets."
+  :type '(repeat string))
 
 (defface speed-type-correct
   '((t :foreground "green"))
@@ -127,6 +136,12 @@ Total errors: %d
     (define-key map (kbd "r") 'speed-type--replay)
     (define-key map (kbd "n") 'speed-type--play-next)
     map))
+
+;; Source: https://github.com/boyter/searchcode-server/blob/6cd3df8da55c254b04bb34956ff5c4064c40eacd/src/main/resources/misc/langprofiles.txt
+(defvar speed-type-language-to-id-map
+  #s(hash-table
+     test equal
+     data ("xaml" 1 "asp.net" 2 "html" 3 "msbuild" 5 "c#" 6 "xsd" 7 "xml" 8 "cmake" 14 "c/c++" 15 "c++" 16 "make" 17 "css" 18 "python" 19 "matlab" 20 "objective" 21 "javascript" 22 "java" 23 "php" 24 "erlang" 25 "fortran" 26 "fortran" 27 "c" 28 "lisp" 29 "visual" 30 "bourne" 31 "ruby" 32 "vim" 33 "assembly" 34 "objective" 35 "dtd" 36 "sql" 37 "yaml" 38 "ruby" 39 "haskell" 40 "bourne" 41 "actionscript" 42 "mxml" 43 "asp" 44 "d" 45 "pascal" 46 "scala" 47 "dos" 48 "groovy" 49 "xslt" 50 "perl" 51 "teamcenter" 52 "idl" 53 "lua" 54 "go" 55 "yacc" 56 "cython" 57 "lex" 59 "ada" 61 "sed" 62 "m4" 63 "ocaml" 64 "smarty" 65 "coldfusion" 66 "nant" 67 "expect" 68 "c" 69 "vhdl" 70 "tcl/tk" 71 "jsp" 72 "skill" 73 "awk" 74 "mumps" 75 "korn" 78 "fortran" 85 "oracle" 87 "dart" 88 "cobol" 89 "modula3" 90 "oracle" 92 "softbridge" 93)))
 
 ;; buffer local internal variables
 
@@ -445,6 +460,45 @@ to (point-min) and (point-max)"
       (when fwd (forward-char)))
     (buffer-substring-no-properties (region-beginning) (region-end))))
 
+(defun speed-type-get-code-candidates-json (language-id)
+  "Return a list of code snippets and information about them."
+  (setq gnutls-log-level 1)  ; https://debbugs.gnu.org/cgi/bugreport.cgi?bug=34341
+  (let
+      ((url-request-method "GET")
+       (response-buffer
+	(url-retrieve-synchronously
+	 (concat speed-type-code-url "?q=" (seq-random-elt speed-type-code-search-terms) "&loc=" "15" "&loc2=" "20" "&lan=" (number-to-string language-id))))
+       (json-object-type 'hash-table)
+       (json-array-type 'list)
+       (json-key-type 'string))
+    (with-current-buffer response-buffer
+      (goto-char (point-min))
+      (re-search-forward "^$")
+      (delete-region (point) (point-min))
+      (gethash "results" (json-read-from-string (buffer-string))))))
+
+(defun speed-type-get-text-from-code-candidate (candidate-hash-table)
+  "Return the code text using the 'url' key in CANDIDATE-HASH-TABLE."
+  (setq gnutls-log-level 1)  ; https://debbugs.gnu.org/cgi/bugreport.cgi?bug=34341
+  (let*
+      ((code-url (gethash "url" candidate-hash-table))
+       (raw-url (replace-regexp-in-string "/view/" "/raw/" code-url))
+       (url-request-method "GET")
+       (response-buffer (url-retrieve-synchronously raw-url)))
+    (with-current-buffer response-buffer
+      (goto-char (point-min))
+      (re-search-forward "^$")
+      (delete-region (point) (point-min))
+      (buffer-string))))
+
+(defun speed-type-code (language)
+  (interactive "sChoose a programming language: ")
+  (let*
+      ((language-id (gethash (downcase language) speed-type-language-to-id-map))
+       (result (seq-random-elt (speed-type-get-code-candidates-json language-id)))
+       (text (speed-type-get-text-from-code-candidate result)))
+    (speed-type--setup text)))
+
 ;;;###autoload
 (defun speed-type-top-x (n)
   "Speed type the N most common words."
@@ -500,35 +554,6 @@ will be used. Else some text will be picked randomly."
     (let ((buf (current-buffer)))
       (speed-type--setup (speed-type--pick-text-to-type))
       (setq speed-type--opened-on-buffer buf))))
-
-(defun speed-type-get-code-candidates-json ()
-  "Return a list of code snippets and information about them."
-  (setq gnutls-log-level 1)  ; https://debbugs.gnu.org/cgi/bugreport.cgi?bug=34341
-  (let
-      ((url-request-method "GET")
-       (response-buffer (url-retrieve-synchronously "https://searchcode.com/api/codesearch_I/?q=lizard&loc=30&loc2=50&lan=19"))
-       (json-object-type 'hash-table)
-       (json-array-type 'list)
-       (json-key-type 'string))
-    (with-current-buffer response-buffer
-      (goto-char (point-min))
-      (re-search-forward "^$")
-      (delete-region (point) (point-min))
-      (gethash "results" (json-read-from-string (buffer-string))))))
-
-(defun speed-type-get-text-from-code-candidate (candidate-hash-table)
-  "Return the code text using the 'url' key in CANDIDATE-HASH-TABLE."
-  (setq gnutls-log-level 1)  ; https://debbugs.gnu.org/cgi/bugreport.cgi?bug=34341
-  (let*
-      ((code-url (gethash "url" candidate-hash-table))
-       (raw-url (replace-regexp-in-string "/view/" "/raw/" code-url))
-       (url-request-method "GET")
-       (response-buffer (url-retrieve-synchronously raw-url)))
-    (with-current-buffer response-buffer
-      (goto-char (point-min))
-      (re-search-forward "^$")
-      (delete-region (point) (point-min))
-      (buffer-string))))
 
 ;;;###autoload
 (defun speed-type-text ()
