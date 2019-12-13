@@ -93,10 +93,6 @@ E.g. if you always want lowercase words, set:
   "Url string used to query for code snippets."
   :type 'string)
 
-(defcustom speed-type-code-search-terms '("panda", "primality", "sci-fi")
-  "List of terms to use in the search for code snippets."
-  :type '(repeat string))
-
 (defface speed-type-correct
   '((t :foreground "green"))
   "Face for correctly typed characters."
@@ -355,7 +351,7 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
         (cl-incf speed-type--entries)
         (cl-decf speed-type--remaining)
         (add-text-properties pos (1+ pos)
-                             `(face ,(if correct
+                             `(font-lock-face ,(if correct
                                          'speed-type-correct
                                        'speed-type-mistake)))))))
 
@@ -422,6 +418,8 @@ language symbol and N-WORDS is the top N words that should be trained.
     (goto-char 0)
     (add-hook 'after-change-functions 'speed-type--change nil t)
     (add-hook 'first-change-hook 'speed-type--first-change nil t)
+   (let ((font-lock-defaults '(python-font-lock-keywords)))
+     (font-lock-mode 1))
     (message "Timer will start when you type the first character.")))
 
 (defun speed-type--pick-text-to-type (&optional start end)
@@ -460,17 +458,18 @@ to (point-min) and (point-max)"
       (when fwd (forward-char)))
     (buffer-substring-no-properties (region-beginning) (region-end))))
 
-(defun speed-type-get-code-candidates-json (language-id)
-  "Return a list of code snippets and information about them."
-  (setq gnutls-log-level 1)  ; https://debbugs.gnu.org/cgi/bugreport.cgi?bug=34341
-  (let
-      ((url-request-method "GET")
-       (response-buffer
-	(url-retrieve-synchronously
-	 (concat speed-type-code-url "?q=" (seq-random-elt speed-type-code-search-terms) "&loc=" "15" "&loc2=" "20" "&lan=" (number-to-string language-id))))
-       (json-object-type 'hash-table)
-       (json-array-type 'list)
-       (json-key-type 'string))
+(defun speed-type-get-code-candidates-json (language-id search-term)
+  "Return a list of code snippets and information about them.
+
+A GET request is sent to the url SPEED-TYPE-CODE-URL, with LANGUAGE-ID as the query parameter for 'lan', and SEARCH-TERM as the query parameter for 'q'.  A list of code snippets is then returned from the responding json."
+  (let* ((gnutls-log-level 1)  ; https://debbugs.gnu.org/cgi/bugreport.cgi?bug=34341
+	 (url-request-method "GET")
+	 (response-buffer
+	  (url-retrieve-synchronously
+	   (concat speed-type-code-url "?q=" search-term "&loc=" "15" "&loc2=" "20" "&lan=" (number-to-string language-id))))
+	 (json-object-type 'hash-table)
+	 (json-array-type 'list)
+	 (json-key-type 'string))
     (with-current-buffer response-buffer
       (goto-char (point-min))
       (re-search-forward "^$")
@@ -479,25 +478,30 @@ to (point-min) and (point-max)"
 
 (defun speed-type-get-text-from-code-candidate (candidate-hash-table)
   "Return the code text using the 'url' key in CANDIDATE-HASH-TABLE."
-  (setq gnutls-log-level 1)  ; https://debbugs.gnu.org/cgi/bugreport.cgi?bug=34341
-  (let*
-      ((code-url (gethash "url" candidate-hash-table))
-       (raw-url (replace-regexp-in-string "/view/" "/raw/" code-url))
-       (url-request-method "GET")
-       (response-buffer (url-retrieve-synchronously raw-url)))
-    (with-current-buffer response-buffer
-      (goto-char (point-min))
-      (re-search-forward "^$")
-      (delete-region (point) (point-min))
-      (buffer-string))))
+  (let* ((gnutls-log-level 1)  ; https://debbugs.gnu.org/cgi/bugreport.cgi?bug=34341
+	 (code-url (gethash "url" candidate-hash-table))
+	 (raw-url (replace-regexp-in-string "/view/" "/raw/" code-url))
+	 (url-request-method "GET")
+	 (response-buffer (url-retrieve-synchronously raw-url)))
+  (with-current-buffer response-buffer
+    (goto-char (point-min))
+    (re-search-forward "^$")
+    (delete-region (point) (point-min))
+    (buffer-string))))
 
 (defun speed-type-code (language)
+  "Speed type a random code snippet of the specified LANGUAGE."
   (interactive "sChoose a programming language: ")
+  (speed-type-code-search-term language "a"))
+
+(defun speed-type-code-search-term (language search-term)
+  "Speed type a code snippet from LANGUAGE obtained from searcing SEARCH-TERM."
+  (interactive "sChoose a programming language: \nsChoose a search term: ")
   (let*
       ((language-id (gethash (downcase language) speed-type-language-to-id-map))
-       (result (seq-random-elt (speed-type-get-code-candidates-json language-id)))
+       (result (seq-random-elt (speed-type-get-code-candidates-json language-id search-term)))
        (text (speed-type-get-text-from-code-candidate result)))
-    (speed-type--setup text)))
+   (speed-type--setup text)))
 
 ;;;###autoload
 (defun speed-type-top-x (n)
