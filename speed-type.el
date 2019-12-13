@@ -34,6 +34,7 @@
 (require 'url)
 (require 'url-handlers)
 (require 'cl-lib)
+(require 'json)
 
 (defgroup speed-type nil
   "Practice touch-typing in emacs."
@@ -499,6 +500,35 @@ will be used. Else some text will be picked randomly."
     (let ((buf (current-buffer)))
       (speed-type--setup (speed-type--pick-text-to-type))
       (setq speed-type--opened-on-buffer buf))))
+
+(defun speed-type-get-code-candidates-json ()
+  "Return a list of code snippets and information about them."
+  (setq gnutls-log-level 1)  ; https://debbugs.gnu.org/cgi/bugreport.cgi?bug=34341
+  (let
+      ((url-request-method "GET")
+       (response-buffer (url-retrieve-synchronously "https://searchcode.com/api/codesearch_I/?q=lizard&loc=30&loc2=50&lan=19"))
+       (json-object-type 'hash-table)
+       (json-array-type 'list)
+       (json-key-type 'string))
+    (with-current-buffer response-buffer
+      (goto-char (point-min))
+      (re-search-forward "^$")
+      (delete-region (point) (point-min))
+      (gethash "results" (json-read-from-string (buffer-string))))))
+
+(defun speed-type-get-text-from-code-candidate (candidate-hash-table)
+  "Return the code text using the 'url' key in CANDIDATE-HASH-TABLE."
+  (setq gnutls-log-level 1)  ; https://debbugs.gnu.org/cgi/bugreport.cgi?bug=34341
+  (let*
+      ((code-url (gethash "url" candidate-hash-table))
+       (raw-url (replace-regexp-in-string "/view/" "/raw/" code-url))
+       (url-request-method "GET")
+       (response-buffer (url-retrieve-synchronously raw-url)))
+    (with-current-buffer response-buffer
+      (goto-char (point-min))
+      (re-search-forward "^$")
+      (delete-region (point) (point-min))
+      (buffer-string))))
 
 ;;;###autoload
 (defun speed-type-text ()
