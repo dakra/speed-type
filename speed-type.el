@@ -473,16 +473,12 @@ to (point-min) and (point-max)"
 A GET request is sent to the url SPEED-TYPE-CODE-URL, with LANGUAGE-ID as the query parameter for 'lan', and SEARCH-TERM as the query parameter for 'q'.  A list of code snippets is then returned from the responding json."
   (let* ((gnutls-log-level 1)  ; https://debbugs.gnu.org/cgi/bugreport.cgi?bug=34341
 	 (url-request-method "GET")
-	 (response-buffer
-	  (url-retrieve-synchronously
-	   (concat speed-type-code-url "?q=" search-term "&loc=" "15" "&loc2=" "20" "&lan=" (number-to-string language-id))))
+	 (raw-url (concat speed-type-code-url "?q=" search-term "&loc=" "15" "&loc2=" "20" "&lan=" (number-to-string language-id)))
 	 (json-object-type 'hash-table)
 	 (json-array-type 'list)
 	 (json-key-type 'string))
-    (with-current-buffer response-buffer
-      (goto-char (point-min))
-      (re-search-forward "^$")
-      (delete-region (point) (point-min))
+    (with-temp-buffer
+      (url-insert-file-contents raw-url)
       (gethash "results" (json-read-from-string (buffer-string))))))
 
 (defun speed-type-get-text-from-code-candidate (candidate-hash-table)
@@ -490,13 +486,10 @@ A GET request is sent to the url SPEED-TYPE-CODE-URL, with LANGUAGE-ID as the qu
   (let* ((gnutls-log-level 1)  ; https://debbugs.gnu.org/cgi/bugreport.cgi?bug=34341
 	 (code-url (gethash "url" candidate-hash-table))
 	 (raw-url (replace-regexp-in-string "/view/" "/raw/" code-url))
-	 (url-request-method "GET")
-	 (response-buffer (url-retrieve-synchronously raw-url)))
-  (with-current-buffer response-buffer
-    (goto-char (point-min))
-    (re-search-forward "^$")
-    (delete-region (point) (point-min))
-    (buffer-string))))
+	 (url-request-method "GET"))
+    (with-temp-buffer
+      (url-insert-file-contents raw-url)
+      (buffer-string))))
 
 (defun speed-type-get-language-code-keywords (language)
   "Return syntax highlighting data to be used by font lock mode.
