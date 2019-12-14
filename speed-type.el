@@ -93,6 +93,15 @@ E.g. if you always want lowercase words, set:
   "Url string used to query for code snippets."
   :type 'string)
 
+(defcustom speed-type-syntax-colouring
+  #s(hash-table
+     test equal
+     data ("javascript" js--font-lock-keywords-3
+	   "objective" objc-font-lock-keywords))
+  "Hashmap mapping languages to font lock keywords to be used when speed typing them.
+Keywords for any languages not specified here will be guessed."
+  :type 'hash-table)
+
 (defface speed-type-correct
   '((t :foreground "green"))
   "Face for correctly typed characters."
@@ -139,12 +148,6 @@ Total errors: %d
      test equal
      data ("xaml" 1 "asp.net" 2 "html" 3 "msbuild" 5 "c#" 6 "xsd" 7 "xml" 8 "cmake" 14 "c/c++" 15 "c++" 16 "make" 17 "css" 18 "python" 19 "matlab" 20 "objective" 21 "javascript" 22 "java" 23 "php" 24 "erlang" 25 "fortran" 26 "fortran" 27 "c" 28 "lisp" 29 "visual" 30 "bourne" 31 "ruby" 32 "vim" 33 "assembly" 34 "objective" 35 "dtd" 36 "sql" 37 "yaml" 38 "ruby" 39 "haskell" 40 "bourne" 41 "actionscript" 42 "mxml" 43 "asp" 44 "d" 45 "pascal" 46 "scala" 47 "dos" 48 "groovy" 49 "xslt" 50 "perl" 51 "teamcenter" 52 "idl" 53 "lua" 54 "go" 55 "yacc" 56 "cython" 57 "lex" 59 "ada" 61 "sed" 62 "m4" 63 "ocaml" 64 "smarty" 65 "coldfusion" 66 "nant" 67 "expect" 68 "c" 69 "vhdl" 70 "tcl/tk" 71 "jsp" 72 "skill" 73 "awk" 74 "mumps" 75 "korn" 78 "fortran" 85 "oracle" 87 "dart" 88 "cobol" 89 "modula3" 90 "oracle" 92 "softbridge" 93))
     "Hashmap mapping languages to their searchcode ids.")
-
-(defvar speed-type-syntax-colouring
-  #s(hash-table
-     test equal
-     data ("javascript" js--font-lock-keywords-3 "objective" objc-font-lock-keywords))
-    "Hashmap mapping languages to font lock keywords to be used when speed typing them. Keywords for any languages not specified here will be guessed.")
 
 ;; buffer local internal variables
 
@@ -524,10 +527,13 @@ returned if no appropriate data could be found."
     (speed-type--setup text nil nil nil nil
 		       (lambda ()
 			 (let ((font-lock-data
-				(list (speed-type-get-language-code-keywords language))))
-			   (when font-lock-data
-			     (let ((font-lock-defaults font-lock-data))
-			     (font-lock-mode 1))))))))
+				(speed-type-get-language-code-keywords language)))
+			   (if font-lock-data
+			       (let ((font-lock-defaults (list font-lock-data)))
+				 (font-lock-mode 1)
+				 (set-syntax-table java-mode-syntax-table))
+			   (message "No syntax highlighting data could be found for: %s"
+				    language)))))))
 
 ;;;###autoload
 (defun speed-type-top-x (n)
