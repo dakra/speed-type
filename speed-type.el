@@ -137,7 +137,14 @@ Total errors: %d
 (defvar speed-type-language-to-id-map
   #s(hash-table
      test equal
-     data ("xaml" 1 "asp.net" 2 "html" 3 "msbuild" 5 "c#" 6 "xsd" 7 "xml" 8 "cmake" 14 "c/c++" 15 "c++" 16 "make" 17 "css" 18 "python" 19 "matlab" 20 "objective" 21 "javascript" 22 "java" 23 "php" 24 "erlang" 25 "fortran" 26 "fortran" 27 "c" 28 "lisp" 29 "visual" 30 "bourne" 31 "ruby" 32 "vim" 33 "assembly" 34 "objective" 35 "dtd" 36 "sql" 37 "yaml" 38 "ruby" 39 "haskell" 40 "bourne" 41 "actionscript" 42 "mxml" 43 "asp" 44 "d" 45 "pascal" 46 "scala" 47 "dos" 48 "groovy" 49 "xslt" 50 "perl" 51 "teamcenter" 52 "idl" 53 "lua" 54 "go" 55 "yacc" 56 "cython" 57 "lex" 59 "ada" 61 "sed" 62 "m4" 63 "ocaml" 64 "smarty" 65 "coldfusion" 66 "nant" 67 "expect" 68 "c" 69 "vhdl" 70 "tcl/tk" 71 "jsp" 72 "skill" 73 "awk" 74 "mumps" 75 "korn" 78 "fortran" 85 "oracle" 87 "dart" 88 "cobol" 89 "modula3" 90 "oracle" 92 "softbridge" 93)))
+     data ("xaml" 1 "asp.net" 2 "html" 3 "msbuild" 5 "c#" 6 "xsd" 7 "xml" 8 "cmake" 14 "c/c++" 15 "c++" 16 "make" 17 "css" 18 "python" 19 "matlab" 20 "objective" 21 "javascript" 22 "java" 23 "php" 24 "erlang" 25 "fortran" 26 "fortran" 27 "c" 28 "lisp" 29 "visual" 30 "bourne" 31 "ruby" 32 "vim" 33 "assembly" 34 "objective" 35 "dtd" 36 "sql" 37 "yaml" 38 "ruby" 39 "haskell" 40 "bourne" 41 "actionscript" 42 "mxml" 43 "asp" 44 "d" 45 "pascal" 46 "scala" 47 "dos" 48 "groovy" 49 "xslt" 50 "perl" 51 "teamcenter" 52 "idl" 53 "lua" 54 "go" 55 "yacc" 56 "cython" 57 "lex" 59 "ada" 61 "sed" 62 "m4" 63 "ocaml" 64 "smarty" 65 "coldfusion" 66 "nant" 67 "expect" 68 "c" 69 "vhdl" 70 "tcl/tk" 71 "jsp" 72 "skill" 73 "awk" 74 "mumps" 75 "korn" 78 "fortran" 85 "oracle" 87 "dart" 88 "cobol" 89 "modula3" 90 "oracle" 92 "softbridge" 93))
+    "Hashmap mapping languages to their searchcode ids.")
+
+(defvar speed-type-syntax-colouring
+  #s(hash-table
+     test equal
+     data ("javascript" js--font-lock-keywords-3 "objective" objc-font-lock-keywords))
+    "Hashmap mapping languages to font lock keywords to be used when speed typing them. Keywords for any languages not specified here will be guessed.")
 
 ;; buffer local internal variables
 
@@ -350,10 +357,9 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
                  (store-substring speed-type--mod-str pos0 2)))
         (cl-incf speed-type--entries)
         (cl-decf speed-type--remaining)
-        (add-text-properties pos (1+ pos)
-                             `(font-lock-face ,(if correct
-                                         'speed-type-correct
-                                       'speed-type-mistake)))))))
+	(let ((overlay (make-overlay pos (1+ pos))))
+	  (overlay-put overlay 'face (if correct 'speed-type-correct
+				      'speed-type-mistake)))))))
 
 (defun speed-type--change (start end length)
   "Handle buffer changes.
@@ -389,7 +395,7 @@ are color coded and stats are gathered about the typing performance."
                             ""
                             str))
 
-(defun speed-type--setup (text &optional author title lang n-words)
+(defun speed-type--setup (text &optional author title lang n-words callback)
   "Set up a new buffer for the typing exercise on TEXT.
 
 AUTHOR and TITLE can be given, this happen when the text to type comes
@@ -397,7 +403,8 @@ from a gutenberg book.
 
 LANG and N-WORDS is used when training random words where LANG is the
 language symbol and N-WORDS is the top N words that should be trained.
-"
+
+CALLBACK is called when the setup process has been completed."
   (with-temp-buffer
     (insert text)
     (delete-trailing-whitespace)
@@ -418,8 +425,7 @@ language symbol and N-WORDS is the top N words that should be trained.
     (goto-char 0)
     (add-hook 'after-change-functions 'speed-type--change nil t)
     (add-hook 'first-change-hook 'speed-type--first-change nil t)
-   (let ((font-lock-defaults '(python-font-lock-keywords)))
-     (font-lock-mode 1))
+    (funcall callback)
     (message "Timer will start when you type the first character.")))
 
 (defun speed-type--pick-text-to-type (&optional start end)
@@ -489,19 +495,39 @@ A GET request is sent to the url SPEED-TYPE-CODE-URL, with LANGUAGE-ID as the qu
     (delete-region (point) (point-min))
     (buffer-string))))
 
+(defun speed-type-get-language-code-keywords (language)
+  "Return syntax highlighting data to be used by font lock mode.
+
+The syntax highlighting data returned will depend on LANGUAGE, and nil is
+returned if no appropriate data could be found."
+  (let* ((keywords (concat language "-font-lock-keywords"))
+	 (keywords-3 (concat keywords "-3"))
+	 (user-specified (gethash language speed-type-syntax-colouring)))
+    (cond (user-specified user-specified)
+	  ((boundp (intern keywords)) (symbol-value (intern keywords)))
+	  ((boundp (intern keywords-3)) (symbol-value (intern keywords-3)))
+	  (t nil))))
+
 (defun speed-type-code (language)
   "Speed type a random code snippet of the specified LANGUAGE."
   (interactive "sChoose a programming language: ")
-  (speed-type-code-search-term language "a"))
+  (speed-type-code-search-term language "a"))  ; A query term must always be specified
 
 (defun speed-type-code-search-term (language search-term)
-  "Speed type a code snippet from LANGUAGE obtained from searcing SEARCH-TERM."
+  "Speed type a code snippet of LANGUAGE obtained from searcing SEARCH-TERM."
   (interactive "sChoose a programming language: \nsChoose a search term: ")
   (let*
       ((language-id (gethash (downcase language) speed-type-language-to-id-map))
-       (result (seq-random-elt (speed-type-get-code-candidates-json language-id search-term)))
+       (result (seq-random-elt
+		(speed-type-get-code-candidates-json language-id search-term)))
        (text (speed-type-get-text-from-code-candidate result)))
-   (speed-type--setup text)))
+    (speed-type--setup text nil nil nil nil
+		       (lambda ()
+			 (let ((font-lock-data
+				(list (speed-type-get-language-code-keywords language))))
+			   (when font-lock-data
+			     (let ((font-lock-defaults font-lock-data))
+			     (font-lock-mode 1))))))))
 
 ;;;###autoload
 (defun speed-type-top-x (n)
