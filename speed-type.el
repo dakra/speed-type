@@ -94,12 +94,21 @@ E.g. if you always want lowercase words, set:
   :type 'string)
 
 (defcustom speed-type-syntax-colouring
-  #s(hash-table
-     test equal
-     data ("javascript" js--font-lock-keywords-3
-	   "objective" objc-font-lock-keywords))
-  "Hashmap mapping languages to font lock keywords to be used when speed typing them.
+  (let ((hash (make-hash-table :test 'equal)))
+    (puthash "javascript" js--font-lock-keywords-3 hash)
+    (puthash "objective" objc-font-lock-keywords hash)
+    hash)
+  "Hashmap mapping languages to font lock keywords for syntax highlighting.
 Keywords for any languages not specified here will be guessed."
+  :type 'hash-table)
+
+(defcustom speed-type-syntax-tables
+  (let ((hash (make-hash-table :test 'equal)))
+    (puthash"javascript" js-mode-syntax-table hash)
+    (puthash "objective" objc-mode-syntax-table hash)
+    hash)
+  "Hashmap mapping languages to syntax tables for syntax highlighting.
+Syntax tables for any languages not specified here will be guessed."
   :type 'hash-table)
 
 (defface speed-type-correct
@@ -504,6 +513,37 @@ returned if no appropriate data could be found."
 	  ((boundp (intern keywords-3)) (symbol-value (intern keywords-3)))
 	  (t nil))))
 
+(defun speed-type-get-language-syntax-table (language)
+  "Return the syntax table used by the language.
+
+The syntax table returned will depend on LANGUAGE, and nil is
+returned if no appropriate data could be found."
+  (let* ((keywords (concat language "-mode-syntax-table"))
+	 (user-specified (gethash language speed-type-syntax-tables)))
+    (cond (user-specified user-specified)
+	  ((boundp (intern keywords)) (symbol-value (intern keywords)))
+	  (t nil))))
+
+(defun speed-type-setup-syntax-table (language)
+  "Setup the syntax table in the current buffer for programming language LANGUAGE."
+  (let ((found-syntax-table (speed-type-get-language-syntax-table language)))
+    (if found-syntax-table
+	(set-syntax-table found-syntax-table))
+    (message "No syntax highlighting data could be found for: %s. If you find the correct syntax variable for this language you can add it to the hash-table speed-type-syntax-tables."
+	     language)))
+
+(defun speed-type-setup-code (text)
+  (speed-type--setup text nil nil nil nil
+		     (lambda ()
+		       (electric-pair-mode -1)
+		       (let ((font-lock-data
+			      (speed-type-get-language-code-keywords language)))
+			 (if font-lock-data
+			     (let ((font-lock-defaults (list font-lock-data)))
+			       (font-lock-mode 1)
+			       (speed-type-setup-syntax-table language))
+			   (message "No syntax highlighting data could be found for: %s" language))))))
+
 (defun speed-type-code (language)
   "Speed type a random code snippet of the specified LANGUAGE."
   (interactive "sChoose a programming language: ")
@@ -514,19 +554,13 @@ returned if no appropriate data could be found."
   (interactive "sChoose a programming language: \nsChoose a search term: ")
   (let*
       ((language-id (gethash (downcase language) speed-type-language-to-id-map))
-       (result (seq-random-elt
-		(speed-type-get-code-candidates-json language-id search-term)))
-       (text (speed-type-get-text-from-code-candidate result)))
-    (speed-type--setup text nil nil nil nil
-		       (lambda ()
-			 (let ((font-lock-data
-				(speed-type-get-language-code-keywords language)))
-			   (if font-lock-data
-			       (let ((font-lock-defaults (list font-lock-data)))
-				 (font-lock-mode 1)
-				 (set-syntax-table java-mode-syntax-table))
-			   (message "No syntax highlighting data could be found for: %s"
-				    language)))))))
+       (result (if language-id
+		   (seq-random-elt
+		    (speed-type-get-code-candidates-json language-id search-term))
+		 (message "Language %s is not currently supported" language)
+		 nil)))
+    (when result (speed-type-setup-code
+		  (speed-type-get-text-from-code-candidate result)))))
 
 ;;;###autoload
 (defun speed-type-top-x (n)
