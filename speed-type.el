@@ -490,9 +490,9 @@ to (point-min) and (point-max)"
 A GET request is sent to the url SPEED-TYPE-CODE-URL, with LANGUAGE-ID as the query parameter for 'lan', and SEARCH-TERM as the query parameter for 'q'.  A list of code snippets is then returned from the responding json."
   (let* ((gnutls-log-level 1)  ; https://debbugs.gnu.org/cgi/bugreport.cgi?bug=34341
 	 (url-request-method "GET")
-	 (raw-url (concat speed-type-code-url "?q=" search-term
-			  "&loc=" speed-type-code-min-lines
-			  "&loc2=" speed-type-code-max-lines
+	 (raw-url (concat speed-type-code-url "?q=" search-term "&per_page" "50"
+			  "&loc=" (number-to-string speed-type-code-min-lines)
+			  "&loc2=" (number-to-string speed-type-code-max-lines)
 			  "&lan=" (number-to-string language-id)))
 	 (json-object-type 'hash-table)
 	 (json-array-type 'list)
@@ -543,19 +543,35 @@ returned if no appropriate data could be found."
     (message "No appropriate syntax table could be found for: %s. If you find the correct syntax table for this language you can add it to the hash-table speed-type-syntax-tables."
 	     language)))
 
-(defun speed-type-setup-code (text)
-  "Speed type the code snippet TEXT."
+(defun speed-type-code-tab ()
+  "A command to be mapped to TAB when speed typing code."
+  (interactive)
+  (let ((start (point))
+	(end (re-search-forward "[^\t ]" (line-end-position) t)))
+    (goto-char start)
+    (when end (insert-char ?\s (1- (- end start))))))
+
+(defun speed-type-code-ret ()
+  "A command to be mapped to RET when speed typing code."
+  (interactive)
+  (when (= (point) (line-end-position))
+    (newline) (move-beginning-of-line nil) (speed-type-code-tab)))
+
+(defun speed-type-setup-code (text language)
+  "Speed type the code snippet TEXT of language LANGUAGE."
   (speed-type--setup text nil nil nil nil
 		     (lambda ()
 		       (electric-pair-mode -1)
-		       (local-set-key (kbd "TAB") 'back-to-indentation)
+		       (local-set-key (kbd "TAB") 'speed-type-code-tab)
+		       (local-set-key (kbd "RET") 'speed-type-code-ret)
 		       (speed-type-setup-syntax-table language)
 		       (let ((font-lock-data
 			      (speed-type-get-language-code-keywords language)))
 			 (if font-lock-data
 			     (let ((font-lock-defaults (list font-lock-data)))
 			       (font-lock-mode 1))
-			 (message "No syntax highlighting data could be found for: %s" language))))))
+			   (message "No syntax highlighting data could be found for: %s"
+				    language))))))
 
 (defun speed-type-code (language)
   "Speed type a random code snippet of the specified LANGUAGE."
@@ -573,7 +589,7 @@ returned if no appropriate data could be found."
 		 (message "Language %s is not currently supported" language)
 		 nil)))
     (when result (speed-type-setup-code
-		  (speed-type-get-text-from-code-candidate result)))))
+		  (speed-type-get-text-from-code-candidate result) language))))
 
 ;;;###autoload
 (defun speed-type-top-x (n)
