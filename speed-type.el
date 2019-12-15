@@ -89,6 +89,14 @@ E.g. if you always want lowercase words, set:
   :type '(choice (const :tag "None" nil)
                  (symbol :tag "Language")))
 
+(defcustom speed-type-code-min-lines 15
+  "Minimum number of lines for code snippets when speed typing code."
+  :type 'integer)
+
+(defcustom speed-type-code-max-lines 30
+  "Maximum number of lines for code snippets when speed typing code."
+  :type 'integer)
+
 (defcustom speed-type-code-url "https://searchcode.com/api/codesearch_I/"
   "Url string used to query for code snippets."
   :type 'string)
@@ -482,7 +490,10 @@ to (point-min) and (point-max)"
 A GET request is sent to the url SPEED-TYPE-CODE-URL, with LANGUAGE-ID as the query parameter for 'lan', and SEARCH-TERM as the query parameter for 'q'.  A list of code snippets is then returned from the responding json."
   (let* ((gnutls-log-level 1)  ; https://debbugs.gnu.org/cgi/bugreport.cgi?bug=34341
 	 (url-request-method "GET")
-	 (raw-url (concat speed-type-code-url "?q=" search-term "&loc=" "15" "&loc2=" "20" "&lan=" (number-to-string language-id)))
+	 (raw-url (concat speed-type-code-url "?q=" search-term
+			  "&loc=" speed-type-code-min-lines
+			  "&loc2=" speed-type-code-max-lines
+			  "&lan=" (number-to-string language-id)))
 	 (json-object-type 'hash-table)
 	 (json-array-type 'list)
 	 (json-key-type 'string))
@@ -529,20 +540,22 @@ returned if no appropriate data could be found."
   (let ((found-syntax-table (speed-type-get-language-syntax-table language)))
     (if found-syntax-table
 	(set-syntax-table found-syntax-table))
-    (message "No syntax highlighting data could be found for: %s. If you find the correct syntax variable for this language you can add it to the hash-table speed-type-syntax-tables."
+    (message "No appropriate syntax table could be found for: %s. If you find the correct syntax table for this language you can add it to the hash-table speed-type-syntax-tables."
 	     language)))
 
 (defun speed-type-setup-code (text)
+  "Speed type the code snippet TEXT."
   (speed-type--setup text nil nil nil nil
 		     (lambda ()
 		       (electric-pair-mode -1)
+		       (local-set-key (kbd "TAB") 'back-to-indentation)
+		       (speed-type-setup-syntax-table language)
 		       (let ((font-lock-data
 			      (speed-type-get-language-code-keywords language)))
 			 (if font-lock-data
 			     (let ((font-lock-defaults (list font-lock-data)))
-			       (font-lock-mode 1)
-			       (speed-type-setup-syntax-table language))
-			   (message "No syntax highlighting data could be found for: %s" language))))))
+			       (font-lock-mode 1))
+			 (message "No syntax highlighting data could be found for: %s" language))))))
 
 (defun speed-type-code (language)
   "Speed type a random code snippet of the specified LANGUAGE."
