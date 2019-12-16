@@ -103,11 +103,12 @@ E.g. if you always want lowercase words, set:
 
 (defcustom speed-type-syntax-colouring
   (let ((hash (make-hash-table :test 'equal)))
-    (puthash "javascript" js--font-lock-keywords-3 hash)
-    (puthash "objective" objc-font-lock-keywords hash)
+    (puthash "javascript" '(js--font-lock-keywords-3) hash)
+    (puthash "objective" '(objc-font-lock-keywords) hash)
     hash)
   "Hashmap mapping languages to font lock keywords for syntax highlighting.
-Keywords for any languages not specified here will be guessed."
+Keywords for any languages not specified here will be guessed.  Values in the
+hashmap should be valid values for the `font-lock-defaults` variable."
   :type 'hash-table)
 
 (defcustom speed-type-syntax-tables
@@ -539,9 +540,8 @@ returned if no appropriate data could be found."
   "Setup the syntax table in the current buffer for programming language LANGUAGE."
   (let ((found-syntax-table (speed-type-get-language-syntax-table language)))
     (if found-syntax-table
-	(set-syntax-table found-syntax-table))
-    (message "No appropriate syntax table could be found for: %s. If you find the correct syntax table for this language you can add it to the hash-table speed-type-syntax-tables."
-	     language)))
+	(set-syntax-table found-syntax-table)
+      (message "No appropriate syntax table could be found for: %s. If you find the correct syntax table for this language you can add it to the hash-table speed-type-syntax-tables." language))))
 
 (defun speed-type-code-tab ()
   "A command to be mapped to TAB when speed typing code."
@@ -549,7 +549,7 @@ returned if no appropriate data could be found."
   (let ((start (point))
 	(end (re-search-forward "[^\t ]" (line-end-position) t)))
     (goto-char start)
-    (when end (insert-char ?\s (1- (- end start))))))
+    (when end (insert (buffer-substring-no-properties start (1- end))))))
 
 (defun speed-type-code-ret ()
   "A command to be mapped to RET when speed typing code."
@@ -568,7 +568,7 @@ returned if no appropriate data could be found."
 		       (let ((font-lock-data
 			      (speed-type-get-language-code-keywords language)))
 			 (if font-lock-data
-			     (let ((font-lock-defaults (list font-lock-data)))
+			     (let ((font-lock-defaults font-lock-data))
 			       (font-lock-mode 1))
 			   (message "No syntax highlighting data could be found for: %s"
 				    language))))))
