@@ -105,6 +105,7 @@ E.g. if you always want lowercase words, set:
   (let ((hash (make-hash-table :test 'equal)))
     (puthash "javascript" '(js--font-lock-keywords-3) hash)
     (puthash "objective" '(objc-font-lock-keywords) hash)
+    (puthash "c++" '(cpp-font-lock-keywords) hash)
     hash)
   "Hashmap mapping languages to font lock keywords for syntax highlighting.
 Keywords for any languages not specified here will be guessed.  Values in the
@@ -521,8 +522,8 @@ returned if no appropriate data could be found."
 	 (keywords-3 (concat keywords "-3"))
 	 (user-specified (gethash language speed-type-syntax-colouring)))
     (cond (user-specified user-specified)
-	  ((boundp (intern keywords)) (symbol-value (intern keywords)))
-	  ((boundp (intern keywords-3)) (symbol-value (intern keywords-3)))
+	  ((boundp (intern keywords)) (list (symbol-value (intern keywords))))
+	  ((boundp (intern keywords-3)) (list (symbol-value (intern keywords-3))))
 	  (t nil))))
 
 (defun speed-type-get-language-syntax-table (language)
@@ -564,6 +565,7 @@ returned if no appropriate data could be found."
 		       (electric-pair-mode -1)
 		       (local-set-key (kbd "TAB") 'speed-type-code-tab)
 		       (local-set-key (kbd "RET") 'speed-type-code-ret)
+		       (setq jit-lock-mode nil)  ; Not necessary and causes errors
 		       (speed-type-setup-syntax-table language)
 		       (let ((font-lock-data
 			      (speed-type-get-language-code-keywords language)))
