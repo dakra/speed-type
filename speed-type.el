@@ -587,7 +587,8 @@ If the user chooses to play again use SEARCH-TERM."
 (defun speed-type-code (language)
   "Speed type a random code snippet of the specified LANGUAGE."
   (interactive "sChoose a programming language: ")
-  (speed-type-code-search-term language "a"))  ; A query term must always be specified
+  ;; A query term must always be specified
+  (speed-type-code-search-term language (char-to-string (seq-random-elt "aeiou"))))
 
 ;;;###autoload
 (defun speed-type-code-search-term (language search-term)
