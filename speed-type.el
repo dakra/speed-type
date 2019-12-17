@@ -182,6 +182,8 @@ Total errors: %d
 (defvar-local speed-type--lang nil)
 (defvar-local speed-type--n-words nil)
 (defvar-local speed-type--opened-on-buffer nil)
+(defvar-local speed-type--programming-lan nil)
+(defvar-local speed-type--search-term nil)
 
 ;; save-mark-and-excursion in Emacs 25.1 and above works like save-excursion did before
 (eval-when-compile
@@ -318,24 +320,26 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
 (defun speed-type--replay ()
   "Replay a speed-type session."
   (interactive)
-  (let ((text speed-type--orig-text))
+  (let ((text speed-type--orig-text)
+	(speed-type-pl speed-type--programming-lan)
+	(speed-type-search speed-type--search-term))
     (kill-this-buffer)
-    (speed-type--setup text)))
+    (if speed-type-pl (speed-type-setup-code text speed-type-pl speed-type-search)
+      (speed-type--setup text))))
 
 (defun speed-type--play-next ()
   "Play a new speed-type session, based on the current one."
   (interactive)
   (let ((opened-on-buffer speed-type--opened-on-buffer)
+	(speed-type-pl speed-type--programming-lan)
+	(speed-type-search speed-type--search-term)
         (lang speed-type--lang)
         (n speed-type--n-words))
     (kill-this-buffer)
-    (if opened-on-buffer
-        (with-current-buffer opened-on-buffer
-          (speed-type-buffer nil))
-      (if (and lang n)
-          (let ((speed-type-default-lang lang))
-            (speed-type-top-x n))
-        (speed-type-text)))))
+    (cond (opened-on-buffer (with-current-buffer opened-on-buffer (speed-type-buffer nil)))
+	  (speed-type-pl (speed-type-code-search-term speed-type-pl speed-type-search))
+	  ((and lang n) (let ((speed-type-default-lang lang)) (speed-type-top-x n)))
+	  (t (speed-type-text)))))
 
 (defun speed-type--handle-complete ()
   "Remove typing hooks from the buffer and print statistics."
@@ -447,7 +451,7 @@ CALLBACK is called when the setup process has been completed."
     (goto-char 0)
     (add-hook 'after-change-functions 'speed-type--change nil t)
     (add-hook 'first-change-hook 'speed-type--first-change nil t)
-    (funcall callback)
+    (when callback (funcall callback))
     (message "Timer will start when you type the first character.")))
 
 (defun speed-type--pick-text-to-type (&optional start end)
@@ -558,23 +562,25 @@ returned if no appropriate data could be found."
   (when (= (point) (line-end-position))
     (newline) (move-beginning-of-line nil) (speed-type-code-tab)))
 
-(defun speed-type-setup-code (text language)
-  "Speed type the code snippet TEXT of language LANGUAGE."
-  (speed-type--setup text nil nil nil nil
-		     (lambda ()
-		       (electric-pair-mode -1)
-		       (local-set-key (kbd "TAB") 'speed-type-code-tab)
-		       (local-set-key (kbd "RET") 'speed-type-code-ret)
-		       (setq jit-lock-mode nil)  ; Not necessary and causes errors
-		       (speed-type-setup-syntax-table language)
-		       (let ((font-lock-data
-			      (speed-type-get-language-code-keywords language)))
-			 (if font-lock-data
-			     (let ((font-lock-defaults font-lock-data))
-			       (font-lock-mode 1))
-			   (message "No syntax highlighting data could be found for: %s"
-				    language))))))
-
+(defun speed-type-setup-code (text language search-term)
+  "Speed type the code snippet TEXT of language LANGUAGE.
+If the user chooses to play again use SEARCH-TERM."
+  (let ((callback (lambda ()
+      (electric-pair-mode -1)
+      (local-set-key (kbd "TAB") 'speed-type-code-tab)
+      (local-set-key (kbd "RET") 'speed-type-code-ret)
+      (setq speed-type--programming-lan language)
+      (setq speed-type--search-term search-term)
+      (speed-type-setup-syntax-table language)
+      (let ((font-lock-data
+	     (speed-type-get-language-code-keywords language)))
+	(if font-lock-data
+	    (let ((font-lock-defaults font-lock-data))
+	      (ignore-errors (font-lock-ensure)))  ; Fontify buffer
+	  (message "No syntax highlighting data could be found for: %s"
+		   language))))))
+  (speed-type--setup text nil nil nil nil callback)))
+		     
 (defun speed-type-code (language)
   "Speed type a random code snippet of the specified LANGUAGE."
   (interactive "sChoose a programming language: ")
@@ -583,15 +589,15 @@ returned if no appropriate data could be found."
 (defun speed-type-code-search-term (language search-term)
   "Speed type a code snippet of LANGUAGE obtained from searcing SEARCH-TERM."
   (interactive "sChoose a programming language: \nsChoose a search term: ")
-  (let*
-      ((language-id (gethash (downcase language) speed-type-language-to-id-map))
-       (result (if language-id
-		   (seq-random-elt
-		    (speed-type-get-code-candidates-json language-id search-term))
-		 (message "Language %s is not currently supported" language)
-		 nil)))
-    (when result (speed-type-setup-code
-		  (speed-type-get-text-from-code-candidate result) language))))
+  (let* ((language-id (gethash (downcase language) speed-type-language-to-id-map))
+	 (result (if language-id
+		     (seq-random-elt
+		      (speed-type-get-code-candidates-json language-id search-term))
+		   (message "Language %s is not currently supported" language)
+		   nil)))
+    (when result
+      (speed-type-setup-code
+       (speed-type-get-text-from-code-candidate result) language search-term))))
 
 ;;;###autoload
 (defun speed-type-top-x (n)
