@@ -106,6 +106,7 @@ E.g. if you always want lowercase words, set:
     (puthash "javascript" '(js--font-lock-keywords-3) hash)
     (puthash "objective" '(objc-font-lock-keywords) hash)
     (puthash "c++" '(cpp-font-lock-keywords) hash)
+    (puthash "lisp" '(lisp-el-font-lock-keywords lisp-el-font-lock-keywords-1 lisp-el-font-lock-keywords-2) hash)
     hash)
   "Hashmap mapping languages to font lock keywords for syntax highlighting.
 Keywords for any languages not specified here will be guessed.  Values in the
@@ -118,7 +119,8 @@ hashmap should be valid values for the `font-lock-defaults` variable."
     (puthash "objective" objc-mode-syntax-table hash)
     hash)
   "Hashmap mapping languages to syntax tables for syntax highlighting.
-Syntax tables for any languages not specified here will be guessed."
+Syntax tables for any languages not specified here will be guessed.  The
+values associated with keys should be valid arguments to `set-syntax-table`."
   :type 'hash-table)
 
 (defface speed-type-correct
@@ -162,7 +164,7 @@ Total errors: %d
     map))
 
 ;; Source: https://github.com/boyter/searchcode-server/blob/6cd3df8da55c254b04bb34956ff5c4064c40eacd/src/main/resources/misc/langprofiles.txt
-(defvar speed-type-language-to-id-map
+(defvar speed-type--language-to-id-map
   #s(hash-table
      test equal
      data ("xaml" 1 "asp.net" 2 "html" 3 "msbuild" 5 "c#" 6 "xsd" 7 "xml" 8 "cmake" 14 "c/c++" 15 "c++" 16 "make" 17 "css" 18 "python" 19 "matlab" 20 "objective" 21 "javascript" 22 "java" 23 "php" 24 "erlang" 25 "fortran" 26 "fortran" 27 "c" 28 "lisp" 29 "visual" 30 "bourne" 31 "ruby" 32 "vim" 33 "assembly" 34 "objective" 35 "dtd" 36 "sql" 37 "yaml" 38 "ruby" 39 "haskell" 40 "bourne" 41 "actionscript" 42 "mxml" 43 "asp" 44 "d" 45 "pascal" 46 "scala" 47 "dos" 48 "groovy" 49 "xslt" 50 "perl" 51 "teamcenter" 52 "idl" 53 "lua" 54 "go" 55 "yacc" 56 "cython" 57 "lex" 59 "ada" 61 "sed" 62 "m4" 63 "ocaml" 64 "smarty" 65 "coldfusion" 66 "nant" 67 "expect" 68 "c" 69 "vhdl" 70 "tcl/tk" 71 "jsp" 72 "skill" 73 "awk" 74 "mumps" 75 "korn" 78 "fortran" 85 "oracle" 87 "dart" 88 "cobol" 89 "modula3" 90 "oracle" 92 "softbridge" 93))
@@ -324,7 +326,7 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
 	(speed-type-pl speed-type--programming-lan)
 	(speed-type-search speed-type--search-term))
     (kill-this-buffer)
-    (if speed-type-pl (speed-type-setup-code text speed-type-pl speed-type-search)
+    (if speed-type-pl (speed-type--setup-code text speed-type-pl speed-type-search)
       (speed-type--setup text))))
 
 (defun speed-type--play-next ()
@@ -490,7 +492,7 @@ to (point-min) and (point-max)"
       (when fwd (forward-char)))
     (buffer-substring-no-properties (region-beginning) (region-end))))
 
-(defun speed-type-get-code-candidates-json (language-id search-term)
+(defun speed-type--get-code-candidates-json (language-id search-term)
   "Return a list of code snippets and information about them.
 
 A GET request is sent to the url SPEED-TYPE-CODE-URL, with LANGUAGE-ID as the query parameter for 'lan', and SEARCH-TERM as the query parameter for 'q'.  A list of code snippets is then returned from the responding json."
@@ -507,7 +509,7 @@ A GET request is sent to the url SPEED-TYPE-CODE-URL, with LANGUAGE-ID as the qu
       (url-insert-file-contents raw-url)
       (gethash "results" (json-read-from-string (buffer-string))))))
 
-(defun speed-type-get-text-from-code-candidate (candidate-hash-table)
+(defun speed-type--get-text-from-code-candidate (candidate-hash-table)
   "Return the code text using the 'url' key in CANDIDATE-HASH-TABLE."
   (let* ((gnutls-log-level 1)  ; https://debbugs.gnu.org/cgi/bugreport.cgi?bug=34341
 	 (code-url (gethash "url" candidate-hash-table))
@@ -517,7 +519,7 @@ A GET request is sent to the url SPEED-TYPE-CODE-URL, with LANGUAGE-ID as the qu
       (url-insert-file-contents raw-url)
       (buffer-string))))
 
-(defun speed-type-get-language-code-keywords (language)
+(defun speed-type--get-language-code-keywords (language)
   "Return syntax highlighting data to be used by font lock mode.
 
 The syntax highlighting data returned will depend on LANGUAGE, and nil is
@@ -530,7 +532,7 @@ returned if no appropriate data could be found."
 	  ((boundp (intern keywords-3)) (list (symbol-value (intern keywords-3))))
 	  (t nil))))
 
-(defun speed-type-get-language-syntax-table (language)
+(defun speed-type--get-language-syntax-table (language)
   "Return the syntax table used by the language.
 
 The syntax table returned will depend on LANGUAGE, and nil is
@@ -541,9 +543,9 @@ returned if no appropriate data could be found."
 	  ((boundp (intern keywords)) (symbol-value (intern keywords)))
 	  (t nil))))
 
-(defun speed-type-setup-syntax-table (language)
+(defun speed-type--setup-syntax-table (language)
   "Setup the syntax table in the current buffer for programming language LANGUAGE."
-  (let ((found-syntax-table (speed-type-get-language-syntax-table language)))
+  (let ((found-syntax-table (speed-type--get-language-syntax-table language)))
     (if found-syntax-table
 	(set-syntax-table found-syntax-table)
       (message "No appropriate syntax table could be found for: %s. If you find the correct syntax table for this language you can add it to the hash-table speed-type-syntax-tables." language))))
@@ -562,7 +564,7 @@ returned if no appropriate data could be found."
   (when (= (point) (line-end-position))
     (newline) (move-beginning-of-line nil) (speed-type-code-tab)))
 
-(defun speed-type-setup-code (text language search-term)
+(defun speed-type--setup-code (text language search-term)
   "Speed type the code snippet TEXT of language LANGUAGE.
 If the user chooses to play again use SEARCH-TERM."
   (let ((callback (lambda ()
@@ -571,9 +573,9 @@ If the user chooses to play again use SEARCH-TERM."
       (local-set-key (kbd "RET") 'speed-type-code-ret)
       (setq speed-type--programming-lan language)
       (setq speed-type--search-term search-term)
-      (speed-type-setup-syntax-table language)
+      (speed-type--setup-syntax-table language)
       (let ((font-lock-data
-	     (speed-type-get-language-code-keywords language)))
+	     (speed-type--get-language-code-keywords language)))
 	(if font-lock-data
 	    (let ((font-lock-defaults font-lock-data))
 	      (ignore-errors (font-lock-ensure)))  ; Fontify buffer
@@ -581,23 +583,25 @@ If the user chooses to play again use SEARCH-TERM."
 		   language))))))
   (speed-type--setup text nil nil nil nil callback)))
 		     
+;;;###autoload
 (defun speed-type-code (language)
   "Speed type a random code snippet of the specified LANGUAGE."
   (interactive "sChoose a programming language: ")
   (speed-type-code-search-term language "a"))  ; A query term must always be specified
 
+;;;###autoload
 (defun speed-type-code-search-term (language search-term)
   "Speed type a code snippet of LANGUAGE obtained from searcing SEARCH-TERM."
   (interactive "sChoose a programming language: \nsChoose a search term: ")
-  (let* ((language-id (gethash (downcase language) speed-type-language-to-id-map))
+  (let* ((language-id (gethash (downcase language) speed-type--language-to-id-map))
 	 (result (if language-id
 		     (seq-random-elt
-		      (speed-type-get-code-candidates-json language-id search-term))
+		      (speed-type--get-code-candidates-json language-id search-term))
 		   (message "Language %s is not currently supported" language)
 		   nil)))
     (when result
-      (speed-type-setup-code
-       (speed-type-get-text-from-code-candidate result) language search-term))))
+      (speed-type--setup-code
+       (speed-type--get-text-from-code-candidate result) language search-term))))
 
 ;;;###autoload
 (defun speed-type-top-x (n)
