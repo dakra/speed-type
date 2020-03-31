@@ -553,20 +553,6 @@ returned if no appropriate data could be found."
 	(set-syntax-table found-syntax-table)
       (message "No appropriate syntax table could be found for: %s. If you find the correct syntax table for this language you can add it to the hash-table speed-type-syntax-tables. Alternatively, you may just need to load the language library, e.g. (require 'python)." language))))
 
-(defun speed-type-code-tab ()
-  "A command to be mapped to TAB when speed typing code."
-  (interactive)
-  (let ((start (point))
-	(end (re-search-forward "[^\t ]" (line-end-position) t)))
-    (goto-char start)
-    (when end (insert (buffer-substring-no-properties start (1- end))))))
-
-(defun speed-type-code-ret ()
-  "A command to be mapped to RET when speed typing code."
-  (interactive)
-  (when (= (point) (line-end-position))
-    (newline) (move-beginning-of-line nil) (speed-type-code-tab)))
-
 (defun speed-type--setup-code (text language search-term)
   "Speed type the code snippet TEXT of language LANGUAGE.
 If the user chooses to play again use SEARCH-TERM."
@@ -585,6 +571,22 @@ If the user chooses to play again use SEARCH-TERM."
 	  (message "No syntax highlighting data could be found for: %s"
 		   language))))))
   (speed-type--setup text nil nil nil nil callback)))
+
+;;;###autoload
+(defun speed-type-code-tab ()
+  "A command to be mapped to TAB when speed typing code."
+  (interactive)
+  (let ((start (point))
+	(end (re-search-forward "[^\t ]" (line-end-position) t)))
+    (goto-char start)
+    (when end (insert (buffer-substring-no-properties start (1- end))))))
+
+;;;###autoload
+(defun speed-type-code-ret ()
+  "A command to be mapped to RET when speed typing code."
+  (interactive)
+  (when (= (point) (line-end-position))
+    (newline) (move-beginning-of-line nil) (speed-type-code-tab)))
 		     
 ;;;###autoload
 (defun speed-type-code (language)
