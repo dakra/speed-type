@@ -103,7 +103,9 @@ E.g. if you always want lowercase words, set:
 
 (defcustom speed-type-syntax-colouring
   (let ((hash (make-hash-table :test 'equal)))
-    (puthash "javascript" '(js--font-lock-keywords-3) hash)
+    (require 'cc-fonts)
+    (require 'cc-mode)
+    (require 'font-lock)
     (puthash "objective" '(objc-font-lock-keywords) hash)
     (puthash "c++" '(cpp-font-lock-keywords) hash)
     (puthash "lisp" '(lisp-el-font-lock-keywords lisp-el-font-lock-keywords-1 lisp-el-font-lock-keywords-2) hash)
@@ -115,7 +117,6 @@ hashmap should be valid values for the `font-lock-defaults` variable."
 
 (defcustom speed-type-syntax-tables
   (let ((hash (make-hash-table :test 'equal)))
-    (puthash"javascript" js-mode-syntax-table hash)
     (puthash "objective" objc-mode-syntax-table hash)
     hash)
   "Hashmap mapping languages to syntax tables for syntax highlighting.
@@ -537,10 +538,12 @@ returned if no appropriate data could be found."
 
 The syntax table returned will depend on LANGUAGE, and nil is
 returned if no appropriate data could be found."
-  (let* ((keywords (concat language "-mode-syntax-table"))
+  (let* ((keywords-att1 (concat language "-syntax-table"))
+	 (keywords-att2 (concat language "mode-syntax-table"))
 	 (user-specified (gethash language speed-type-syntax-tables)))
     (cond (user-specified user-specified)
-	  ((boundp (intern keywords)) (symbol-value (intern keywords)))
+	  ((boundp (intern keywords-att1)) (symbol-value (intern keywords-att1)))
+	  ((boundp (intern keywords-att2)) (symbol-value (intern keywords-att2)))
 	  (t nil))))
 
 (defun speed-type--setup-syntax-table (language)
@@ -548,7 +551,7 @@ returned if no appropriate data could be found."
   (let ((found-syntax-table (speed-type--get-language-syntax-table language)))
     (if found-syntax-table
 	(set-syntax-table found-syntax-table)
-      (message "No appropriate syntax table could be found for: %s. If you find the correct syntax table for this language you can add it to the hash-table speed-type-syntax-tables." language))))
+      (message "No appropriate syntax table could be found for: %s. If you find the correct syntax table for this language you can add it to the hash-table speed-type-syntax-tables. Alternatively, you may just need to load the language library, e.g. (require 'python)." language))))
 
 (defun speed-type-code-tab ()
   "A command to be mapped to TAB when speed typing code."
