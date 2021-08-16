@@ -231,12 +231,26 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
     (if (file-readable-p fn)
         fn
       (make-directory speed-type-gb-dir 'parents)
-      (url-copy-file url fn)
-      (with-temp-file fn
-        (insert-file-contents fn)
-        (delete-trailing-whitespace)
-        (decode-coding-region (point-min) (point-max) 'utf-8))
-      fn)))
+      (let* ((downloading t)
+             (buffer (url-retrieve url (lambda (status)
+                                         (if (plist-get status :error)
+                                             (message "Error retrieving file %s" fn)
+                                           (write-file fn)
+                                           (message "Retrieved file %s" fn))
+                                         (setq downloading nil))))
+             (process (get-buffer-process buffer)))
+
+        (while downloading
+          (accept-process-output process 0.5))
+        (if (not (kill-buffer buffer))
+            (message "WARNING: Buffer is not clossing propperly"))
+        (if (file-readable-p fn)
+            (with-temp-file fn
+              (insert-file-contents fn)
+              (delete-trailing-whitespace)
+              (decode-coding-region (point-min) (point-max) 'utf-8))
+          (setq fn nil))
+        fn))))
 
 (defun speed-type--gb-retrieve (book-num)
   "Return buffer with book number BOOK-NUM in it."
@@ -507,33 +521,37 @@ will be used.  Else some text will be picked randomly."
 (defun speed-type-text ()
   "Setup a new text sample to practice touch or speed typing."
   (interactive)
-  (let ((book-num (nth (random (length speed-type-gb-book-list))
-                       speed-type-gb-book-list))
-        (author nil)
-        (title nil))
-    (with-temp-buffer
-      (insert-file-contents (speed-type--gb-retrieve book-num))
-      (goto-char 0)
-      (when (re-search-forward "^Title: " nil t)
-        (setq title (buffer-substring (point) (line-end-position))))
-      (when (re-search-forward "^Author: " nil t)
-        (setq author (buffer-substring (point) (line-end-position))))
+  (let* ((book-num (nth (random (length speed-type-gb-book-list))
+                        speed-type-gb-book-list))
+         (author nil)
+         (title nil)
+         (fn (speed-type--gb-retrieve book-num)))
 
-      (let ((start (point))
-            (end nil))
+    (if fn
+        (with-temp-buffer
+          (insert-file-contents fn)
+          (goto-char 0)
+          (when (re-search-forward "^Title: " nil t)
+            (setq title (buffer-substring (point) (line-end-position))))
+          (when (re-search-forward "^Author: " nil t)
+            (setq author (buffer-substring (point) (line-end-position))))
 
-        (goto-char (point-min))
-        (when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
-          (end-of-line 1)
-          (forward-line 1)
-          (setq start (point)))
-        (when (re-search-forward "***.END.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
-          (beginning-of-line 1)
-          (forward-line -1)
-          (setq end (point)))
+          (let ((start (point))
+                (end nil))
 
-        (speed-type--setup (speed-type--pick-text-to-type start end)
-                           author title)))))
+            (goto-char (point-min))
+            (when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+              (end-of-line 1)
+              (forward-line 1)
+              (setq start (point)))
+            (when (re-search-forward "***.END.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+              (beginning-of-line 1)
+              (forward-line -1)
+              (setq end (point)))
+
+            (speed-type--setup (speed-type--pick-text-to-type start end)
+                               author title)))
+      (message "Error retrieving book number %s" book-num))))
 
 (provide 'speed-type)
 

@@ -60,7 +60,7 @@
 (ert-deftest speed-type--retrieve-test ()
   (let ((filename "speed-type--retrieve-test-file")
         (filename-expected "/tmp/speed-type--retrieve-test-file.txt")
-        (url "https://google.es"))
+        (url "https://www.google.com"))
 
     (speed-type--retrieve-non-exitant-file-environment
      filename-expected
@@ -78,4 +78,16 @@
          (should (stringp filename-response))
          (should (string= filename-response filename-expected))
          (should (file-exists-p filename-expected))
-         (should (file-readable-p filename-expected)))))))
+         (should (file-readable-p filename-expected))))))
+
+  (let ((filename "speed-type--retrieve-test-file")
+        (filename-expected "/tmp/speed-type--retrieve-test-file.txt")
+        (url "https://www.google.com/nonexitanresource"))
+
+    (speed-type--retrieve-non-exitant-file-environment
+     filename-expected
+     (lambda ()
+       (let ((filename-response (speed-type--retrieve filename url)))
+         (should (eq nil filename-response))
+         (should (not (file-exists-p filename-expected)))
+         (should (not (file-readable-p filename-expected))))))))
