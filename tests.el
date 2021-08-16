@@ -38,3 +38,44 @@
             (kill-current-buffer))
           (should (equal hook-executed t)))
       (remove-hook 'speed-type-mode-hook 'speed-type-mode-test-hook))))
+
+(defun speed-type--retrieve-non-exitant-file-environment (filename-expected test)
+  (let ((speed-type-gb-dir "/tmp"))
+    (unwind-protect
+        (progn
+          (delete-file filename-expected)
+          (funcall test))
+      (delete-file filename-expected))))
+
+(defun speed-type--retrieve-exitant-file-environment (filename-expected test)
+  (let ((speed-type-gb-dir "/tmp"))
+    (unwind-protect
+        (progn
+          (delete-file filename-expected)
+          (with-temp-buffer
+            (write-file filename-expected))
+          (funcall test))
+      (delete-file filename-expected))))
+
+(ert-deftest speed-type--retrieve-test ()
+  (let ((filename "speed-type--retrieve-test-file")
+        (filename-expected "/tmp/speed-type--retrieve-test-file.txt")
+        (url "https://google.es"))
+
+    (speed-type--retrieve-non-exitant-file-environment
+     filename-expected
+     (lambda ()
+       (let ((filename-response (speed-type--retrieve filename url)))
+         (should (stringp filename-response))
+         (should (string= filename-response filename-expected))
+         (should (file-exists-p filename-expected))
+         (should (file-readable-p filename-expected)))))
+
+    (speed-type--retrieve-exitant-file-environment
+     filename-expected
+     (lambda ()
+       (let ((filename-response (speed-type--retrieve filename url)))
+         (should (stringp filename-response))
+         (should (string= filename-response filename-expected))
+         (should (file-exists-p filename-expected))
+         (should (file-readable-p filename-expected)))))))
