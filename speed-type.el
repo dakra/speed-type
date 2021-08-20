@@ -91,6 +91,11 @@ E.g. if you always want lowercase words, set:
   :type '(choice (const :tag "None" nil)
                  (symbol :tag "Language")))
 
+(defface speed-type-default
+  '()
+  "Default face for `speed-type'."
+  :group 'speed-type)
+
 (defface speed-type-correct
   '((t :foreground "green"))
   "Face for correctly typed characters."
@@ -390,6 +395,7 @@ language symbol and N-WORDS is the top N words that should be trained."
         (len (length text)))
     (set-buffer buf)
     (speed-type-mode)
+    (buffer-face-set 'speed-type-default)
     (setq speed-type--orig-text text)
     (setq speed-type--mod-str (make-string len 0))
     (setq speed-type--remaining len)
