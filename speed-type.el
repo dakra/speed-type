@@ -39,6 +39,10 @@
   "Practice touch-typing in Emacs."
   :group 'games)
 
+(define-derived-mode speed-type-mode fundamental-mode "SpeedType"
+  "Major mode for practicing touch typing."
+  :group "speed-type")
+
 (defcustom speed-type-min-chars 200
   "The minimum number of chars to type required when the text is picked randomly."
   :group 'speed-type

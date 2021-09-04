@@ -25,3 +25,16 @@
                      (speed-type--trim "\n\nfoo\n\t\sbar\n\n\n")))
     (should (string= "\tfoo\n\t\sbar"
                      (speed-type--trim "\n\tfoo\n\t\sbar\n\n\n\n"))))
+
+(ert-deftest speed-type-mode-test()
+  (let* ((hook-executed nil))
+    (defun speed-type-mode-test-hook ()
+      (setq hook-executed t))
+    (unwind-protect
+        (progn
+          (add-hook 'speed-type-mode-hook 'speed-type-mode-test-hook)
+          (with-temp-buffer
+            (speed-type-mode)
+            (kill-current-buffer))
+          (should (equal hook-executed t)))
+      (remove-hook 'speed-type-mode-hook 'speed-type-mode-test-hook))))
