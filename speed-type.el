@@ -389,6 +389,7 @@ language symbol and N-WORDS is the top N words that should be trained."
   (let ((buf (generate-new-buffer "speed-type"))
         (len (length text)))
     (set-buffer buf)
+    (speed-type-mode)
     (setq speed-type--orig-text text)
     (setq speed-type--mod-str (make-string len 0))
     (setq speed-type--remaining len)
