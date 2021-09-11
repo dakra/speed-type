@@ -312,7 +312,8 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
                   (propertize "r" 'face 'highlight)))
   (insert (format "    [%s]ext random sample\n"
                   (propertize "n" 'face 'highlight)))
-  (read-only-mode)
+  (let ((view-read-only nil))
+    (read-only-mode))
   (use-local-map speed-type--completed-keymap))
 
 (defun speed-type--diff (orig new start end)
