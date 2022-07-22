@@ -520,20 +520,20 @@ will be used.  Else some text will be picked randomly."
         (setq author (buffer-substring (point) (line-end-position))))
 
       (let ((start (point))
-	    (end nil))
+            (end nil))
 
-	(goto-char (point-min))
-	(when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
-	  (end-of-line 1)
-	  (forward-line 1)
-	  (setq start (point)))
-	(when (re-search-forward "***.END.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
-	  (beginning-of-line 1)
-	  (forward-line -1)
-	  (setq end (point)))
+        (goto-char (point-min))
+        (when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+          (end-of-line 1)
+          (forward-line 1)
+          (setq start (point)))
+        (when (re-search-forward "***.END.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+          (beginning-of-line 1)
+          (forward-line -1)
+          (setq end (point)))
 
-	(speed-type--setup (speed-type--pick-text-to-type start end)
-			   author title)))))
+        (speed-type--setup (speed-type--pick-text-to-type start end)
+                           author title)))))
 
 (provide 'speed-type)
 
