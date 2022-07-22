@@ -7,7 +7,7 @@
 ;; Version: 1.2
 ;; Keywords: games
 ;; URL: https://github.com/parkouss/speed-type
-;; Package-Requires: ((emacs "24.3") (cl-lib "0.3"))
+;; Package-Requires: ((emacs "25.1"))
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -36,16 +36,16 @@
 (require 'cl-lib)
 
 (defgroup speed-type nil
-  "Practice touch-typing in emacs."
+  "Practice touch-typing in Emacs."
   :group 'games)
 
 (defcustom speed-type-min-chars 200
-  "The minimum number of chars to type required when the text to type is picked randomly."
+  "The minimum number of chars to type required when the text is picked randomly."
   :group 'speed-type
   :type 'integer)
 
 (defcustom speed-type-max-chars 450
-  "The maximum number of chars to type required when the text to type is picked randomly."
+  "The maximum number of chars to type required when the text is picked randomly."
   :group 'speed-type
   :type 'integer)
 
@@ -141,14 +141,6 @@ Total errors: %d
 (defvar-local speed-type--lang nil)
 (defvar-local speed-type--n-words nil)
 (defvar-local speed-type--opened-on-buffer nil)
-
-;; save-mark-and-excursion in Emacs 25.1 and above works like save-excursion did before
-(eval-when-compile
-  (when (or
-         (< emacs-major-version 25)
-         (and (= emacs-major-version 25) (< emacs-minor-version 1)))
-    (defmacro save-mark-and-excursion (&rest body)
-      `(save-excursion ,@body))))
 
 (defun speed-type--seconds-to-minutes (seconds)
   "Return minutes in float for SECONDS."
@@ -344,7 +336,7 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
                                        'speed-type-mistake)))))))
 
 (defun speed-type--change (start end length)
-  "Handle buffer changes.
+  "Handle buffer change.
 
 Make sure that the contents don't actually change, but rather the contents
 are color coded and stats are gathered about the typing performance."
@@ -384,8 +376,7 @@ AUTHOR and TITLE can be given, this happen when the text to type comes
 from a gutenberg book.
 
 LANG and N-WORDS is used when training random words where LANG is the
-language symbol and N-WORDS is the top N words that should be trained.
-"
+language symbol and N-WORDS is the top N words that should be trained."
   (with-temp-buffer
     (insert text)
     (delete-trailing-whitespace)
@@ -490,8 +481,8 @@ to (point-min) and (point-max)"
 (defun speed-type-buffer (full)
   "Open copy of buffer contents in a new buffer to speed type the text.
 
-If using a prefix while calling this function (C-u), then the FULL text
-will be used. Else some text will be picked randomly."
+If using a prefix while calling this function `C-u', then the FULL text
+will be used.  Else some text will be picked randomly."
   (interactive "P")
   (if full
       (speed-type--setup (buffer-substring-no-properties
