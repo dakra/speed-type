@@ -3,11 +3,16 @@
 ;; Copyright (C) 2015 Gunther Hagleitner
 
 ;; Author: Gunther Hagleitner
-;; Maintainer: Julien Pagès <j.parkouss@gmail.com>
+;; Maintainer: Daniel Kraus <daniel@kraus.my>
 ;; Version: 1.2
 ;; Keywords: games
-;; URL: https://github.com/parkouss/speed-type
+;; URL: https://github.com/dakra/speed-type
 ;; Package-Requires: ((emacs "25.1"))
+;; SPDX-License-Identifier: GPL-3.0-or-later
+
+;; This file is NOT part of GNU Emacs.
+
+;;; License:
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
