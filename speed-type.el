@@ -96,6 +96,10 @@ E.g. if you always want lowercase words, set:
   :type '(choice (const :tag "None" nil)
                  (symbol :tag "Language")))
 
+(defcustom speed-type--special-chars '(("“" . "\"") ("”" . "\"") ("‘" . "'") ("’" . "'"))
+  "Alist of special chars with their replacements."
+  :type '(alist :key-type string :value-type string))
+
 (defface speed-type-default
   '()
   "Default face for `speed-type'."
@@ -397,9 +401,6 @@ are color coded and stats are gathered about the typing performance."
                                     (: (* (any " \t\n")) eos)))
                             ""
                             str))
-
-(defvar speed-type--special-chars '(("“" . "\"") ("”" . "\"") ("‘" . "'") ("’" . "'"))
-  "An alist of special chars and replacements.")
 
 (defun speed-type--clean-text (text)
   "Remove/replace special chars from TEXT."
