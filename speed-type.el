@@ -94,7 +94,10 @@ E.g. if you always want lowercase words, set:
 (defcustom speed-type-default-lang nil
   "Default language for training wordlists.  Ask when NIL."
   :type '(choice (const :tag "None" nil)
-                 (symbol :tag "Language")))
+                 (const :tag "English" English)
+                 (const :tag "German" German)
+                 (const :tag "French" French)
+                 (const :tag "Dutch" Dutch)))
 
 (defcustom speed-type-replace-strings '(("“" . "\"") ("”" . "\"") ("‘" . "'") ("’" . "'"))
   "Alist of strings to replace and their replacement, in the form: `(bad-string . good-string)'
@@ -241,19 +244,11 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
     (if (file-readable-p fn)
         fn
       (make-directory speed-type-gb-dir 'parents)
-      (let* ((downloading t)
-             (buffer (url-retrieve url (lambda (status)
-                                         (if (plist-get status :error)
-                                             (message "Error retrieving file %s" fn)
-                                           (write-file fn)
-                                           (message "Retrieved file %s" fn))
-                                         (setq downloading nil))))
-             (process (get-buffer-process buffer)))
-
-        (while downloading
-          (accept-process-output process 0.5))
-        (if (not (kill-buffer buffer))
-            (message "WARNING: Buffer is not closing properly"))
+      (let ((buffer (url-retrieve-synchronously url nil nil 5)))
+        (with-current-buffer buffer
+          (write-region url-http-end-of-headers (point-max) fn))
+        (unless (kill-buffer buffer)
+          (message "WARNING: Buffer is not closing properly"))
         (if (file-readable-p fn)
             (with-temp-file fn
               (insert-file-contents fn)
