@@ -159,7 +159,6 @@ Total errors: %d
 (defvar-local speed-type--author nil)
 (defvar-local speed-type--lang nil)
 (defvar-local speed-type--n-words nil)
-(defvar-local speed-type--opened-on-buffer nil)
 (defvar-local speed-type--go-next-fn nil)
 (defvar-local speed-type--replay-fn #'speed-type--setup)
 
