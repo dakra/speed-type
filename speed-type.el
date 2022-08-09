@@ -96,6 +96,11 @@ E.g. if you always want lowercase words, set:
   :type '(choice (const :tag "None" nil)
                  (symbol :tag "Language")))
 
+(defcustom speed-type-replace-strings '(("“" . "\"") ("”" . "\"") ("‘" . "'") ("’" . "'"))
+  "Alist of strings to replace and their replacement, in the form: `(bad-string . good-string)'
+  To remove without replacement, use the form: `(bad-string . \"\")'"
+  :type '(alist :key-type string :value-type string))
+
 (defface speed-type-default
   '()
   "Default face for `speed-type'."
@@ -248,7 +253,7 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
         (while downloading
           (accept-process-output process 0.5))
         (if (not (kill-buffer buffer))
-            (message "WARNING: Buffer is not clossing propperly"))
+            (message "WARNING: Buffer is not closing properly"))
         (if (file-readable-p fn)
             (with-temp-file fn
               (insert-file-contents fn)
@@ -398,6 +403,18 @@ are color coded and stats are gathered about the typing performance."
                             ""
                             str))
 
+(defun speed-type--clean-text (text)
+  "Return TEXT with unwanted strings replaced.
+Replacements are found in `speed-type-replace-strings'."
+  (cl-reduce
+   (lambda (acc-text string-pair)
+     (string-replace
+      (car string-pair)
+      (cdr string-pair)
+      acc-text))
+   speed-type-replace-strings
+   :initial-value text))
+
 (defun speed-type--setup (text &optional author title lang n-words)
   "Set up a new buffer for the typing exercise on TEXT.
 
@@ -406,29 +423,30 @@ from a gutenberg book.
 
 LANG and N-WORDS is used when training random words where LANG is the
 language symbol and N-WORDS is the top N words that should be trained."
-  (with-temp-buffer
-    (insert text)
-    (delete-trailing-whitespace)
-    (setq text (speed-type--trim (buffer-string))))
-  (let ((buf (generate-new-buffer "speed-type"))
-        (len (length text)))
-    (set-buffer buf)
-    (speed-type-mode)
-    (buffer-face-set 'speed-type-default)
-    (setq speed-type--orig-text text)
-    (setq speed-type--mod-str (make-string len 0))
-    (setq speed-type--remaining len)
-    (setq speed-type--author author)
-    (setq speed-type--title title)
-    (setq speed-type--lang lang)
-    (setq speed-type--n-words n-words)
-    (insert text)
-    (set-buffer-modified-p nil)
-    (switch-to-buffer buf)
-    (goto-char 0)
-    (add-hook 'after-change-functions 'speed-type--change nil t)
-    (add-hook 'first-change-hook 'speed-type--first-change nil t)
-    (message "Timer will start when you type the first character.")))
+  (let ((text (speed-type--clean-text text)))
+   (with-temp-buffer
+     (insert text)
+     (delete-trailing-whitespace)
+     (setq text (speed-type--trim (buffer-string))))
+   (let ((buf (generate-new-buffer "speed-type"))
+         (len (length text)))
+     (set-buffer buf)
+     (speed-type-mode)
+     (buffer-face-set 'speed-type-default)
+     (setq speed-type--orig-text text)
+     (setq speed-type--mod-str (make-string len 0))
+     (setq speed-type--remaining len)
+     (setq speed-type--author author)
+     (setq speed-type--title title)
+     (setq speed-type--lang lang)
+     (setq speed-type--n-words n-words)
+     (insert text)
+     (set-buffer-modified-p nil)
+     (switch-to-buffer buf)
+     (goto-char 0)
+     (add-hook 'after-change-functions 'speed-type--change nil t)
+     (add-hook 'first-change-hook 'speed-type--first-change nil t)
+     (message "Timer will start when you type the first character."))))
 
 (defun speed-type--pick-text-to-type (&optional start end)
   "Return a random section of the buffer usable for playing.
