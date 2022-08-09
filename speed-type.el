@@ -521,7 +521,6 @@ been completed."
                                     :replay-fn (speed-type--get-replay-fn go-next-fn)
                                     :go-next-fn go-next-fn)))
 
-;;;###autoload
 (defun speed-type-code-tab ()
   "A command to be mapped to TAB when speed typing code."
   (interactive)
@@ -530,21 +529,11 @@ been completed."
     (goto-char start)
     (when end (insert (buffer-substring-no-properties start (1- end))))))
 
-;;;###autoload
 (defun speed-type-code-ret ()
   "A command to be mapped to RET when speed typing code."
   (interactive)
   (when (= (point) (line-end-position))
     (newline) (move-beginning-of-line nil) (speed-type-code-tab)))
-		     
-;;;###autoload
-(defun speed-type-code-region (start end)
-  "Open copy of [START,END] in a new buffer to speed type the code."
-  (interactive "r")
-  (speed-type--code-with-highlighting (buffer-substring-no-properties start end)
-                                      (syntax-table)
-                                      font-lock-defaults
-                                      nil))
 
 ;;;###autoload
 (defun speed-type-top-x (n)
@@ -591,7 +580,11 @@ been completed."
 (defun speed-type-region (start end)
   "Open copy of [START,END] in a new buffer to speed type the text."
   (interactive "r")
-  (speed-type--setup (buffer-substring-no-properties start end)))
+  (if (derived-mode-p 'prog-mode)
+      (speed-type--code-with-highlighting (buffer-substring-no-properties start end)
+                                          (syntax-table)
+                                          font-lock-defaults)
+    (speed-type--setup (buffer-substring-no-properties start end))))
 
 ;;;###autoload
 (defun speed-type-buffer (full)
