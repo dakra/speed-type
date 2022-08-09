@@ -68,7 +68,6 @@ a book url.  E.G, https://www.gutenberg.org/ebooks/14577."
   :group 'speed-type
   :type '(repeat integer))
 
-
 (defcustom speed-type-gb-dir (locate-user-emacs-file "speed-type")
   "Directory in which the gutenberg books will be saved."
   :group 'speed-type
@@ -157,7 +156,7 @@ Total errors: %d
 (defvar-local speed-type--n-words nil)
 (defvar-local speed-type--opened-on-buffer nil)
 (defvar-local speed-type--go-next-fn nil)
-(defvar-local speed-type--replay-fn (lambda (text) (speed-type--setup text)))
+(defvar-local speed-type--replay-fn #'speed-type--setup)
 
 (defun speed-type--seconds-to-minutes (seconds)
   "Return minutes in float for SECONDS."
@@ -336,8 +335,8 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
                   (propertize "q" 'face 'highlight)))
   (insert (format "    [%s]eplay this sample\n"
                   (propertize "r" 'face 'highlight)))
-  (insert (format "    [%s]ext random sample\n"
-                  (propertize "n" 'face 'highlight)))
+  (when speed-type--go-next-fn (insert (format "    [%s]ext random sample\n"
+                                               (propertize "n" 'face 'highlight))))
   (let ((view-read-only nil))
     (read-only-mode))
   (use-local-map speed-type--completed-keymap))
@@ -489,20 +488,19 @@ a session if next is selected.
 
 For code highlighting, a syntax table can be specified by SYNTAX-TABLE,
 and font lock defaults by FONT-LOCK-DF."
-  (let ((callback
-         (lambda ()
-           (electric-pair-mode -1)
-           (local-set-key (kbd "TAB") 'speed-type-code-tab)
-           (local-set-key (kbd "RET") 'speed-type-code-ret)
-           (when syntax-table (set-syntax-table syntax-table))
-           (when font-lock-df
-             (let ((font-lock-defaults font-lock-df))
-               ;; Fontify buffer
-               (ignore-errors (font-lock-ensure)))))))
+  (cl-flet ((callback ()
+                      (electric-pair-mode -1)
+                      (local-set-key (kbd "TAB") 'speed-type-code-tab)
+                      (local-set-key (kbd "RET") 'speed-type-code-ret)
+                      (when syntax-table (set-syntax-table syntax-table))
+                      (when font-lock-df
+                        (let ((font-lock-defaults font-lock-df))
+                          ;; Fontify buffer
+                          (ignore-errors (font-lock-ensure))))))
     (speed-type--setup text
                        :replay-fn replay-fn
                        :go-next-fn go-next-fn
-                       :callback callback)))
+                       :callback #'callback)))
 
 (defun speed-type--code-with-highlighting
     (text &optional syntax-table font-lock-df go-next-fn)
@@ -513,17 +511,15 @@ FONT-LOCK-DF (font lock defaults).
 
 If GO-NEXT-FN is specified, call it when speed typing the text has
 been completed."
-  (let ((replay-fn
-         (lambda (text) (speed-type--code-with-highlighting
-                         text syntax-table font-lock-df go-next-fn))))
-    (speed-type--setup-code text replay-fn go-next-fn syntax-table font-lock-df)))
-
+  (cl-flet ((replay-fn (text) (speed-type--code-with-highlighting
+                               text syntax-table font-lock-df go-next-fn)))
+    (speed-type--setup-code text #'replay-fn go-next-fn syntax-table font-lock-df)))
 
 (defun speed-type--get-replay-fn (go-next-fn)
   "Return a replay function which will use GO-NEXT-FN after completion."
-  (lambda (text) (speed-type--setup text nil nil nil nil
-                                    (speed-type--get-replay-fn go-next-fn)
-                                    go-next-fn)))
+  (lambda (text) (speed-type--setup text
+                                    :replay-fn (speed-type--get-replay-fn go-next-fn)
+                                    :go-next-fn go-next-fn)))
 
 ;;;###autoload
 (defun speed-type-code-tab ()
@@ -573,9 +569,11 @@ been completed."
                          (if speed-type-wordlist-transform
                              (funcall speed-type-wordlist-transform (buffer-string))
                            (buffer-string)))
-                       nil title lang n
-                       (speed-type--get-replay-fn go-next-fn)
-                       go-next-fn)))
+                       :title title
+                       :lang lang
+                       :n-words n
+                       :replay-fn (speed-type--get-replay-fn go-next-fn)
+                       :go-next-fn go-next-fn)))
 
 ;;;###autoload
 (defun speed-type-top-100 ()
@@ -605,9 +603,11 @@ will be used.  Else some text will be picked randomly."
   (if full
       (speed-type--setup (buffer-substring-no-properties
                           (point-min) (point-max)))
-    (let ((buf (current-buffer)))
-      (speed-type--setup (speed-type--pick-text-to-type))
-      (setq speed-type--opened-on-buffer buf))))
+    (let ((buf (current-buffer))
+          (text (speed-type--pick-text-to-type)))
+      (speed-type--setup text :go-next-fn (lambda ()
+                                            (with-current-buffer buf
+                                              (speed-type-buffer nil)))))))
 
 ;;;###autoload
 (defun speed-type-text ()
@@ -644,6 +644,7 @@ will be used.  Else some text will be picked randomly."
             (speed-type--setup (speed-type--pick-text-to-type start end)
                                :author author
                                :title title
+                               :replay-fn (speed-type--get-replay-fn #'speed-type-text)
                                :go-next-fn #'speed-type-text)))
       (message "Error retrieving book number %s" book-num))))
 
