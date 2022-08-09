@@ -3,11 +3,16 @@
 ;; Copyright (C) 2015 Gunther Hagleitner
 
 ;; Author: Gunther Hagleitner
-;; Maintainer: Julien Pagès <j.parkouss@gmail.com>
+;; Maintainer: Daniel Kraus <daniel@kraus.my>
 ;; Version: 1.2
 ;; Keywords: games
-;; URL: https://github.com/parkouss/speed-type
-;; Package-Requires: ((emacs "24.3") (cl-lib "0.3"))
+;; URL: https://github.com/dakra/speed-type
+;; Package-Requires: ((emacs "25.1"))
+;; SPDX-License-Identifier: GPL-3.0-or-later
+
+;; This file is NOT part of GNU Emacs.
+
+;;; License:
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -36,16 +41,20 @@
 (require 'cl-lib)
 
 (defgroup speed-type nil
-  "Practice touch-typing in emacs."
+  "Practice touch-typing in Emacs."
   :group 'games)
 
+(define-derived-mode speed-type-mode fundamental-mode "SpeedType"
+  "Major mode for practicing touch typing."
+  :group "speed-type")
+
 (defcustom speed-type-min-chars 200
-  "The minimum number of chars to type required when the text to type is picked randomly."
+  "The minimum number of chars to type required when the text is picked randomly."
   :group 'speed-type
   :type 'integer)
 
 (defcustom speed-type-max-chars 450
-  "The maximum number of chars to type required when the text to type is picked randomly."
+  "The maximum number of chars to type required when the text is picked randomly."
   :group 'speed-type
   :type 'integer)
 
@@ -87,6 +96,11 @@ E.g. if you always want lowercase words, set:
   "Default language for training wordlists.  Ask when NIL."
   :type '(choice (const :tag "None" nil)
                  (symbol :tag "Language")))
+
+(defface speed-type-default
+  '()
+  "Default face for `speed-type'."
+  :group 'speed-type)
 
 (defface speed-type-correct
   '((t :foreground "green"))
@@ -144,14 +158,6 @@ Total errors: %d
 (defvar-local speed-type--opened-on-buffer nil)
 (defvar-local speed-type--go-next-fn nil)
 (defvar-local speed-type--replay-fn (lambda (text) (speed-type--setup text)))
-
-;; save-mark-and-excursion in Emacs 25.1 and above works like save-excursion did before
-(eval-when-compile
-  (when (or
-         (< emacs-major-version 25)
-         (and (= emacs-major-version 25) (< emacs-minor-version 1)))
-    (defmacro save-mark-and-excursion (&rest body)
-      `(save-excursion ,@body))))
 
 (defun speed-type--seconds-to-minutes (seconds)
   "Return minutes in float for SECONDS."
@@ -233,12 +239,26 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
     (if (file-readable-p fn)
         fn
       (make-directory speed-type-gb-dir 'parents)
-      (url-copy-file url fn)
-      (with-temp-file fn
-        (insert-file-contents fn)
-        (delete-trailing-whitespace)
-        (decode-coding-region (point-min) (point-max) 'utf-8))
-      fn)))
+      (let* ((downloading t)
+             (buffer (url-retrieve url (lambda (status)
+                                         (if (plist-get status :error)
+                                             (message "Error retrieving file %s" fn)
+                                           (write-file fn)
+                                           (message "Retrieved file %s" fn))
+                                         (setq downloading nil))))
+             (process (get-buffer-process buffer)))
+
+        (while downloading
+          (accept-process-output process 0.5))
+        (if (not (kill-buffer buffer))
+            (message "WARNING: Buffer is not clossing propperly"))
+        (if (file-readable-p fn)
+            (with-temp-file fn
+              (insert-file-contents fn)
+              (delete-trailing-whitespace)
+              (decode-coding-region (point-min) (point-max) 'utf-8))
+          (setq fn nil))
+        fn))))
 
 (defun speed-type--gb-retrieve (book-num)
   "Return buffer with book number BOOK-NUM in it."
@@ -314,11 +334,12 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
   (insert "\n\n")
   (insert (format "    [%s]uit\n"
                   (propertize "q" 'face 'highlight)))
-  (when speed-type--replay-fn (insert (format "    [%s]eplay this sample\n"
-                                              (propertize "r" 'face 'highlight))))
-  (when speed-type--go-next-fn (insert (format "    [%s]ext random sample\n"
-                                               (propertize "n" 'face 'highlight))))
-  (read-only-mode)
+  (insert (format "    [%s]eplay this sample\n"
+                  (propertize "r" 'face 'highlight)))
+  (insert (format "    [%s]ext random sample\n"
+                  (propertize "n" 'face 'highlight)))
+  (let ((view-read-only nil))
+    (read-only-mode))
   (use-local-map speed-type--completed-keymap))
 
 (defun speed-type--diff (orig new start end)
@@ -341,7 +362,7 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
 				      'speed-type-mistake)))))))
 
 (defun speed-type--change (start end length)
-  "Handle buffer changes.
+  "Handle buffer change.
 
 Make sure that the contents don't actually change, but rather the contents
 are color coded and stats are gathered about the typing performance."
@@ -374,14 +395,14 @@ are color coded and stats are gathered about the typing performance."
                             ""
                             str))
 
-(defun speed-type--setup
-    (text &optional author title lang n-words replay-fn go-next-fn callback)
+(cl-defun speed-type--setup
+    (text &key author title lang n-words replay-fn go-next-fn callback)
   "Set up a new buffer for the typing exercise on TEXT.
 
 AUTHOR and TITLE can be given, this happen when the text to type comes
 from a gutenberg book.
 
-LANG and N-WORDS is used when training random words where LANG is the
+LANG and N-WORDS are used when training random words where LANG is the
 language symbol and N-WORDS is the top N words that should be trained.
 
 If specified, call REPLAY-FN after completion of a speed type session
@@ -390,8 +411,8 @@ corresponding to the text just speed typed.  If REPLAY-FN is not
 specified, replay behvaiour will default to playing the same snippet
 again.
 
-Similarly, call GO-NEXT-FN after completion of a session if next is
-selected.  This function should take no arguments.
+Similarly, GO-NEXT-FN is called after completion of a session if next
+is selected, it should take no arguments.
 
 CALLBACK is called when the setup process has been completed."
   (with-temp-buffer
@@ -401,6 +422,8 @@ CALLBACK is called when the setup process has been completed."
   (let ((buf (generate-new-buffer "speed-type"))
         (len (length text)))
     (set-buffer buf)
+    (speed-type-mode)
+    (buffer-face-set 'speed-type-default)
     (setq speed-type--orig-text text)
     (setq speed-type--mod-str (make-string len 0))
     (setq speed-type--remaining len)
@@ -476,7 +499,10 @@ and font lock defaults by FONT-LOCK-DF."
              (let ((font-lock-defaults font-lock-df))
                ;; Fontify buffer
                (ignore-errors (font-lock-ensure)))))))
-    (speed-type--setup text nil nil nil nil replay-fn go-next-fn callback)))
+    (speed-type--setup text
+                       :replay-fn replay-fn
+                       :go-next-fn go-next-fn
+                       :callback callback)))
 
 (defun speed-type--code-with-highlighting
     (text &optional syntax-table font-lock-df go-next-fn)
@@ -573,8 +599,8 @@ been completed."
 (defun speed-type-buffer (full)
   "Open copy of buffer contents in a new buffer to speed type the text.
 
-If using a prefix while calling this function (C-u), then the FULL text
-will be used. Else some text will be picked randomly."
+If using a prefix while calling this function `C-u', then the FULL text
+will be used.  Else some text will be picked randomly."
   (interactive "P")
   (if full
       (speed-type--setup (buffer-substring-no-properties
@@ -587,36 +613,39 @@ will be used. Else some text will be picked randomly."
 (defun speed-type-text ()
   "Setup a new text sample to practice touch or speed typing."
   (interactive)
-  (let ((book-num (nth (random (length speed-type-gb-book-list))
-                       speed-type-gb-book-list))
-        (author nil)
-        (title nil)
-        (go-next-fn (lambda () (speed-type-text))))
-    (with-temp-buffer
-      (insert-file-contents (speed-type--gb-retrieve book-num))
-      (goto-char 0)
-      (when (re-search-forward "^Title: " nil t)
-        (setq title (buffer-substring (point) (line-end-position))))
-      (when (re-search-forward "^Author: " nil t)
-        (setq author (buffer-substring (point) (line-end-position))))
+  (let* ((book-num (nth (random (length speed-type-gb-book-list))
+                        speed-type-gb-book-list))
+         (author nil)
+         (title nil)
+         (fn (speed-type--gb-retrieve book-num)))
 
-      (let ((start (point))
-	    (end nil))
+    (if fn
+        (with-temp-buffer
+          (insert-file-contents fn)
+          (goto-char 0)
+          (when (re-search-forward "^Title: " nil t)
+            (setq title (buffer-substring (point) (line-end-position))))
+          (when (re-search-forward "^Author: " nil t)
+            (setq author (buffer-substring (point) (line-end-position))))
 
-	(goto-char (point-min))
-	(when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
-	  (end-of-line 1)
-	  (forward-line 1)
-	  (setq start (point)))
-	(when (re-search-forward "***.END.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
-	  (beginning-of-line 1)
-	  (forward-line -1)
-	  (setq end (point)))
+          (let ((start (point))
+                (end nil))
 
-	(speed-type--setup (speed-type--pick-text-to-type start end)
-			   author title nil nil
-                           (speed-type--get-replay-fn go-next-fn)
-                           go-next-fn)))))
+            (goto-char (point-min))
+            (when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+              (end-of-line 1)
+              (forward-line 1)
+              (setq start (point)))
+            (when (re-search-forward "***.END.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+              (beginning-of-line 1)
+              (forward-line -1)
+              (setq end (point)))
+
+            (speed-type--setup (speed-type--pick-text-to-type start end)
+                               :author author
+                               :title title
+                               :go-next-fn #'speed-type-text)))
+      (message "Error retrieving book number %s" book-num))))
 
 (provide 'speed-type)
 
