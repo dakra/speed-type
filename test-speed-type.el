@@ -1,4 +1,8 @@
-;;; tests for speed-type
+;;; test-speed-type.el --- Tests for speed-type  -*- lexical-binding: t; -*-
+
+;;; Code:
+
+(require 'ert)
 (require 'speed-type)
 
 (ert-deftest speed-type--stats-test ()
