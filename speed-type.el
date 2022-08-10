@@ -245,17 +245,19 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
         fn
       (make-directory speed-type-gb-dir 'parents)
       (let ((buffer (url-retrieve-synchronously url nil nil 5)))
-        (with-current-buffer buffer
-          (write-region url-http-end-of-headers (point-max) fn))
-        (unless (kill-buffer buffer)
-          (message "WARNING: Buffer is not closing properly"))
-        (if (file-readable-p fn)
+        (when (and buffer (= 200 (url-http-symbol-value-in-buffer
+                                  'url-http-response-status
+                                  buffer)))
+          (with-current-buffer buffer
+            (write-region url-http-end-of-headers (point-max) fn))
+          (unless (kill-buffer buffer)
+            (message "WARNING: Buffer is not closing properly"))
+          (when (file-readable-p fn)
             (with-temp-file fn
               (insert-file-contents fn)
               (delete-trailing-whitespace)
               (decode-coding-region (point-min) (point-max) 'utf-8))
-          (setq fn nil))
-        fn))))
+            fn))))))
 
 (defun speed-type--gb-retrieve (book-num)
   "Return buffer with book number BOOK-NUM in it."

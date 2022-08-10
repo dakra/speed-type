@@ -43,7 +43,7 @@
           (should (equal hook-executed t)))
       (remove-hook 'speed-type-mode-hook 'speed-type-mode-test-hook))))
 
-(defun speed-type--retrieve-non-exitant-file-environment (filename-expected test)
+(defun speed-type--retrieve-non-existant-file-environment (filename-expected test)
   (let ((speed-type-gb-dir "/tmp"))
     (unwind-protect
         (progn
@@ -51,7 +51,7 @@
           (funcall test))
       (delete-file filename-expected))))
 
-(defun speed-type--retrieve-exitant-file-environment (filename-expected test)
+(defun speed-type--retrieve-existant-file-environment (filename-expected test)
   (let ((speed-type-gb-dir "/tmp"))
     (unwind-protect
         (progn
@@ -66,7 +66,7 @@
         (filename-expected "/tmp/speed-type--retrieve-test-file.txt")
         (url "https://www.google.com"))
 
-    (speed-type--retrieve-non-exitant-file-environment
+    (speed-type--retrieve-non-existant-file-environment
      filename-expected
      (lambda ()
        (let ((filename-response (speed-type--retrieve filename url)))
@@ -75,7 +75,7 @@
          (should (file-exists-p filename-expected))
          (should (file-readable-p filename-expected)))))
 
-    (speed-type--retrieve-exitant-file-environment
+    (speed-type--retrieve-existant-file-environment
      filename-expected
      (lambda ()
        (let ((filename-response (speed-type--retrieve filename url)))
@@ -88,10 +88,10 @@
         (filename-expected "/tmp/speed-type--retrieve-test-file.txt")
         (url "https://www.google.com/nonexitanresource"))
 
-    (speed-type--retrieve-non-exitant-file-environment
+    (speed-type--retrieve-non-existant-file-environment
      filename-expected
      (lambda ()
        (let ((filename-response (speed-type--retrieve filename url)))
-         (should (eq nil filename-response))
+         (should (null filename-response))
          (should (not (file-exists-p filename-expected)))
          (should (not (file-readable-p filename-expected))))))))
