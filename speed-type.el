@@ -456,6 +456,7 @@ CALLBACK is called when the setup process has been completed."
       (goto-char 0)
       (add-hook 'after-change-functions 'speed-type--change nil t)
       (add-hook 'first-change-hook 'speed-type--first-change nil t)
+      (setq-local post-self-insert-hook nil)
       (when callback (funcall callback))
       (message "Timer will start when you type the first character."))))
 
