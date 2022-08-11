@@ -1,4 +1,4 @@
-;;; speed-type.el --- Practice touch and speed typing
+;;; speed-type.el --- Practice touch and speed typing -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2015 Gunther Hagleitner
 
@@ -162,7 +162,8 @@ Total errors: %d
 (defvar-local speed-type--author nil)
 (defvar-local speed-type--lang nil)
 (defvar-local speed-type--n-words nil)
-(defvar-local speed-type--opened-on-buffer nil)
+(defvar-local speed-type--go-next-fn nil)
+(defvar-local speed-type--replay-fn #'speed-type--setup)
 
 (defun speed-type--seconds-to-minutes (seconds)
   "Return minutes in float for SECONDS."
@@ -299,24 +300,19 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
 (defun speed-type--replay ()
   "Replay a speed-type session."
   (interactive)
-  (let ((text speed-type--orig-text))
-    (kill-this-buffer)
-    (speed-type--setup text)))
+  (when speed-type--replay-fn
+    (let ((fn speed-type--replay-fn)
+          (text speed-type--orig-text))
+      (kill-this-buffer)
+      (funcall fn text))))
 
 (defun speed-type--play-next ()
   "Play a new speed-type session, based on the current one."
   (interactive)
-  (let ((opened-on-buffer speed-type--opened-on-buffer)
-        (lang speed-type--lang)
-        (n speed-type--n-words))
-    (kill-this-buffer)
-    (if opened-on-buffer
-        (with-current-buffer opened-on-buffer
-          (speed-type-buffer nil))
-      (if (and lang n)
-          (let ((speed-type-default-lang lang))
-            (speed-type-top-x n))
-        (speed-type-text)))))
+  (when speed-type--go-next-fn
+    (let ((fn speed-type--go-next-fn))
+      (kill-this-buffer)
+      (funcall fn))))
 
 (defun speed-type--handle-complete ()
   "Remove typing hooks from the buffer and print statistics."
@@ -340,8 +336,8 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
                   (propertize "q" 'face 'highlight)))
   (insert (format "    [%s]eplay this sample\n"
                   (propertize "r" 'face 'highlight)))
-  (insert (format "    [%s]ext random sample\n"
-                  (propertize "n" 'face 'highlight)))
+  (when speed-type--go-next-fn (insert (format "    [%s]ext random sample\n"
+                                               (propertize "n" 'face 'highlight))))
   (let ((view-read-only nil))
     (read-only-mode))
   (use-local-map speed-type--completed-keymap))
@@ -361,10 +357,9 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
                  (store-substring speed-type--mod-str pos0 2)))
         (cl-incf speed-type--entries)
         (cl-decf speed-type--remaining)
-        (add-text-properties pos (1+ pos)
-                             `(face ,(if correct
-                                         'speed-type-correct
-                                       'speed-type-mistake)))))))
+	(let ((overlay (make-overlay pos (1+ pos))))
+	  (overlay-put overlay 'face (if correct 'speed-type-correct
+				      'speed-type-mistake)))))))
 
 (defun speed-type--change (start end length)
   "Handle buffer change.
@@ -412,38 +407,55 @@ Replacements are found in `speed-type-replace-strings'."
    speed-type-replace-strings
    :initial-value text))
 
-(defun speed-type--setup (text &optional author title lang n-words)
+(cl-defun speed-type--setup
+    (text &key author title lang n-words replay-fn go-next-fn callback)
   "Set up a new buffer for the typing exercise on TEXT.
 
 AUTHOR and TITLE can be given, this happen when the text to type comes
 from a gutenberg book.
 
-LANG and N-WORDS is used when training random words where LANG is the
-language symbol and N-WORDS is the top N words that should be trained."
+LANG and N-WORDS are used when training random words where LANG is the
+language symbol and N-WORDS is the top N words that should be trained.
+
+If specified, call REPLAY-FN after completion of a speed type session
+and replay is selected.  REPLAY-FN should take one argument, a string
+corresponding to the text just speed typed.  If REPLAY-FN is not
+specified, replay behvaiour will default to playing the same snippet
+again.
+
+Similarly, GO-NEXT-FN is called after completion of a session if next
+is selected, it should take no arguments.
+
+CALLBACK is called when the setup process has been completed."
   (let ((text (speed-type--clean-text text)))
-   (with-temp-buffer
-     (insert text)
-     (delete-trailing-whitespace)
-     (setq text (speed-type--trim (buffer-string))))
-   (let ((buf (generate-new-buffer "speed-type"))
-         (len (length text)))
-     (set-buffer buf)
-     (speed-type-mode)
-     (buffer-face-set 'speed-type-default)
-     (setq speed-type--orig-text text)
-     (setq speed-type--mod-str (make-string len 0))
-     (setq speed-type--remaining len)
-     (setq speed-type--author author)
-     (setq speed-type--title title)
-     (setq speed-type--lang lang)
-     (setq speed-type--n-words n-words)
-     (insert text)
-     (set-buffer-modified-p nil)
-     (switch-to-buffer buf)
-     (goto-char 0)
-     (add-hook 'after-change-functions 'speed-type--change nil t)
-     (add-hook 'first-change-hook 'speed-type--first-change nil t)
-     (message "Timer will start when you type the first character."))))
+    (with-temp-buffer
+      (insert text)
+      (delete-trailing-whitespace)
+      (setq text (speed-type--trim (buffer-string))))
+    (let ((buf (generate-new-buffer "speed-type"))
+          (len (length text)))
+      (set-buffer buf)
+      (speed-type-mode)
+      (buffer-face-set 'speed-type-default)
+      (setq speed-type--orig-text text)
+      (setq speed-type--mod-str (make-string len 0))
+      (setq speed-type--remaining len)
+      (setq speed-type--author author)
+      (setq speed-type--title title)
+      (setq speed-type--lang lang)
+      (setq speed-type--n-words n-words)
+      (setq speed-type--go-next-fn go-next-fn)
+      (when replay-fn
+        (setq speed-type--replay-fn replay-fn))
+      (insert text)
+      (set-buffer-modified-p nil)
+      (switch-to-buffer buf)
+      (goto-char 0)
+      (add-hook 'after-change-functions 'speed-type--change nil t)
+      (add-hook 'first-change-hook 'speed-type--first-change nil t)
+      (setq-local post-self-insert-hook nil)
+      (when callback (funcall callback))
+      (message "Timer will start when you type the first character."))))
 
 (defun speed-type--pick-text-to-type (&optional start end)
   "Return a random section of the buffer usable for playing.
@@ -481,6 +493,63 @@ to (point-min) and (point-max)"
       (when fwd (forward-char)))
     (buffer-substring-no-properties (region-beginning) (region-end))))
 
+(defun speed-type--setup-code
+    (text &optional replay-fn go-next-fn syntax-table font-lock-df)
+  "Speed type the code snippet TEXT.
+
+If specified, call REPLAY-FN after completion of a speed type session
+and replay is selected.  Similarly call GO-NEXT-FN after completion of
+a session if next is selected.
+
+For code highlighting, a syntax table can be specified by SYNTAX-TABLE,
+and font lock defaults by FONT-LOCK-DF."
+  (cl-flet ((callback ()
+                      (electric-pair-mode -1)
+                      (local-set-key (kbd "TAB") 'speed-type-code-tab)
+                      (local-set-key (kbd "RET") 'speed-type-code-ret)
+                      (when syntax-table (set-syntax-table syntax-table))
+                      (when font-lock-df
+                        (let ((font-lock-defaults font-lock-df))
+                          ;; Fontify buffer
+                          (ignore-errors (font-lock-ensure))))))
+    (speed-type--setup text
+                       :replay-fn replay-fn
+                       :go-next-fn go-next-fn
+                       :callback #'callback)))
+
+(defun speed-type--code-with-highlighting
+    (text &optional syntax-table font-lock-df go-next-fn)
+  "Speed type TEXT with syntax highlighting.
+
+Syntax highlighting data is given by SYNTAX-TABLE and
+FONT-LOCK-DF (font lock defaults).
+
+If GO-NEXT-FN is specified, call it when speed typing the text has
+been completed."
+  (cl-flet ((replay-fn (text) (speed-type--code-with-highlighting
+                               text syntax-table font-lock-df go-next-fn)))
+    (speed-type--setup-code text #'replay-fn go-next-fn syntax-table font-lock-df)))
+
+(defun speed-type--get-replay-fn (go-next-fn)
+  "Return a replay function which will use GO-NEXT-FN after completion."
+  (lambda (text) (speed-type--setup text
+                                    :replay-fn (speed-type--get-replay-fn go-next-fn)
+                                    :go-next-fn go-next-fn)))
+
+(defun speed-type-code-tab ()
+  "A command to be mapped to TAB when speed typing code."
+  (interactive)
+  (let ((start (point))
+	(end (re-search-forward "[^\t ]" (line-end-position) t)))
+    (goto-char start)
+    (when end (insert (buffer-substring-no-properties start (1- end))))))
+
+(defun speed-type-code-ret ()
+  "A command to be mapped to RET when speed typing code."
+  (interactive)
+  (when (= (point) (line-end-position))
+    (newline) (move-beginning-of-line nil) (speed-type-code-tab)))
+
 ;;;###autoload
 (defun speed-type-top-x (n)
   "Speed type the N most common words."
@@ -494,7 +563,8 @@ to (point-min) and (point-max)"
                   (insert-file-contents file-path)
                   (split-string (buffer-string) "\n" t)))
          (n (min n (length words)))
-         (title (format "Top %s %s words" n lang)))
+         (title (format "Top %s %s words" n lang))
+         (go-next-fn (lambda () (speed-type-top-x n))))
     (speed-type--setup (with-temp-buffer
                          (while (< (buffer-size) char-length)
                            (insert (nth (random n) words))
@@ -503,7 +573,11 @@ to (point-min) and (point-max)"
                          (if speed-type-wordlist-transform
                              (funcall speed-type-wordlist-transform (buffer-string))
                            (buffer-string)))
-                       nil title lang n)))
+                       :title title
+                       :lang lang
+                       :n-words n
+                       :replay-fn (speed-type--get-replay-fn go-next-fn)
+                       :go-next-fn go-next-fn)))
 
 ;;;###autoload
 (defun speed-type-top-100 ()
@@ -521,7 +595,11 @@ to (point-min) and (point-max)"
 (defun speed-type-region (start end)
   "Open copy of [START,END] in a new buffer to speed type the text."
   (interactive "r")
-  (speed-type--setup (buffer-substring-no-properties start end)))
+  (if (derived-mode-p 'prog-mode)
+      (speed-type--code-with-highlighting (buffer-substring-no-properties start end)
+                                          (syntax-table)
+                                          font-lock-defaults)
+    (speed-type--setup (buffer-substring-no-properties start end))))
 
 ;;;###autoload
 (defun speed-type-buffer (full)
@@ -533,9 +611,11 @@ will be used.  Else some text will be picked randomly."
   (if full
       (speed-type--setup (buffer-substring-no-properties
                           (point-min) (point-max)))
-    (let ((buf (current-buffer)))
-      (speed-type--setup (speed-type--pick-text-to-type))
-      (setq speed-type--opened-on-buffer buf))))
+    (let ((buf (current-buffer))
+          (text (speed-type--pick-text-to-type)))
+      (speed-type--setup text :go-next-fn (lambda ()
+                                            (with-current-buffer buf
+                                              (speed-type-buffer nil)))))))
 
 ;;;###autoload
 (defun speed-type-text ()
@@ -570,7 +650,10 @@ will be used.  Else some text will be picked randomly."
               (setq end (point)))
 
             (speed-type--setup (speed-type--pick-text-to-type start end)
-                               author title)))
+                               :author author
+                               :title title
+                               :replay-fn (speed-type--get-replay-fn #'speed-type-text)
+                               :go-next-fn #'speed-type-text)))
       (message "Error retrieving book number %s" book-num))))
 
 (provide 'speed-type)
