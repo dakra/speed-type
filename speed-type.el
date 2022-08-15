@@ -4,7 +4,7 @@
 
 ;; Author: Gunther Hagleitner
 ;; Maintainer: Daniel Kraus <daniel@kraus.my>
-;; Version: 1.2
+;; Version: 1.3
 ;; Keywords: games
 ;; URL: https://github.com/dakra/speed-type
 ;; Package-Requires: ((emacs "25.1"))
