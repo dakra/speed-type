@@ -36,9 +36,10 @@
 
 ;;; Code:
 
+(require 'cl-lib)
 (require 'url)
 (require 'url-handlers)
-(require 'cl-lib)
+(require 'url-http)
 
 (defgroup speed-type nil
   "Practice touch-typing in Emacs."
@@ -83,7 +84,7 @@ The function should take the `buffer-string' as argument and return
 the transformed string that is used for the speed type exercise.
 
 E.g. if you always want lowercase words, set:
-`(setq speed-type-wordlist-transform #'downcase)'"
+`speed-type-wordlist-transform' to `downcase'."
   :type '(choice (const :tag "None" nil)
                  (function :tag "Transform function")))
 
@@ -96,8 +97,9 @@ E.g. if you always want lowercase words, set:
                  (const :tag "Dutch" Dutch)))
 
 (defcustom speed-type-replace-strings '(("“" . "\"") ("”" . "\"") ("‘" . "'") ("’" . "'"))
-  "Alist of strings to replace and their replacement, in the form: `(bad-string . good-string)'
-  To remove without replacement, use the form: `(bad-string . \"\")'"
+  "Alist of strings to replace and their replacement, in the form:
+`(bad-string . good-string)'
+To remove without replacement, use the form: `(bad-string . \"\")'"
   :type '(alist :key-type string :value-type string))
 
 (defface speed-type-default
@@ -244,6 +246,10 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
   "Return url for BOOK-NUM."
   (format speed-type--gb-url-format book-num book-num))
 
+;; Just to silence the byte-compiler as url.el doesn't declare this variable
+;; but it's defined in `url-http'.
+(defvar url-http-end-of-headers)
+
 (defun speed-type--retrieve (filename url)
   "Return buffer FILENAME content in it or download from URL if file doesn't exist."
   (let ((fn (expand-file-name (format "%s.txt" filename) speed-type-gb-dir))
@@ -291,7 +297,7 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
 (defun speed-type--handle-del (start end)
   "Keep track of the statistics when a deletion occurs between START and END."
   (delete-region start end)
-  (dotimes (i (- end start) nil)
+  (dotimes (i (- end start))
     (let* ((pos (+ (1- start) i))
            (q (aref speed-type--mod-str pos)))
       (cond ((= q 0) ())
@@ -352,9 +358,9 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
 (defun speed-type--diff (orig new start end)
   "Update stats and buffer contents with result of changes in text."
   (let ((start0 (1- start))
-        (end0 (1- end))
+        (_end0 (1- end))
         (correct nil))
-    (dotimes (i (- end start) nil)
+    (dotimes (i (- end start))
       (let ((pos0 (+ start0 i))
             (pos (+ start i)))
         (if (speed-type--check-same i orig new)
@@ -366,7 +372,7 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
         (cl-decf speed-type--remaining)
 	(let ((overlay (make-overlay pos (1+ pos))))
 	  (overlay-put overlay 'face (if correct 'speed-type-correct
-				      'speed-type-mistake)))))))
+				       'speed-type-mistake)))))))
 
 (defun speed-type--change (start end length)
   "Handle buffer change.
