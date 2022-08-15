@@ -173,6 +173,13 @@ Total errors: %d
 (defvar-local speed-type--go-next-fn nil)
 (defvar-local speed-type--replay-fn #'speed-type--setup)
 
+(defun speed-type--/ (number divisor)
+  "Divide NUMBER by DIVISOR when DIVISOR is not null.
+Otherwise return 0."
+  (if (zerop divisor)
+      0
+    (/ number divisor)))
+
 (defun speed-type--seconds-to-minutes (seconds)
   "Return minutes in float for SECONDS."
   (/ seconds 60.0))
@@ -181,14 +188,14 @@ Total errors: %d
   "Return gross words-per-minute.
 
 Computes words-per-minute as (ENTRIES/5) / (SECONDS/60)."
-  (round (/ (/ entries 5.0)
-            (speed-type--seconds-to-minutes seconds))))
+  (round (speed-type--/ (/ entries 5.0)
+                        (speed-type--seconds-to-minutes seconds))))
 
 (defun speed-type--gross-cpm (entries seconds)
   "Return gross characters-per-minute.
 
 Computes characters-per-minute as ENTRIES / (SECONDS/60)."
-  (round (/ entries (speed-type--seconds-to-minutes seconds))))
+  (round (speed-type--/ entries (speed-type--seconds-to-minutes seconds))))
 
 (defun speed-type--net-wpm (entries uncorrected-errors seconds)
   "Return net words-per-minute.
@@ -196,8 +203,8 @@ Computes characters-per-minute as ENTRIES / (SECONDS/60)."
 Computes net words-per-minute as:
   ((ENTRIES/5) - UNCORRECTED-ERRORS) / (SECONDS/60)."
   (let ((net-wpm (round (- (speed-type--gross-wpm entries seconds)
-                           (/ uncorrected-errors
-                              (speed-type--seconds-to-minutes seconds))))))
+                           (speed-type--/ uncorrected-errors
+                                          (speed-type--seconds-to-minutes seconds))))))
     (if (> 0 net-wpm) 0 net-wpm)))
 
 (defun speed-type--net-cpm (entries uncorrected-errors seconds)
@@ -206,8 +213,8 @@ Computes net words-per-minute as:
 Computes net characters-per-minute as:
   (ENTRIES - UNCORRECTED-ERRORS) / (SECONDS/60)."
   (let ((net-cpm (round (- (speed-type--gross-cpm entries seconds)
-                           (/ uncorrected-errors
-                              (speed-type--seconds-to-minutes seconds))))))
+                           (speed-type--/ uncorrected-errors
+                                          (speed-type--seconds-to-minutes seconds))))))
     (if (> 0 net-cpm) 0 net-cpm)))
 
 (defun speed-type--accuracy (total-entries correct-entries corrections)
@@ -216,7 +223,7 @@ Computes net characters-per-minute as:
 Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
   (let* ((correct-entries (- correct-entries corrections))
          (correct-entries (if (> correct-entries 0) correct-entries 0)))
-    (* (round (* (/ correct-entries (float total-entries)) 100.0) 0.01) 0.01)))
+    (* (round (* (speed-type--/ correct-entries (float total-entries)) 100.0) 0.01) 0.01)))
 
 (defun speed-type--skill (wpm)
   "Return skill for WPM."
