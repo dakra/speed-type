@@ -44,10 +44,6 @@
   "Practice touch-typing in Emacs."
   :group 'games)
 
-(define-derived-mode speed-type-mode fundamental-mode "SpeedType"
-  "Major mode for practicing touch typing."
-  :group "speed-type")
-
 (defcustom speed-type-min-chars 200
   "The minimum number of chars to type required when the text is picked randomly."
   :group 'speed-type
@@ -148,6 +144,16 @@ Total errors: %d
     (define-key map (kbd "r") 'speed-type--replay)
     (define-key map (kbd "n") 'speed-type--play-next)
     map))
+
+(defvar speed-type-mode-map
+  (let ((keymap (make-sparse-keymap)))
+    (define-key keymap (kbd "C-c C-k")  #'speed-type-complete)
+    keymap)
+  "Keymap for `speed-type-mode'.")
+
+(define-derived-mode speed-type-mode fundamental-mode "SpeedType"
+  "Major mode for practicing touch typing."
+  :group "speed-type")
 
 ;; buffer local internal variables
 
@@ -314,8 +320,9 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
       (kill-this-buffer)
       (funcall fn))))
 
-(defun speed-type--handle-complete ()
+(defun speed-type-complete ()
   "Remove typing hooks from the buffer and print statistics."
+  (interactive)
   (remove-hook 'after-change-functions 'speed-type--change)
   (remove-hook 'first-change-hook 'speed-type--first-change)
   (goto-char (point-max))
@@ -381,7 +388,7 @@ are color coded and stats are gathered about the typing performance."
         (speed-type--diff orig new-text start end)
         (goto-char end)
         (when (= speed-type--remaining 0)
-          (speed-type--handle-complete))))))
+          (speed-type-complete))))))
 
 (defun speed-type--first-change ()
   "Start the timer."
