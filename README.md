@@ -1,11 +1,6 @@
 # speed-type [![melpa badge][melpa-badge]][melpa-link] [![melpa stable badge][melpa-stable-badge]][melpa-stable-link]
 
-Practice touch/speed typing in emacs.
-
-## PLEASE NOTE
-
-**This fork is now the official source for the speed-type package.
-Please open pull requests and issues here!**
+Practice touch/speed typing in GNU Emacs.
 
 ![Screenshot](https://raw.github.com/parkouss/speed-type/master/speed-type-screen-shot.png)
 
@@ -24,7 +19,7 @@ variable load-path by (add-to-list 'load-path "ADDITIONAL-DIRECTORY").
 If you put the file in "~/.emacs.d/speed-type/speed-type.el" for instance, the
 following snipped in your .emacs file will load and init the extension.
 
-```lisp
+```emacs-lisp
 (add-to-list 'load-path "~/.emacs.d/speed-type/speed-type.el")
 (require 'speed-type)
 ```
@@ -56,6 +51,12 @@ you want the whole buffer, use C-u speed-type-buffer.
 Random samples are taken from Project Gutenberg. A small number of books will be
 downloaded on demand and stored in "~/emacs.d/speed-type". They will only be
 downloaded once.
+
+`speed-type-region` will start a speed-type session with the text from
+the selected region.
+
+`speed-type-top-x` (or -100/-1000) lets you practice the top X words
+for the selected language.
 
 
 [melpa-link]: https://melpa.org/#/speed-type
