@@ -622,13 +622,18 @@ If using a prefix while calling this function `C-u', then the FULL text
 will be used.  Else some text will be picked randomly."
   (interactive "P")
   (if full
-      (speed-type--setup (buffer-substring-no-properties
-                          (point-min) (point-max)))
-    (let ((buf (current-buffer))
-          (text (speed-type--pick-text-to-type)))
-      (speed-type--setup text :go-next-fn (lambda ()
-                                            (with-current-buffer buf
-                                              (speed-type-buffer nil)))))))
+      (speed-type-region (point-min) (point-max))
+    (let* ((buf (current-buffer))
+           (text (speed-type--pick-text-to-type))
+           (go-next-fn (lambda ()
+                         (with-current-buffer buf
+                           (speed-type-buffer nil)))))
+      (if (derived-mode-p 'prog-mode)
+          (speed-type--code-with-highlighting text
+                                              (syntax-table)
+                                              font-lock-defaults
+                                              go-next-fn)
+        (speed-type--setup text :go-next-fn go-next-fn)))))
 
 ;;;###autoload
 (defun speed-type-text ()
