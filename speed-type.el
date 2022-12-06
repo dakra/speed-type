@@ -102,12 +102,12 @@ E.g. if you always want lowercase words, set:
 To remove without replacement, use the form: `(bad-string . \"\")'"
   :type '(alist :key-type string :value-type string))
 
-(defcustom speed-type-add-extra-line-on-mistake nil
-  "When non-nil add an extra line when making an mistake.
-The typing-session will only be complete when these extra lines
+(defcustom speed-type-add-extra-words-on-mistake 0
+  "Count how many new words should be added on mistake. When 0 or less, no words are added.
+The typing-session will only be complete when these extra words
 are typed too."
   :group 'speed-type
-  :type 'boolean)
+  :type 'integer)
 
 (defface speed-type-default
   '()
@@ -177,6 +177,7 @@ Total errors: %d
 (defvar-local speed-type--author nil)
 (defvar-local speed-type--lang nil)
 (defvar-local speed-type--n-words nil)
+(defvar-local speed-type--add-extra-word-content-fn nil)
 (defvar-local speed-type--go-next-fn nil)
 (defvar-local speed-type--replay-fn #'speed-type--setup)
 
@@ -381,12 +382,43 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
             (progn (setq correct t)
                    (store-substring speed-type--mod-str pos0 1))
           (progn (cl-incf speed-type--errors)
-                 (store-substring speed-type--mod-str pos0 2)))
+                 (store-substring speed-type--mod-str pos0 2)
+		 (when speed-type-add-extra-words-on-mistake (speed-type-add-extra-words end))))
         (cl-incf speed-type--entries)
         (cl-decf speed-type--remaining)
 	(let ((overlay (make-overlay pos (1+ pos))))
 	  (overlay-put overlay 'face (if correct 'speed-type-correct
 				       'speed-type-mistake)))))))
+(setq speed-type-add-extra-words-on-mistake 1)
+(defun speed-type-add-extra-words (end)
+  "Add an extra words of text to be typed for the typing-session to be complete."
+  (when speed-type--add-extra-word-content-fn
+    (dotimes (i speed-type-add-extra-words-on-mistake)
+      (let ((word (funcall speed-type--add-extra-word-content-fn)))
+	(setq typer-line-queue (append typer-line-queue '(" ") (split-string word "" t)))
+	(setq speed-type--orig-text (concat speed-type--orig-text " " word))
+	(dotimes (w (length (append '(" ") (split-string word "" t))))
+	  (setq speed-type--mod-str (concat speed-type--mod-str "\0")))))
+    (when (not (timerp typer-animation-timer))
+      (setq typer-animation-timer (run-at-time nil 0.01 'typer-animate-line-insertion)))))
+
+(defvar-local typer-buffer nil)
+(defvar-local typer-animation-timer nil)
+(defvar-local typer-line-queue '())
+(defun typer-animate-line-insertion ()
+  "Animation which comes with punishment-lines."
+  (remove-hook 'after-change-functions 'speed-type--change t)
+  (save-excursion
+    (if typer-line-queue
+	(let ((token (pop typer-line-queue)))
+	  (goto-char (point-max))
+	  (when (not (string= token "\n"))
+	    (end-of-line 1))
+	  (insert token))
+      (fill-region (point) (point-max))
+      (cancel-timer typer-animation-timer)
+      (setq typer-animation-timer nil)))
+  (add-hook 'after-change-functions 'speed-type--change nil t))
 
 (defun speed-type--change (start end length)
   "Handle buffer change.
@@ -435,7 +467,7 @@ Replacements are found in `speed-type-replace-strings'."
    :initial-value text))
 
 (cl-defun speed-type--setup
-    (text &key author title lang n-words replay-fn go-next-fn callback)
+    (text &key author title lang n-words add-extra-word-content-fn replay-fn go-next-fn callback)
   "Set up a new buffer for the typing exercise on TEXT.
 
 AUTHOR and TITLE can be given, this happen when the text to type comes
@@ -443,6 +475,9 @@ from a gutenberg book.
 
 LANG and N-WORDS are used when training random words where LANG is the
 language symbol and N-WORDS is the top N words that should be trained.
+
+If specified, call ADD-EXTRA-WORD-CONTENT-FN which provides an extra
+line when user makes an mistake.
 
 If specified, call REPLAY-FN after completion of a speed type session
 and replay is selected.  REPLAY-FN should take one argument, a string
@@ -471,6 +506,7 @@ CALLBACK is called when the setup process has been completed."
       (setq speed-type--title title)
       (setq speed-type--lang lang)
       (setq speed-type--n-words n-words)
+      (setq speed-type--add-extra-word-content-fn add-extra-word-content-fn)
       (setq speed-type--go-next-fn go-next-fn)
       (when replay-fn
         (setq speed-type--replay-fn replay-fn))
@@ -590,21 +626,27 @@ been completed."
                   (insert-file-contents file-path)
                   (split-string (buffer-string) "\n" t)))
          (n (min n (length words)))
+	 (buf (generate-new-buffer "*speed-type-content-buffer*"))
          (title (format "Top %s %s words" n lang))
+	 (text (with-current-buffer buf
+		 (while (< (buffer-size) char-length)
+                   (insert (nth (random n) words))
+                   (insert " "))
+		 (fill-region (point-min) (point-max))
+		 (if speed-type-wordlist-transform
+                     (funcall speed-type-wordlist-transform (buffer-string))
+                   (buffer-string))))
+	 (add-extra-word-content-fn (lambda ()
+				(with-current-buffer buf
+				  "asdf")))
          (go-next-fn (lambda () (speed-type-top-x n))))
-    (speed-type--setup (with-temp-buffer
-                         (while (< (buffer-size) char-length)
-                           (insert (nth (random n) words))
-                           (insert " "))
-                         (fill-region (point-min) (point-max))
-                         (if speed-type-wordlist-transform
-                             (funcall speed-type-wordlist-transform (buffer-string))
-                           (buffer-string)))
-                       :title title
-                       :lang lang
-                       :n-words n
-                       :replay-fn (speed-type--get-replay-fn go-next-fn)
-                       :go-next-fn go-next-fn)))
+    (speed-type--setup text
+             :title title
+             :lang lang
+             :n-words n
+	     :add-extra-word-content-fn add-extra-word-content-fn
+             :replay-fn (speed-type--get-replay-fn go-next-fn)
+             :go-next-fn go-next-fn)))
 
 ;;;###autoload
 (defun speed-type-top-100 ()
