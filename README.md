@@ -1,4 +1,4 @@
-# speed-type [![melpa badge][melpa-badge]][melpa-link] [![melpa stable badge][melpa-stable-badge]][melpa-stable-link]
+# Fork of speed-type
 
 Practice touch/speed typing in GNU Emacs.
 
@@ -6,21 +6,23 @@ Practice touch/speed typing in GNU Emacs.
 
 ## Installation
 
-Install speed-type from [MELPA](melpa.org) with:
+Because this is a Fork it’s not available on melpa.
 
-```
-M-x package-install RET speed-type
-```
-
-If you prefer to install by hand: Put speed-type.el into a directory specified
-by the load-path variable. Alternatively, you can add a directory to the
-variable load-path by (add-to-list 'load-path "ADDITIONAL-DIRECTORY").
-
-If you put the file in "~/.emacs.d/speed-type/speed-type.el" for instance, the
-following snipped in your .emacs file will load and init the extension.
-
+You can use an `el-patch` with `straight`:
 ```emacs-lisp
-(add-to-list 'load-path "~/.emacs.d/speed-type/speed-type.el")
+(use-package speed-type
+  :straight (speed-type :type git :host github :repo "lordnik22/speed-type"))
+```
+
+Alternatively, you can clone this project
+```
+mkdir -p ~/.emacs.d/elisp
+cd ~/.emacs.d/elisp
+git clone https://github.com/lordnik22/speed-type.git
+```
+...and add it to the load-path in your init-file:
+```
+(add-to-list 'load-path "~/.emacs.d/elisp/speed-type")
 (require 'speed-type)
 ```
 
@@ -31,6 +33,17 @@ speed-type can be customized using:
 ```
 M-x customize-group speed-type RET
 ```
+
+## Why a Fork?
+
+If you like this fork also give a star to the origin: https://github.com/dakra/speed-type
+
+Main differences:
+- content-buffer from which the speed-type-buffer retrieves it’s content
+- integrated add-word-feature from typer-mode
+- some bugfixes and more consistent state-handling
+- deactivate keys which can break a typing session (e.g. fill-paragraph)
+- refactored code at some places
 
 ## Running speed-type
 
