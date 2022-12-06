@@ -102,6 +102,13 @@ E.g. if you always want lowercase words, set:
 To remove without replacement, use the form: `(bad-string . \"\")'"
   :type '(alist :key-type string :value-type string))
 
+(defcustom speed-type-add-extra-line-on-mistake nil
+  "When non-nil add an extra line when making an mistake.
+The typing-session will only be complete when these extra lines
+are typed too."
+  :group 'speed-type
+  :type 'boolean)
+
 (defface speed-type-default
   '()
   "Default face for `speed-type'."
