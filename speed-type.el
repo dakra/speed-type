@@ -383,14 +383,14 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
                    (store-substring speed-type--mod-str pos0 1))
           (progn (cl-incf speed-type--errors)
                  (store-substring speed-type--mod-str pos0 2)
-		 (when speed-type-add-extra-words-on-mistake (speed-type-add-extra-words end))))
+		 (when speed-type-add-extra-words-on-mistake (speed-type-add-extra-words))))
         (cl-incf speed-type--entries)
         (cl-decf speed-type--remaining)
 	(let ((overlay (make-overlay pos (1+ pos))))
 	  (overlay-put overlay 'face (if correct 'speed-type-correct
 				       'speed-type-mistake)))))))
-(setq speed-type-add-extra-words-on-mistake 1)
-(defun speed-type-add-extra-words (end)
+
+(defun speed-type-add-extra-words ()
   "Add an extra words of text to be typed for the typing-session to be complete."
   (when speed-type--add-extra-word-content-fn
     (dotimes (i speed-type-add-extra-words-on-mistake)
