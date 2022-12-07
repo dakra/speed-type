@@ -331,9 +331,9 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
   (interactive)
   (when speed-type--replay-fn
     (let ((fn speed-type--replay-fn)
-          (text speed-type--orig-text))
-      (kill-this-buffer)
-      (funcall fn text))))
+	  (cb (current-buffer)))
+      (funcall fn)
+      (kill-buffer cb))))
 
 (defun speed-type--play-next ()
   "Play a new speed-type session, based on the current one."
@@ -400,7 +400,8 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
       (let ((word (funcall speed-type--add-extra-word-content-fn)))
 	(setq typer-line-queue (append typer-line-queue '(" ") (split-string word "" t)))
 	(setq speed-type--orig-text (concat speed-type--orig-text " " word))
-	(setq speed-type--mod-str (concat speed-type--mod-str (make-string (+ 1 (length word)) 0)))))
+	(setq speed-type--mod-str (concat speed-type--mod-str (make-string (+ 1 (length word)) 0)))
+	(setq speed-type--remaining (+ 1 (length word) speed-type--remaining))))
     (when (not (timerp typer-animation-timer))
       (setq typer-animation-timer (run-at-time nil 0.01 'typer-animate-line-insertion)))))
 
@@ -496,7 +497,7 @@ CALLBACK is called when the setup process has been completed."
       (insert text)
       (delete-trailing-whitespace)
       (setq text (speed-type--trim (buffer-string))))
-    (let ((buf (generate-new-buffer "speed-type"))
+    (let ((buf (generate-new-buffer speed-type-buffer-name))
           (len (length text)))
       (set-buffer buf)
       (speed-type-mode)
@@ -510,8 +511,9 @@ CALLBACK is called when the setup process has been completed."
       (setq speed-type--n-words n-words)
       (setq speed-type--add-extra-word-content-fn add-extra-word-content-fn)
       (setq speed-type--go-next-fn go-next-fn)
-      (setq speed-type--content-buffer content-buffer)
-      (with-current-buffer content-buffer
+      (when content-buffer
+	(setq speed-type--content-buffer content-buffer))
+      (with-current-buffer speed-type--content-buffer
 	(setq-local speed-type--buffer buf))
       (when replay-fn
         (setq speed-type--replay-fn replay-fn))
@@ -533,34 +535,36 @@ START and END allow to limit to a buffer section - they default
 to (point-min) and (point-max)"
   (unless start (setq start (point-min)))
   (unless end (setq end (point-max)))
-  (save-mark-and-excursion
-    (goto-char start)
-    (forward-paragraph
-     ;; count the paragraphs, and pick a random one
-     (random (let ((nb 0))
-               (while (< (point) end)
-                 (forward-paragraph)
-                 (setq nb (+ 1 nb)))
-               (goto-char start)
-               nb)))
-    (mark-paragraph)
+  (goto-char start)
+  (forward-paragraph
+   ;; count the paragraphs, and pick a random one
+   (random (let ((nb 0))
+             (while (< (point) end)
+               (forward-paragraph)
+               (setq nb (+ 1 nb)))
+             (goto-char start)
+             nb)))
+  (mark-paragraph)
     ;; select more paragraphs until there are more than speed-type-min-chars
     ;; chars in the selection
-    (while (and (< (mark) end)
-                (< (- (mark) (point)) speed-type-min-chars))
-      (mark-paragraph 1 t))
-    (exchange-point-and-mark)
+
+  (while (and (< (mark) end)
+              (< (- (mark) (point)) speed-type-min-chars))
+    (mark-paragraph 1 t))
+  (exchange-point-and-mark)
     ;; and remove sentences if we are above speed-type-max-chars
-    (let ((continue t)
-          (sentence-end-double-space nil)
-          (fwd nil))
-      (while (and (< (point) end)
-                  (> (- (point) (mark)) speed-type-max-chars)
-                  continue)
-        (setq continue (re-search-backward (sentence-end) (mark) t))
-        (when continue (setq fwd t)))
-      (when fwd (forward-char)))
-    (buffer-substring-no-properties (region-beginning) (region-end))))
+
+  (let ((continue t)
+        (sentence-end-double-space nil)
+        (fwd nil))
+    (while (and (< (point) end)
+                (> (- (point) (mark)) speed-type-max-chars)
+                continue)
+      (setq continue (re-search-backward (sentence-end) (mark) t))
+      (when continue (setq fwd t)))
+    (when fwd (forward-char)))
+  (fill-region (region-beginning) (region-end))
+  (buffer-substring-no-properties (region-beginning) (region-end)))
 
 (defun speed-type--setup-code
     (text &optional replay-fn go-next-fn syntax-table font-lock-df)
@@ -599,11 +603,19 @@ been completed."
                                text syntax-table font-lock-df go-next-fn)))
     (speed-type--setup-code text #'replay-fn go-next-fn syntax-table font-lock-df)))
 
-(defun speed-type--get-replay-fn (go-next-fn)
+(defun speed-type--get-replay-fn ()
   "Return a replay function which will use GO-NEXT-FN after completion."
-  (lambda (text) (speed-type--setup text
-                                    :replay-fn (speed-type--get-replay-fn go-next-fn)
-                                    :go-next-fn go-next-fn)))
+  (with-current-buffer (current-buffer)
+    (remove-hook 'kill-buffer-hook 'speed-type--kill-buffer-hook t))
+  (speed-type--setup speed-type--orig-text
+	   :lang speed-type--lang
+	   :author speed-type--author
+	   :title speed-type--title
+	   :n-words speed-type--n-words
+	   :content-buffer speed-type--content-buffer
+	   :add-extra-word-content-fn speed-type--add-extra-word-content-fn
+           :replay-fn #'speed-type--get-replay-fn
+           :go-next-fn speed-type--go-next-fn))
 
 (defun speed-type-code-tab ()
   "A command to be mapped to TAB when speed typing code."
@@ -619,15 +631,10 @@ been completed."
   (when (= (point) (line-end-position))
     (newline) (move-beginning-of-line nil) (speed-type-code-tab)))
 
-(defcustom speed-type-content-buffer-name "*speed-type-content-buffer*"
-  "Name of buffer that is used for the buffer consisting the text
-from which typing-session are created.")
-
-(defun speed-type--kill-content-buffer-hook ()
-  (when speed-type--buffer
-    (let ((buf speed-type--buffer))
-      (setq speed-type--buffer nil)
-      (kill-buffer buf))))
+(defcustom speed-type-buffer-name "*speed-type*"
+  "Name of buffer in which the user completes his typing session."
+  :group 'speed-type
+  :type 'string)
 
 (defun speed-type--kill-buffer-hook ()
   (when speed-type--content-buffer
@@ -635,18 +642,49 @@ from which typing-session are created.")
       (setq speed-type--content-buffer nil)
       (kill-buffer buf))))
 
+(defcustom speed-type-content-buffer-name "*speed-type-content-buffer*"
+  "Name of buffer consisting of the content-source for the speed-type buffer."
+  :group 'speed-type
+  :type 'string)
+
+(defun speed-type--kill-content-buffer-hook ()
+  (when speed-type--buffer
+    (let ((buf speed-type--buffer))
+      (setq speed-type--buffer nil)
+      (kill-buffer buf))))
+
+(defun speed-type-prepare-content-buffer-from-buffer (buffer)
+  (let ((buf (generate-new-buffer speed-type-content-buffer-name)))
+    (with-current-buffer buf
+      (add-hook 'kill-buffer-hook 'speed-type--kill-content-buffer-hook nil t)
+      (insert-buffer-substring buffer))
+    (get-buffer-create buf)))
+
 (defun speed-type-prepare-content-buffer (file-path n)
   (let ((buf (generate-new-buffer speed-type-content-buffer-name)))
     (with-current-buffer buf
       (add-hook 'kill-buffer-hook 'speed-type--kill-content-buffer-hook nil t)
       (insert-file-contents file-path)
-      (beginning-of-line n))
+      (goto-char (point-min))
+    (get-buffer-create buf))))
+
+(defun speed-type-prepare-gutenberg-content-buffer (file-path)
+  (let ((buf (generate-new-buffer speed-type-content-buffer-name)))
+    (with-current-buffer buf
+      (add-hook 'kill-buffer-hook 'speed-type--kill-content-buffer-hook nil t)
+      (insert-file-contents file-path))
     (get-buffer-create buf)))
 
-(defun speed-type--get-word-next-line ()
-  (with-current-buffer speed-type--content-buffer
-    (beginning-of-line 2)
-    (word-at-point)))
+(defun speed-type--get-next-word (content-buffer)
+  (with-current-buffer content-buffer
+    (forward-word)
+    (or (word-at-point) "")))
+
+(defun speed-type--get-random-word (content-buffer limit)
+  (with-current-buffer content-buffer
+    (goto-char (point-min))
+    (beginning-of-line (+ 1 (random limit)))
+    (or (word-at-point) "")))
 
 ;;;###autoload
 (defun speed-type-top-x (n)
@@ -665,13 +703,13 @@ from which typing-session are created.")
          (title (format "Top %s %s words" n lang))
 	 (text (with-temp-buffer
 		 (while (< (buffer-size) char-length)
-                   (insert (nth (random n) words))
+		   (insert (speed-type--get-random-word buf n))
                    (insert " "))
 		 (fill-region (point-min) (point-max))
 		 (if speed-type-wordlist-transform
                      (funcall speed-type-wordlist-transform (buffer-string))
                    (buffer-string))))
-	 (add-extra-word-content-fn #'speed-type--get-word-next-line)
+	 (add-extra-word-content-fn (lambda () (speed-type--get-random-word buf n)))
          (go-next-fn (lambda () (speed-type-top-x n))))
     (speed-type--setup text
              :title title
@@ -679,7 +717,7 @@ from which typing-session are created.")
              :n-words n
 	     :content-buffer buf
 	     :add-extra-word-content-fn add-extra-word-content-fn
-             :replay-fn (speed-type--get-replay-fn go-next-fn)
+             :replay-fn #'speed-type--get-replay-fn
              :go-next-fn go-next-fn)))
 
 ;;;###autoload
@@ -713,17 +751,21 @@ will be used.  Else some text will be picked randomly."
   (interactive "P")
   (if full
       (speed-type-region (point-min) (point-max))
-    (let* ((buf (current-buffer))
-           (text (speed-type--pick-text-to-type))
+    (let* ((buf (speed-type-prepare-content-buffer-from-buffer (current-buffer)))
+           (text (with-current-buffer buf
+		   (speed-type--pick-text-to-type)))
            (go-next-fn (lambda ()
                          (with-current-buffer buf
                            (speed-type-buffer nil)))))
       (if (derived-mode-p 'prog-mode)
           (speed-type--code-with-highlighting text
-                                              (syntax-table)
-                                              font-lock-defaults
-                                              go-next-fn)
-        (speed-type--setup text :go-next-fn go-next-fn)))))
+                                    (syntax-table)
+                                    font-lock-defaults
+                                    go-next-fn)
+        (speed-type--setup text
+		 :content-buffer buf
+		 :add-extra-word-content-fn (lambda () (speed-type--get-next-word buf))
+		 :go-next-fn go-next-fn)))))
 
 ;;;###autoload
 (defun speed-type-text ()
@@ -733,36 +775,35 @@ will be used.  Else some text will be picked randomly."
                         speed-type-gb-book-list))
          (author nil)
          (title nil)
-         (fn (speed-type--gb-retrieve book-num)))
-
-    (if fn
-        (with-temp-buffer
-          (insert-file-contents fn)
-          (goto-char 0)
-          (when (re-search-forward "^Title: " nil t)
-            (setq title (buffer-substring (point) (line-end-position))))
-          (when (re-search-forward "^Author: " nil t)
-            (setq author (buffer-substring (point) (line-end-position))))
-
-          (let ((start (point))
-                (end nil))
-
-            (goto-char (point-min))
-            (when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
-              (end-of-line 1)
-              (forward-line 1)
-              (setq start (point)))
-            (when (re-search-forward "***.END.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
-              (beginning-of-line 1)
-              (forward-line -1)
-              (setq end (point)))
-
-            (speed-type--setup (speed-type--pick-text-to-type start end)
-                               :author author
-                               :title title
-                               :replay-fn (speed-type--get-replay-fn #'speed-type-text)
-                               :go-next-fn #'speed-type-text)))
-      (message "Error retrieving book number %s" book-num))))
+         (fn (speed-type--gb-retrieve book-num))
+	 (buf (speed-type-prepare-gutenberg-content-buffer fn ))
+	 (title (with-current-buffer buf
+		  (save-excursion
+		    (when (re-search-forward "^Title: " nil t)
+		      (buffer-substring (point) (line-end-position))))))
+	 (author (with-current-buffer buf
+		    (save-excursion
+		      (when (re-search-forward "^Author: " nil t)
+			(buffer-substring (point) (line-end-position))))))
+	 (start (with-current-buffer buf
+		  (when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+		    (end-of-line 1)
+		    (forward-line 1)
+		    (point))))
+	 (end (with-current-buffer buf
+		(when (re-search-forward "***.END.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+		  (beginning-of-line 1)
+		  (forward-line -1)
+		  (point))))
+	 (text (with-current-buffer buf
+		 (speed-type--pick-text-to-type start end))))
+    (speed-type--setup text
+             :author author
+             :title title
+	     :content-buffer buf
+	     :add-extra-word-content-fn (lambda () (speed-type--get-next-word buf))
+             :replay-fn #'speed-type--get-replay-fn
+             :go-next-fn #'speed-type-text)))
 
 (provide 'speed-type)
 
