@@ -7,7 +7,7 @@
 ;; Version: 1.3
 ;; Keywords: games
 ;; URL: https://github.com/dakra/speed-type
-;; Package-Requires: ((emacs "25.1"))
+;; Package-Requires: ((emacs "26.1"))
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 
 ;; This file is NOT part of GNU Emacs.
@@ -142,7 +142,7 @@ Total errors: %d
 
 (defvar speed-type--completed-keymap
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "q") 'kill-this-buffer)
+    (define-key map (kbd "q") 'kill-current-buffer)
     (define-key map (kbd "r") 'speed-type--replay)
     (define-key map (kbd "n") 'speed-type--play-next)
     map))
@@ -322,7 +322,7 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
   (when speed-type--replay-fn
     (let ((fn speed-type--replay-fn)
           (text speed-type--orig-text))
-      (kill-this-buffer)
+      (kill-current-buffer)
       (funcall fn text))))
 
 (defun speed-type--play-next ()
@@ -330,7 +330,7 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
   (interactive)
   (when speed-type--go-next-fn
     (let ((fn speed-type--go-next-fn))
-      (kill-this-buffer)
+      (kill-current-buffer)
       (funcall fn))))
 
 (defun speed-type-complete ()
