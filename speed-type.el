@@ -168,6 +168,8 @@ Total errors: %d
 
 (defvar-local speed-type--start-time nil)
 (defvar-local speed-type--orig-text nil)
+(defvar-local speed-type--buffer nil)
+(defvar-local speed-type--content-buffer nil)
 (defvar-local speed-type--entries 0)
 (defvar-local speed-type--errors 0)
 (defvar-local speed-type--remaining 0)
@@ -391,14 +393,14 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
 				       'speed-type-mistake)))))))
 
 (defun speed-type-add-extra-words ()
-  "Add an extra words of text to be typed for the typing-session to be complete."
-  (when speed-type--add-extra-word-content-fn
+  "Add extra words of text to be typed for the typing-session to be complete."
+  (when (and (> (or speed-type-add-extra-words-on-mistake 0) 0)
+	     speed-type--add-extra-word-content-fn)
     (dotimes (i speed-type-add-extra-words-on-mistake)
       (let ((word (funcall speed-type--add-extra-word-content-fn)))
 	(setq typer-line-queue (append typer-line-queue '(" ") (split-string word "" t)))
 	(setq speed-type--orig-text (concat speed-type--orig-text " " word))
-	(dotimes (w (length (append '(" ") (split-string word "" t))))
-	  (setq speed-type--mod-str (concat speed-type--mod-str "\0")))))
+	(setq speed-type--mod-str (concat speed-type--mod-str (make-string (+ 1 (length word)) 0)))))
     (when (not (timerp typer-animation-timer))
       (setq typer-animation-timer (run-at-time nil 0.01 'typer-animate-line-insertion)))))
 
@@ -467,7 +469,7 @@ Replacements are found in `speed-type-replace-strings'."
    :initial-value text))
 
 (cl-defun speed-type--setup
-    (text &key author title lang n-words add-extra-word-content-fn replay-fn go-next-fn callback)
+    (text &key author title lang n-words content-buffer add-extra-word-content-fn replay-fn go-next-fn callback)
   "Set up a new buffer for the typing exercise on TEXT.
 
 AUTHOR and TITLE can be given, this happen when the text to type comes
@@ -508,6 +510,9 @@ CALLBACK is called when the setup process has been completed."
       (setq speed-type--n-words n-words)
       (setq speed-type--add-extra-word-content-fn add-extra-word-content-fn)
       (setq speed-type--go-next-fn go-next-fn)
+      (setq speed-type--content-buffer content-buffer)
+      (with-current-buffer content-buffer
+	(setq-local speed-type--buffer buf))
       (when replay-fn
         (setq speed-type--replay-fn replay-fn))
       (insert text)
@@ -516,6 +521,7 @@ CALLBACK is called when the setup process has been completed."
       (goto-char 0)
       (add-hook 'after-change-functions 'speed-type--change nil t)
       (add-hook 'first-change-hook 'speed-type--first-change nil t)
+      (add-hook 'kill-buffer-hook 'speed-type--kill-buffer-hook nil t)
       (setq-local post-self-insert-hook nil)
       (when callback (funcall callback))
       (message "Timer will start when you type the first character."))))
@@ -613,6 +619,35 @@ been completed."
   (when (= (point) (line-end-position))
     (newline) (move-beginning-of-line nil) (speed-type-code-tab)))
 
+(defcustom speed-type-content-buffer-name "*speed-type-content-buffer*"
+  "Name of buffer that is used for the buffer consisting the text
+from which typing-session are created.")
+
+(defun speed-type--kill-content-buffer-hook ()
+  (when speed-type--buffer
+    (let ((buf speed-type--buffer))
+      (setq speed-type--buffer nil)
+      (kill-buffer buf))))
+
+(defun speed-type--kill-buffer-hook ()
+  (when speed-type--content-buffer
+    (let ((buf speed-type--content-buffer))
+      (setq speed-type--content-buffer nil)
+      (kill-buffer buf))))
+
+(defun speed-type-prepare-content-buffer (file-path n)
+  (let ((buf (generate-new-buffer speed-type-content-buffer-name)))
+    (with-current-buffer buf
+      (add-hook 'kill-buffer-hook 'speed-type--kill-content-buffer-hook nil t)
+      (insert-file-contents file-path)
+      (beginning-of-line n))
+    (get-buffer-create buf)))
+
+(defun speed-type--get-word-next-line ()
+  (with-current-buffer speed-type--content-buffer
+    (beginning-of-line 2)
+    (word-at-point)))
+
 ;;;###autoload
 (defun speed-type-top-x (n)
   "Speed type the N most common words."
@@ -626,9 +661,9 @@ been completed."
                   (insert-file-contents file-path)
                   (split-string (buffer-string) "\n" t)))
          (n (min n (length words)))
-	 (buf (generate-new-buffer "*speed-type-content-buffer*"))
+	 (buf (speed-type-prepare-content-buffer file-path n))
          (title (format "Top %s %s words" n lang))
-	 (text (with-current-buffer buf
+	 (text (with-temp-buffer
 		 (while (< (buffer-size) char-length)
                    (insert (nth (random n) words))
                    (insert " "))
@@ -636,14 +671,13 @@ been completed."
 		 (if speed-type-wordlist-transform
                      (funcall speed-type-wordlist-transform (buffer-string))
                    (buffer-string))))
-	 (add-extra-word-content-fn (lambda ()
-				(with-current-buffer buf
-				  "asdf")))
+	 (add-extra-word-content-fn #'speed-type--get-word-next-line)
          (go-next-fn (lambda () (speed-type-top-x n))))
     (speed-type--setup text
              :title title
              :lang lang
              :n-words n
+	     :content-buffer buf
 	     :add-extra-word-content-fn add-extra-word-content-fn
              :replay-fn (speed-type--get-replay-fn go-next-fn)
              :go-next-fn go-next-fn)))
