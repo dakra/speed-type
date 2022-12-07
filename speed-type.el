@@ -40,10 +40,21 @@
 (require 'url)
 (require 'url-handlers)
 (require 'url-http)
+(require 'thingatpt)
 
 (defgroup speed-type nil
   "Practice touch-typing in Emacs."
   :group 'games)
+
+(defcustom speed-type-buffer-name "*speed-type*"
+  "Name of buffer in which the user completes his typing session."
+  :group 'speed-type
+  :type 'string)
+
+(defcustom speed-type-content-buffer-name "*speed-type-content-buffer*"
+  "Name of buffer consisting of the content-source for the speed-type buffer."
+  :group 'speed-type
+  :type 'string)
 
 (defcustom speed-type-min-chars 200
   "The minimum number of chars to type required when the text is picked randomly."
@@ -103,9 +114,9 @@ To remove without replacement, use the form: `(bad-string . \"\")'"
   :type '(alist :key-type string :value-type string))
 
 (defcustom speed-type-add-extra-words-on-mistake 0
-  "Count how many new words should be added on mistake. When 0 or less, no words are added.
-The typing-session will only be complete when these extra words
-are typed too."
+  "How many new words should be added on mistake.
+When 0 or less, no words are added. The typing-session will only
+be complete when these extra words are typed too."
   :group 'speed-type
   :type 'integer)
 
@@ -180,6 +191,8 @@ Total errors: %d
 (defvar-local speed-type--lang nil)
 (defvar-local speed-type--n-words nil)
 (defvar-local speed-type--add-extra-word-content-fn nil)
+(defvar-local speed-type--extra-words-animation-time nil)
+(defvar-local speed-type--extra-words-queue '())
 (defvar-local speed-type--go-next-fn nil)
 (defvar-local speed-type--replay-fn #'speed-type--setup)
 
@@ -392,37 +405,6 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
 	  (overlay-put overlay 'face (if correct 'speed-type-correct
 				       'speed-type-mistake)))))))
 
-(defun speed-type-add-extra-words ()
-  "Add extra words of text to be typed for the typing-session to be complete."
-  (when (and (> (or speed-type-add-extra-words-on-mistake 0) 0)
-	     speed-type--add-extra-word-content-fn)
-    (dotimes (i speed-type-add-extra-words-on-mistake)
-      (let ((word (funcall speed-type--add-extra-word-content-fn)))
-	(setq typer-line-queue (append typer-line-queue '(" ") (split-string word "" t)))
-	(setq speed-type--orig-text (concat speed-type--orig-text " " word))
-	(setq speed-type--mod-str (concat speed-type--mod-str (make-string (+ 1 (length word)) 0)))
-	(setq speed-type--remaining (+ 1 (length word) speed-type--remaining))))
-    (when (not (timerp typer-animation-timer))
-      (setq typer-animation-timer (run-at-time nil 0.01 'typer-animate-line-insertion)))))
-
-(defvar-local typer-buffer nil)
-(defvar-local typer-animation-timer nil)
-(defvar-local typer-line-queue '())
-(defun typer-animate-line-insertion ()
-  "Animation which comes with punishment-lines."
-  (remove-hook 'after-change-functions 'speed-type--change t)
-  (save-excursion
-    (if typer-line-queue
-	(let ((token (pop typer-line-queue)))
-	  (goto-char (point-max))
-	  (when (not (string= token "\n"))
-	    (end-of-line 1))
-	  (insert token))
-      (fill-region (point) (point-max))
-      (cancel-timer typer-animation-timer)
-      (setq typer-animation-timer nil)))
-  (add-hook 'after-change-functions 'speed-type--change nil t))
-
 (defun speed-type--change (start end length)
   "Handle buffer change.
 
@@ -479,6 +461,9 @@ from a gutenberg book.
 LANG and N-WORDS are used when training random words where LANG is the
 language symbol and N-WORDS is the top N words that should be trained.
 
+CONTENT-BUFFER defines the source from which the typing session
+get his content.
+
 If specified, call ADD-EXTRA-WORD-CONTENT-FN which provides an extra
 line when user makes an mistake.
 
@@ -528,6 +513,37 @@ CALLBACK is called when the setup process has been completed."
       (when callback (funcall callback))
       (message "Timer will start when you type the first character."))))
 
+(defun speed-type-prepare-content-buffer-from-buffer (buffer)
+  "Prepare content buffer from existing BUFFER."
+  (let ((buf (generate-new-buffer speed-type-content-buffer-name)))
+    (with-current-buffer buf
+      (add-hook 'kill-buffer-hook 'speed-type--kill-content-buffer-hook nil t)
+      (insert-buffer-substring buffer))
+    (get-buffer-create buf)))
+
+(defun speed-type-prepare-content-buffer (file-path)
+  "Prepare content buffer from FILE-PATH."
+  (let ((buf (generate-new-buffer speed-type-content-buffer-name)))
+    (with-current-buffer buf
+      (add-hook 'kill-buffer-hook 'speed-type--kill-content-buffer-hook nil t)
+      (insert-file-contents file-path)
+      (goto-char (point-min))
+    (get-buffer-create buf))))
+
+(defun speed-type--kill-buffer-hook ()
+  "Hook when speed-type buffer is killed."
+  (when speed-type--content-buffer
+    (let ((buf speed-type--content-buffer))
+      (setq speed-type--content-buffer nil)
+      (kill-buffer buf))))
+
+(defun speed-type--kill-content-buffer-hook ()
+  "Hook when content buffer is killed."
+  (when speed-type--buffer
+    (let ((buf speed-type--buffer))
+      (setq speed-type--buffer nil)
+      (kill-buffer buf))))
+
 (defun speed-type--pick-text-to-type (&optional start end)
   "Return a random section of the buffer usable for playing.
 
@@ -545,14 +561,14 @@ to (point-min) and (point-max)"
              (goto-char start)
              nb)))
   (mark-paragraph)
-    ;; select more paragraphs until there are more than speed-type-min-chars
-    ;; chars in the selection
+  ;; select more paragraphs until there are more than speed-type-min-chars
+  ;; chars in the selection
 
   (while (and (< (mark) end)
               (< (- (mark) (point)) speed-type-min-chars))
     (mark-paragraph 1 t))
   (exchange-point-and-mark)
-    ;; and remove sentences if we are above speed-type-max-chars
+  ;; and remove sentences if we are above speed-type-max-chars
 
   (let ((continue t)
         (sentence-end-double-space nil)
@@ -617,6 +633,49 @@ been completed."
            :replay-fn #'speed-type--get-replay-fn
            :go-next-fn speed-type--go-next-fn))
 
+(defun speed-type--get-next-word (content-buffer)
+  "Get next word from point in CONTENT-BUFFER."
+  (with-current-buffer content-buffer
+    (forward-word)
+    (or (word-at-point) "")))
+
+(defun speed-type--get-random-word (content-buffer limit)
+  "Get random word in CONTENT-BUFFER.
+LIMIT is supplied to the random-function."
+  (with-current-buffer content-buffer
+    (save-excursion
+      (goto-char (point-min))
+      (beginning-of-line (+ 1 (random limit)))
+      (or (word-at-point) ""))))
+
+(defun speed-type-add-extra-words ()
+  "Add extra words of text to be typed for the typing-session to be complete."
+  (when (and (> (or speed-type-add-extra-words-on-mistake 0) 0)
+	     speed-type--add-extra-word-content-fn)
+    (dotimes (_ speed-type-add-extra-words-on-mistake)
+      (let ((word (funcall speed-type--add-extra-word-content-fn)))
+	(setq speed-type--extra-words-queue (append speed-type--extra-words-queue '(" ") (split-string word "" t)))
+	(setq speed-type--orig-text (concat speed-type--orig-text " " word))
+	(setq speed-type--mod-str (concat speed-type--mod-str (make-string (+ 1 (length word)) 0)))
+	(setq speed-type--remaining (+ 1 (length word) speed-type--remaining))))
+    (when (not (timerp speed-type--extra-words-animation-time))
+      (setq speed-type--extra-words-animation-time (run-at-time nil 0.01 'speed-type-animate-extra-word-inseration)))))
+
+(defun speed-type-animate-extra-word-inseration ()
+  "Animation which comes with punishment-lines."
+  (remove-hook 'after-change-functions 'speed-type--change t)
+  (save-excursion
+    (if speed-type--extra-words-queue
+	(let ((token (pop speed-type--extra-words-queue)))
+	  (goto-char (point-max))
+	  (when (not (string= token "\n"))
+	    (end-of-line 1))
+	  (insert token))
+      (fill-region (point) (point-max))
+      (cancel-timer speed-type--extra-words-animation-time)
+      (setq speed-type--extra-words-animation-time nil)))
+  (add-hook 'after-change-functions 'speed-type--change nil t))
+
 (defun speed-type-code-tab ()
   "A command to be mapped to TAB when speed typing code."
   (interactive)
@@ -631,61 +690,6 @@ been completed."
   (when (= (point) (line-end-position))
     (newline) (move-beginning-of-line nil) (speed-type-code-tab)))
 
-(defcustom speed-type-buffer-name "*speed-type*"
-  "Name of buffer in which the user completes his typing session."
-  :group 'speed-type
-  :type 'string)
-
-(defun speed-type--kill-buffer-hook ()
-  (when speed-type--content-buffer
-    (let ((buf speed-type--content-buffer))
-      (setq speed-type--content-buffer nil)
-      (kill-buffer buf))))
-
-(defcustom speed-type-content-buffer-name "*speed-type-content-buffer*"
-  "Name of buffer consisting of the content-source for the speed-type buffer."
-  :group 'speed-type
-  :type 'string)
-
-(defun speed-type--kill-content-buffer-hook ()
-  (when speed-type--buffer
-    (let ((buf speed-type--buffer))
-      (setq speed-type--buffer nil)
-      (kill-buffer buf))))
-
-(defun speed-type-prepare-content-buffer-from-buffer (buffer)
-  (let ((buf (generate-new-buffer speed-type-content-buffer-name)))
-    (with-current-buffer buf
-      (add-hook 'kill-buffer-hook 'speed-type--kill-content-buffer-hook nil t)
-      (insert-buffer-substring buffer))
-    (get-buffer-create buf)))
-
-(defun speed-type-prepare-content-buffer (file-path n)
-  (let ((buf (generate-new-buffer speed-type-content-buffer-name)))
-    (with-current-buffer buf
-      (add-hook 'kill-buffer-hook 'speed-type--kill-content-buffer-hook nil t)
-      (insert-file-contents file-path)
-      (goto-char (point-min))
-    (get-buffer-create buf))))
-
-(defun speed-type-prepare-gutenberg-content-buffer (file-path)
-  (let ((buf (generate-new-buffer speed-type-content-buffer-name)))
-    (with-current-buffer buf
-      (add-hook 'kill-buffer-hook 'speed-type--kill-content-buffer-hook nil t)
-      (insert-file-contents file-path))
-    (get-buffer-create buf)))
-
-(defun speed-type--get-next-word (content-buffer)
-  (with-current-buffer content-buffer
-    (forward-word)
-    (or (word-at-point) "")))
-
-(defun speed-type--get-random-word (content-buffer limit)
-  (with-current-buffer content-buffer
-    (goto-char (point-min))
-    (beginning-of-line (+ 1 (random limit)))
-    (or (word-at-point) "")))
-
 ;;;###autoload
 (defun speed-type-top-x (n)
   "Speed type the N most common words."
@@ -699,7 +703,7 @@ been completed."
                   (insert-file-contents file-path)
                   (split-string (buffer-string) "\n" t)))
          (n (min n (length words)))
-	 (buf (speed-type-prepare-content-buffer file-path n))
+	 (buf (speed-type-prepare-content-buffer file-path))
          (title (format "Top %s %s words" n lang))
 	 (text (with-temp-buffer
 		 (while (< (buffer-size) char-length)
@@ -776,7 +780,7 @@ will be used.  Else some text will be picked randomly."
          (author nil)
          (title nil)
          (fn (speed-type--gb-retrieve book-num))
-	 (buf (speed-type-prepare-gutenberg-content-buffer fn ))
+	 (buf (speed-type-prepare-content-buffer fn))
 	 (title (with-current-buffer buf
 		  (save-excursion
 		    (when (re-search-forward "^Title: " nil t)
