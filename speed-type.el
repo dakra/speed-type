@@ -453,7 +453,7 @@ Replacements are found in `speed-type-replace-strings'."
    :initial-value text))
 
 (cl-defun speed-type--setup
-    (text &key author title lang n-words content-buffer add-extra-word-content-fn replay-fn go-next-fn callback)
+    (content-buffer text &key author title lang n-words add-extra-word-content-fn replay-fn go-next-fn callback)
   "Set up a new buffer for the typing exercise on TEXT.
 
 AUTHOR and TITLE can be given, this happen when the text to type comes
@@ -604,8 +604,8 @@ and font lock defaults by FONT-LOCK-DF."
                         (let ((font-lock-defaults font-lock-df))
                           ;; Fontify buffer
                           (ignore-errors (font-lock-ensure))))))
-    (speed-type--setup text
-	     :content-buffer content-buffer
+    (speed-type--setup content-buffer
+	     text
 	     :replay-fn replay-fn
              :go-next-fn go-next-fn
              :callback #'callback)))
@@ -635,12 +635,12 @@ been completed."
        (with-current-buffer speed-type--content-buffer (syntax-table))
        (with-current-buffer speed-type--content-buffer font-lock-defaults)
        speed-type--go-next-fn)
-    (speed-type--setup speed-type--orig-text
+    (speed-type--setup speed-type--content-buffer
+	     speed-type--orig-text
 	     :lang speed-type--lang
 	     :author speed-type--author
 	     :title speed-type--title
 	     :n-words speed-type--n-words
-	     :content-buffer speed-type--content-buffer
 	     :add-extra-word-content-fn speed-type--add-extra-word-content-fn
              :replay-fn #'speed-type--get-replay-fn
              :go-next-fn speed-type--go-next-fn)))
@@ -727,11 +727,11 @@ LIMIT is supplied to the random-function."
                    (buffer-string))))
 	 (add-extra-word-content-fn (lambda () (speed-type--get-random-word buf n)))
          (go-next-fn (lambda () (speed-type-top-x n))))
-    (speed-type--setup text
+    (speed-type--setup buf
+	     text
              :title title
              :lang lang
              :n-words n
-	     :content-buffer buf
 	     :add-extra-word-content-fn add-extra-word-content-fn
              :replay-fn #'speed-type--get-replay-fn
              :go-next-fn go-next-fn)))
@@ -752,11 +752,18 @@ LIMIT is supplied to the random-function."
 (defun speed-type-region (start end)
   "Open copy of [START,END] in a new buffer to speed type the text."
   (interactive "r")
-  (if (derived-mode-p 'prog-mode)
-      (speed-type--code-with-highlighting (buffer-substring-no-properties start end)
-                                (syntax-table)
-                                font-lock-defaults)
-    (speed-type--setup (buffer-substring-no-properties start end))))
+  (let* ((buf (speed-type-prepare-content-buffer-from-buffer (current-buffer)))
+         (text (with-current-buffer buf
+		 (buffer-substring-no-properties start end))))
+    (if (with-current-buffer buf
+	  (derived-mode-p 'prog-mode))
+        (speed-type--code-with-highlighting buf
+				  text
+                                  (syntax-table)
+                                  font-lock-defaults)
+      (speed-type--setup buf
+	       (buffer-substring-no-properties start end)
+	       :replay-fn #'speed-type--get-replay-fn))))
 
 ;;;###autoload
 (defun speed-type-buffer (full)
@@ -780,8 +787,8 @@ will be used.  Else some text will be picked randomly."
                                     (syntax-table)
                                     font-lock-defaults
                                     go-next-fn)
-        (speed-type--setup text
-		 :content-buffer buf
+        (speed-type--setup buf
+		 text
 		 :add-extra-word-content-fn (lambda () (speed-type--get-next-word buf))
 		 :go-next-fn go-next-fn)))))
 
@@ -813,10 +820,10 @@ will be used.  Else some text will be picked randomly."
 		  (point))))
 	 (text (with-current-buffer buf
 		 (speed-type--pick-text-to-type start end))))
-    (speed-type--setup text
+    (speed-type--setup buf
+	     text
              :author author
              :title title
-	     :content-buffer buf
 	     :add-extra-word-content-fn (lambda () (speed-type--get-next-word buf))
              :replay-fn #'speed-type--get-replay-fn
              :go-next-fn #'speed-type-text)))
