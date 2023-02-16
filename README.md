@@ -2,7 +2,7 @@
 
 Practice touch/speed typing in GNU Emacs.
 
-![Screenshot](https://raw.github.com/parkouss/speed-type/master/speed-type-screen-shot.png)
+![Screenshot](https://raw.github.com/dakra/speed-type/master/speed-type-screen-shot.png)
 
 ## Installation
 
@@ -34,19 +34,20 @@ M-x customize-group speed-type RET
 
 ## Running speed-type
 
-Executing M-x speed-type-text will start the typing exercise. A new buffer will
+Executing `M-x speed-type-text` will start the typing exercise. A new buffer will
 open and a random text sample will appear. As you type the text it will change
-color to show progress and higlight correct and incorrect entries. Timing
+color to show progress and highlight correct and incorrect entries. Timing
 happens automatically, the clock starts on the first character typed and ends
 with the last. Statistics like characters typed, words-per-minute, and total
 time will be shown as soon as the last character is entered.
 
-You can use any buffer or part of it to run speed-type. M-x speed-type-region
-and M-x speed-type-buffer will do the same thing as speed-type-text, except they
+You can use any buffer or part of it to run speed-type. `M-x speed-type-region`
+and `M-x speed-type-buffer` will do the same thing as speed-type-text, except they
 take the text sample you've picked.
+This works for programming code buffers/regions as well.
 
-speed-type-buffer by default will only take a random portion of the buffer - If
-you want the whole buffer, use C-u speed-type-buffer.
+`speed-type-buffer` by default will only take a random portion of the buffer - If
+you want the whole buffer, use `C-u speed-type-buffer`.
 
 Random samples are taken from Project Gutenberg. A small number of books will be
 downloaded on demand and stored in "~/emacs.d/speed-type". They will only be
@@ -57,7 +58,6 @@ the selected region.
 
 `speed-type-top-x` (or -100/-1000) lets you practice the top X words
 for the selected language.
-
 
 [melpa-link]: https://melpa.org/#/speed-type
 [melpa-stable-link]: https://stable.melpa.org/#/speed-type

@@ -7,7 +7,7 @@
 ;; Version: 1.3
 ;; Keywords: games
 ;; URL: https://github.com/dakra/speed-type
-;; Package-Requires: ((emacs "25.1"))
+;; Package-Requires: ((emacs "26.1") (compat "29.1.3"))
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 
 ;; This file is NOT part of GNU Emacs.
@@ -37,6 +37,7 @@
 ;;; Code:
 
 (require 'cl-lib)
+(require 'compat)
 (require 'url)
 (require 'url-handlers)
 (require 'url-http)
@@ -160,7 +161,7 @@ Total errors: %d
 
 (defvar speed-type--completed-keymap
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "q") 'kill-this-buffer)
+    (define-key map (kbd "q") 'kill-current-buffer)
     (define-key map (kbd "r") 'speed-type--replay)
     (define-key map (kbd "n") 'speed-type--play-next)
     map))
