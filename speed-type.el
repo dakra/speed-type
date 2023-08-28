@@ -46,12 +46,14 @@
   "Practice touch-typing in Emacs."
   :group 'games)
 
-(defcustom speed-type-min-chars 200
+;(defcustom speed-type-min-chars 200
+(defcustom speed-type-min-chars 20
   "The minimum number of chars to type required when the text is picked randomly."
   :group 'speed-type
   :type 'integer)
 
-(defcustom speed-type-max-chars 450
+;(defcustom speed-type-max-chars 450
+(defcustom speed-type-max-chars 40
   "The maximum number of chars to type required when the text is picked randomly."
   :group 'speed-type
   :type 'integer)
@@ -144,8 +146,10 @@ Total errors: %d
 (defvar speed-type--completed-keymap
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "q") 'kill-current-buffer)
+    (define-key map (kbd "a") 'kill-current-buffer)
     (define-key map (kbd "r") 'speed-type--replay)
     (define-key map (kbd "n") 'speed-type--play-next)
+    (define-key map (kbd "s") 'speed-type--play-next)
     map))
 
 (defvar speed-type-mode-map
@@ -355,10 +359,14 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
   (insert "\n\n")
   (insert (format "    [%s]uit\n"
                   (propertize "q" 'face 'highlight)))
+    (insert (format "    s[%s]ve and quit\n"
+                  (propertize "a" 'face 'highlight)))
   (insert (format "    [%s]eplay this sample\n"
                   (propertize "r" 'face 'highlight)))
   (when speed-type--go-next-fn (insert (format "    [%s]ext random sample\n"
                                                (propertize "n" 'face 'highlight))))
+  (when speed-type--go-next-fn (insert (format "    [%s]ave and next random sample\n"
+					       (propertize "s" 'face 'highlight))))
   (let ((view-read-only nil))
     (read-only-mode))
   (use-local-map speed-type--completed-keymap))
