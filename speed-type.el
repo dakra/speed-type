@@ -46,14 +46,12 @@
   "Practice touch-typing in Emacs."
   :group 'games)
 
-;(defcustom speed-type-min-chars 200
-(defcustom speed-type-min-chars 20
+(defcustom speed-type-min-chars  10 ;;200 
   "The minimum number of chars to type required when the text is picked randomly."
   :group 'speed-type
   :type 'integer)
 
-;(defcustom speed-type-max-chars 450
-(defcustom speed-type-max-chars 40
+(defcustom speed-type-max-chars 14 ;; 450
   "The maximum number of chars to type required when the text is picked randomly."
   :group 'speed-type
   :type 'integer)
@@ -146,10 +144,11 @@ Total errors: %d
 (defvar speed-type--completed-keymap
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "q") 'kill-current-buffer)
-    (define-key map (kbd "a") 'kill-current-buffer)
+    (define-key map (kbd "s") 'speed-type--save-and-kill-current-buffer)
     (define-key map (kbd "r") 'speed-type--replay)
+    (define-key map (kbd "e") 'speed-type--save-and-replay)
     (define-key map (kbd "n") 'speed-type--play-next)
-    (define-key map (kbd "s") 'speed-type--play-next)
+        (define-key map (kbd "x") 'speed-type--save-and-play-next)
     map))
 
 (defvar speed-type-mode-map
@@ -321,6 +320,17 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
                             (cl-incf speed-type--corrections))))
       (store-substring speed-type--mod-str pos 0))))
 
+(defun speed-type-save-and-kill-currrent-buffer ()
+  "Save Stats and kill the current buffer."
+  (interactive)
+  (kill-current-buffer )
+  )
+
+(defun speed-type--save-and-replay ()
+	"Save and replay a speed type session."
+	(interactive)
+	(speed-type--replay))
+
 (defun speed-type--replay ()
   "Replay a speed-type session."
   (interactive)
@@ -329,6 +339,11 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
           (text speed-type--orig-text))
       (kill-current-buffer)
       (funcall fn text))))
+
+(defun speed-type--save-and-play-next()
+  "Save results and Play a new speed-type session, base on the current one."
+  (interactive)
+  (speed-type--play-next))
 
 (defun speed-type--play-next ()
   "Play a new speed-type session, based on the current one."
@@ -359,14 +374,17 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
   (insert "\n\n")
   (insert (format "    [%s]uit\n"
                   (propertize "q" 'face 'highlight)))
-    (insert (format "    s[%s]ve and quit\n"
-                  (propertize "a" 'face 'highlight)))
+    (insert (format "    [%s]ave and quite\n"
+                  (propertize "s" 'face 'highlight)))
   (insert (format "    [%s]eplay this sample\n"
                   (propertize "r" 'face 'highlight)))
+  (insert (format "    save and r[%s]play this sample\n"
+                  (propertize "e" 'face 'highlight)))
+
   (when speed-type--go-next-fn (insert (format "    [%s]ext random sample\n"
                                                (propertize "n" 'face 'highlight))))
-  (when speed-type--go-next-fn (insert (format "    [%s]ave and next random sample\n"
-					       (propertize "s" 'face 'highlight))))
+  (when speed-type--go-next-fn (insert (format "    Save and ne[%s]t random sample\n"
+                                               (propertize "x" 'face 'highlight))))
   (let ((view-read-only nil))
     (read-only-mode))
   (use-local-map speed-type--completed-keymap))
