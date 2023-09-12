@@ -46,7 +46,12 @@
   "Practice touch-typing in Emacs."
   :group 'games)
 
-(defcustom speed-type-min-chars  10 ;;200 
+(defcustom speed-type--save-stats-p nil
+  "Save the stats for the play or not."
+  :group 'speed-type
+  :type 'boolean)
+
+(defcustom speed-type-min-chars  10 ;;200
   "The minimum number of chars to type required when the text is picked randomly."
   :group 'speed-type
   :type 'integer)
@@ -70,6 +75,12 @@ a book url.  E.G, https://www.gutenberg.org/ebooks/14577."
   "Directory in which the gutenberg books will be saved."
   :group 'speed-type
   :type 'directory)
+
+(defcustom speed-type--save-stats-dir (locate-user-emacs-file "speed-type/Stats")
+  "Directory that statistics are saved."
+  :group 'speed-type
+  :type 'directory)
+
 
 (defcustom speed-type-wordlist-urls
   '((English . "http://web.archive.org/web/20170227200416/http://wortschatz.uni-leipzig.de/Papers/top10000en.txt")
@@ -96,6 +107,7 @@ E.g. if you always want lowercase words, set:
                  (const :tag "German" German)
                  (const :tag "French" French)
                  (const :tag "Dutch" Dutch)))
+
 
 (defcustom speed-type-replace-strings '(("“" . "\"") ("”" . "\"") ("‘" . "'") ("’" . "'"))
   "Alist of strings to replace and their replacement, in the form:
@@ -141,15 +153,19 @@ Corrections:  %d
 Total errors: %d
 %s")
 
+(defvar speed-type-stats-save-format "\n
+%d,%d,%d")
+
 (defvar speed-type--completed-keymap
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "q") 'kill-current-buffer)
-    (define-key map (kbd "s") 'speed-type--save-and-kill-current-buffer)
-    (define-key map (kbd "r") 'speed-type--replay)
-    (define-key map (kbd "e") 'speed-type--save-and-replay)
-    (define-key map (kbd "n") 'speed-type--play-next)
-        (define-key map (kbd "x") 'speed-type--save-and-play-next)
-    map))
+
+	(keymap-set    map (kbd "q") 'kill-current-buffer)
+	(when speed-type--save-stats-p (keymap-set map (kbd "s") 'speed-type--save-and-kill-current-buffer))
+	 (keymap-set  map (kbd "r") 'speed-type--replay)
+	 (when speed-type--save-stats-p  (keymap-set  map (kbd "e") 'speed-type--save-and-replay))
+	 (keymap-set map (kbd "n") 'speed-type--play-next)
+         (when speed-type--save-stats-p (keymap-set  map (kbd "x") 'speed-type--save-and-play-next))
+	 map))
 
 (defvar speed-type-mode-map
   (let ((keymap (make-sparse-keymap)))
@@ -320,11 +336,17 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
                             (cl-incf speed-type--corrections))))
       (store-substring speed-type--mod-str pos 0))))
 
-(defun speed-type-save-and-kill-currrent-buffer ()
+(defun speed-type--save-and-kill-current-buffer ()
   "Save Stats and kill the current buffer."
   (interactive)
   (kill-current-buffer )
   )
+
+(defun speed-type--save-stats ()
+  "Save the stats in the file."
+  (save-excursion
+    (with-current-buffer  (concat   speed-type--save-stats-dir  ))))
+
 
 (defun speed-type--save-and-replay ()
 	"Save and replay a speed type session."
@@ -374,16 +396,15 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
   (insert "\n\n")
   (insert (format "    [%s]uit\n"
                   (propertize "q" 'face 'highlight)))
-    (insert (format "    [%s]ave and quite\n"
-                  (propertize "s" 'face 'highlight)))
+  (when speed-type--save-stats-p (insert (format "    [%s]ave and quite\n"
+                  (propertize "s" 'face 'highlight))))
   (insert (format "    [%s]eplay this sample\n"
                   (propertize "r" 'face 'highlight)))
-  (insert (format "    save and r[%s]play this sample\n"
-                  (propertize "e" 'face 'highlight)))
-
+  (when speed-type--save-stats-p (insert (format "    save and r[%s]play this sample\n"
+                  (propertize "e" 'face 'highlight))))
   (when speed-type--go-next-fn (insert (format "    [%s]ext random sample\n"
                                                (propertize "n" 'face 'highlight))))
-  (when speed-type--go-next-fn (insert (format "    Save and ne[%s]t random sample\n"
+  (when (and speed-type--go-next-fn speed-type--save-stats-p)   (insert (format "    Save and ne[%s]t random sample\n"
                                                (propertize "x" 'face 'highlight))))
   (let ((view-read-only nil))
     (read-only-mode))
