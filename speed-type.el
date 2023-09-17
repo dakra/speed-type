@@ -46,10 +46,13 @@
   "Practice touch-typing in Emacs."
   :group 'games)
 
-(defcustom speed-type--save-stats-p nil
+(defcustom speed-type--save-stats-p "ask"
   "Save the stats for the play or not."
   :group 'speed-type
-  :type 'boolean)
+  :type '(choice (const  :tag "Always" "always")
+		(const :tag "Never" "never" )
+		(const :tag "Ask" "ask")) )
+
 
 (defcustom speed-type-min-chars  10 ;;200
   "The minimum number of chars to type required when the text is picked randomly."
@@ -156,16 +159,30 @@ Total errors: %d
 (defvar speed-type-stats-save-format "\n
 %d,%d,%d")
 
-(defvar speed-type--completed-keymap
+(defvar speed-type--completed-keymap-ask-save
   (let ((map (make-sparse-keymap)))
+	(keymap-set map  "q" 'kill-current-buffer )
+	 (keymap-set map  "s" 'speed-type--save-and-kill-current-buffer)
+	 (keymap-set  map "r" 'speed-type--replay)
+         (keymap-set  map "e" 'speed-type--save-and-replay)
+	 (keymap-set map  "n" 'speed-type--play-next)
+         (keymap-set  map  "x" 'speed-type--save-and-play-next)
+	map ))
 
-	(keymap-set    map (kbd "q") 'kill-current-buffer)
-	(when speed-type--save-stats-p (keymap-set map (kbd "s") 'speed-type--save-and-kill-current-buffer))
-	 (keymap-set  map (kbd "r") 'speed-type--replay)
-	 (when speed-type--save-stats-p  (keymap-set  map (kbd "e") 'speed-type--save-and-replay))
-	 (keymap-set map (kbd "n") 'speed-type--play-next)
-         (when speed-type--save-stats-p (keymap-set  map (kbd "x") 'speed-type--save-and-play-next))
-	 map))
+(defvar speed-type--completed-keymap-never-save
+  (let ((map (make-sparse-keymap)))
+      (define-key  map (kbd "q") 'kill-current-buffer )
+       (define-key   map (kbd "r") 'speed-type--replay)
+       (define-key  map (kbd "n") 'speed-type--play-next)
+      map ))
+
+(defvar speed-type-completed-keymap-always-save
+  (let ((map (make-sparse-keymap)))
+       (keymap-set map (kbd "q") 'speed-type--save-and-kill-current-buffer  )
+       (keymap-set  map (kbd "r") 'speed-type--save-and-replay)
+       (keymap-set map (kbd "n") 'speed-type--save-and-play-next)
+      map))
+	
 
 (defvar speed-type-mode-map
   (let ((keymap (make-sparse-keymap)))
@@ -306,7 +323,7 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
 (defun speed-type--wordlist-retrieve (lang)
   "Return buffer with wordlist for language LANG in it."
   (speed-type--retrieve lang (cdr (assoc lang speed-type-wordlist-urls))))
-
+ 
 (defun speed-type--elapsed-time ()
   "Return float with the total time since start."
   (let ((end-time (float-time)))
@@ -339,18 +356,24 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
 (defun speed-type--save-and-kill-current-buffer ()
   "Save Stats and kill the current buffer."
   (interactive)
+  (message "save and kill current buffer.")
   (kill-current-buffer )
   )
 
 (defun speed-type--save-stats ()
   "Save the stats in the file."
   (save-excursion
-    (with-current-buffer  (concat   speed-type--save-stats-dir  ))))
+
+    (with-current-buffer
+	(concat x  speed-type--save-stats-dir  ))
+
+    ))
 
 
 (defun speed-type--save-and-replay ()
 	"Save and replay a speed type session."
 	(interactive)
+	(message "Save and replay.")
 	(speed-type--replay))
 
 (defun speed-type--replay ()
@@ -365,6 +388,7 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
 (defun speed-type--save-and-play-next()
   "Save results and Play a new speed-type session, base on the current one."
   (interactive)
+  (message "Save and play next.")
   (speed-type--play-next))
 
 (defun speed-type--play-next ()
@@ -396,19 +420,28 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
   (insert "\n\n")
   (insert (format "    [%s]uit\n"
                   (propertize "q" 'face 'highlight)))
-  (when speed-type--save-stats-p (insert (format "    [%s]ave and quite\n"
-                  (propertize "s" 'face 'highlight))))
+  (when (equal  speed-type--save-stats-p "ask")
+    (insert (format "    [%s]ave and quite\n" (propertize "s" 'face 'highlight))))
   (insert (format "    [%s]eplay this sample\n"
                   (propertize "r" 'face 'highlight)))
-  (when speed-type--save-stats-p (insert (format "    save and r[%s]play this sample\n"
+  (when (equal  speed-type--save-stats-p "ask")
+    (insert (format "    save and r[%s]play this sample\n"
                   (propertize "e" 'face 'highlight))))
-  (when speed-type--go-next-fn (insert (format "    [%s]ext random sample\n"
-                                               (propertize "n" 'face 'highlight))))
-  (when (and speed-type--go-next-fn speed-type--save-stats-p)   (insert (format "    Save and ne[%s]t random sample\n"
-                                               (propertize "x" 'face 'highlight))))
+  (when speed-type--go-next-fn
+    (insert (format "    [%s]ext random sample\n"
+                    (propertize "n" 'face 'highlight))))
+  (when (and speed-type--go-next-fn (equal  speed-type--save-stats-p "ask"))
+    (insert (format "    Save and ne[%s]t random sample\n"
+                    (propertize "x" 'face 'highlight))))
   (let ((view-read-only nil))
     (read-only-mode))
-  (use-local-map speed-type--completed-keymap))
+  
+  (if (equal  speed-type--save-stats-p "ask")
+      (use-local-map speed-type--completed-keymap-ask-save)
+    (if (equal  speed-type--save-stats-p "always" )
+	(use-local-map speed-type-completed-keymap-always-save)
+      (use-local-map speed-type--completed-keymap-never-save)))
+  )
 
 (defun speed-type--diff (orig new start end)
   "Update stats and buffer contents with result of changes in text."
