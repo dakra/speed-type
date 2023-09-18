@@ -49,10 +49,18 @@
 (defcustom speed-type--save-stats-p "ask"
   "Save the stats for the play or not."
   :group 'speed-type
-  :type '(choice (const  :tag "Always" "always")
-		(const :tag "Never" "never" )
-		(const :tag "Ask" "ask")) )
+  :type '(choice (const  :tag "Always" always)
+		(const :tag "Never" never )
+		(const :tag "Ask" ask)) )
+(defcustom speed-type--general-save-filename "stats"
+  "Name of file for general stats."
+  :group 'speed-type
+  :type 'string)
 
+(defcustom speed-type--save-file-extension ".txt"
+  "Extention of save files."
+  :group 'speed-type
+  :type 'string)
 
 (defcustom speed-type-min-chars  10 ;;200
   "The minimum number of chars to type required when the text is picked randomly."
@@ -156,8 +164,7 @@ Corrections:  %d
 Total errors: %d
 %s")
 
-(defvar speed-type-stats-save-format "\n
-%d,%d,%d")
+(defvar speed-type--stats-save-format "%s,%d,%d,%d%d\n")
 
 (defvar speed-type--completed-keymap-ask-save
   (let ((map (make-sparse-keymap)))
@@ -357,17 +364,27 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
   "Save Stats and kill the current buffer."
   (interactive)
   (message "save and kill current buffer.")
+  (speed-type--save-stats)
   (kill-current-buffer )
   )
+
 
 (defun speed-type--save-stats ()
   "Save the stats in the file."
   (save-excursion
-
-    (with-current-buffer
-	(concat x  speed-type--save-stats-dir  ))
-
-    ))
+    (let* (
+	  (game-name
+	   (if speed-type--title
+	        (concat speed-type--title)
+	     (concat  speed-type-general-filename  )))
+	  (stats
+	   (format speed-type--stats-save-format
+		   game-name
+		   speed-type--entries speed-type--errors
+		   speed-type--corrections (speed-type--elapsed-time ))))
+      (unless  (file-directory-p speed-type--save-stats-dir )
+	(make-directory speed-type--save-stats-dir t  ))
+      (append-to-file stats nil (concat speed-type--save-stats-dir "/" speed-type--general-save-filename )))))
 
 
 (defun speed-type--save-and-replay ()
