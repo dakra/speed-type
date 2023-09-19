@@ -1,6 +1,3 @@
-;;; speed-type.el --- Practice touch and speed typing -*- lexical-binding: t -*-
-
-;; Copyright (C) 2015 Gunther Hagleitner
 
 ;; Author: Gunther Hagleitner
 ;; Maintainer: Daniel Kraus <daniel@kraus.my>
@@ -49,9 +46,10 @@
 (defcustom speed-type--save-stats-p "ask"
   "Save the stats for the play or not."
   :group 'speed-type
-  :type '(choice (const  :tag "Always" always)
-		(const :tag "Never" never )
-		(const :tag "Ask" ask)) )
+  :type '(choice (const  :tag "Always" "always")
+		(const :tag "Never" "never" )
+		(const :tag "Ask" "ask")) )
+
 (defcustom speed-type--general-save-filename "stats"
   "Name of file for general stats."
   :group 'speed-type
@@ -61,6 +59,12 @@
   "Extention of save files."
   :group 'speed-type
   :type 'string)
+
+(defcustom speed-type--max-num-records 13
+  "Maximum number of saved records."
+  :group 'speed-type
+  :type '(choice (const :tag "Infinity " nil )
+		 (natnum :tag "None negative number." )))
 
 (defcustom speed-type-min-chars  10 ;;200
   "The minimum number of chars to type required when the text is picked randomly."
@@ -87,7 +91,7 @@ a book url.  E.G, https://www.gutenberg.org/ebooks/14577."
   :group 'speed-type
   :type 'directory)
 
-(defcustom speed-type--save-stats-dir (locate-user-emacs-file "speed-type/Stats")
+(defcustom speed-type--save-stats-dir (concat speed-type-gb-dir  "/Stats")
   "Directory that statistics are saved."
   :group 'speed-type
   :type 'directory)
@@ -164,7 +168,7 @@ Corrections:  %d
 Total errors: %d
 %s")
 
-(defvar speed-type--stats-save-format "%s,%d,%d,%d%d\n")
+(defvar speed-type--stats-save-format "%s,%d,%d,%d,%d\n")
 
 (defvar speed-type--completed-keymap-ask-save
   (let ((map (make-sparse-keymap)))
@@ -367,7 +371,26 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
   (speed-type--save-stats)
   (kill-current-buffer )
   )
+(defun speed-type--save-stats-filename ()
+  "Show the stats filename."
+  (interactive)
+  (concat speed-type--save-stats-dir "/" speed-type--general-save-filename))
 
+(defun speed-type--remove-extra-earlier-records ()
+	"Remove extra earlier saved records."
+	(interactive)
+	(let ((old-buffer (current-buffer))
+	      (stat-file-buffer (find-file-noselect (speed-type--save-stats-filename))))
+	  (with-current-buffer  stat-file-buffer
+	    (save-excursion
+	      (let ((number-of-lines (count-lines (point-min) (point-max))))
+		(while  (and speed-type--max-num-records
+			     (< speed-type--max-num-records number-of-lines))
+		  (beginning-of-buffer)
+		  (delete-line )
+		  (setq number-of-lines (count-lines (point-min) (point-max)))
+		  ))
+	      (save-buffer (current-buffer))))) )
 
 (defun speed-type--save-stats ()
   "Save the stats in the file."
@@ -376,21 +399,26 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
 	  (game-name
 	   (if speed-type--title
 	        (concat speed-type--title)
-	     (concat  speed-type-general-filename  )))
+	     (concat  speed-type--general-save-filename)))
 	  (stats
 	   (format speed-type--stats-save-format
 		   game-name
-		   speed-type--entries speed-type--errors
-		   speed-type--corrections (speed-type--elapsed-time ))))
+		   speed-type--entries
+		   speed-type--errors
+		   speed-type--corrections
+		   (speed-type--elapsed-time ))))
       (unless  (file-directory-p speed-type--save-stats-dir )
 	(make-directory speed-type--save-stats-dir t  ))
-      (append-to-file stats nil (concat speed-type--save-stats-dir "/" speed-type--general-save-filename )))))
+      (append-to-file stats nil
+		      (concat speed-type--save-stats-dir "/" speed-type--general-save-filename ))
+      (speed-type--remove-extra-earlier-records) )))
 
 
 (defun speed-type--save-and-replay ()
 	"Save and replay a speed type session."
 	(interactive)
 	(message "Save and replay.")
+	(speed-type--save-stats)
 	(speed-type--replay))
 
 (defun speed-type--replay ()
@@ -406,6 +434,7 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
   "Save results and Play a new speed-type session, base on the current one."
   (interactive)
   (message "Save and play next.")
+  (speed-type--save-stats)
   (speed-type--play-next))
 
 (defun speed-type--play-next ()
