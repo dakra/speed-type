@@ -109,12 +109,12 @@ To remove without replacement, use the form: `(bad-string . \"\")'"
   :group 'speed-type)
 
 (defface speed-type-correct
-  '((t :foreground "green"))
+  `((t (:inherit 'default :foreground ,(face-foreground 'success))))
   "Face for correctly typed characters."
   :group 'speed-type)
 
 (defface speed-type-mistake
-  '((t :foreground "red" :underline "red"))
+  `((t (:inherit 'default :foreground ,(face-foreground 'error) :underline t)))
   "Face for incorrectly typed characters."
   :group 'speed-type)
 
