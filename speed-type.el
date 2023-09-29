@@ -38,12 +38,12 @@
 (require 'url)
 (require 'url-handlers)
 (require 'url-http)
-
+(require 'parse-csv)
 (defgroup speed-type nil
   "Practice touch-typing in Emacs."
   :group 'games)
 
-(defcustom speed-type--save-stats-p "ask"
+(defcustom speed-type--save-stats-p "always"
   "Save the stats for the play or not."
   :group 'speed-type
   :type '(choice (const  :tag "Always" "always")
@@ -75,6 +75,7 @@
   "The maximum number of chars to type required when the text is picked randomly."
   :group 'speed-type
   :type 'integer)
+
 
 (defcustom speed-type-gb-book-list
   '(1342 11 1952 1661 74 1232 23 135 5200 2591 844 84 98 2701 1400 16328 174
@@ -167,6 +168,21 @@ Total chars:  %d
 Corrections:  %d
 Total errors: %d
 %s")
+
+(defvar speed-type-previous-saved-stats-format  "\n
+Num of records:      %d
+Median Skill:        %s
+Median Net WPM:      %d
+Median Net CPM:      %d
+Median Gross WPM:    %d
+Median Gross CPM:    %d
+Median Accuracy:     %.2f%%
+Median Total time:   %s
+Median Total chars:  %d
+Median Corrections:  %d
+Median Total errors: %d")
+
+
 
 (defvar speed-type--stats-save-format "%s,%d,%d,%d,%d\n")
 
@@ -297,6 +313,21 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
           (+ errors corrections)
           speed-type-explaining-message))
 
+(defun speed-type--generate-stats-of-previous-records  (num-records entries errors corrections seconds)
+  "Return string of statistics of previous saved records."
+  (format speed-type-previous-saved-stats-format
+	  num-records
+          (speed-type--skill (speed-type--net-wpm entries errors seconds))
+          (speed-type--net-wpm entries errors seconds)
+          (speed-type--net-cpm entries errors seconds)
+          (speed-type--gross-wpm entries seconds)
+          (speed-type--gross-cpm entries seconds)
+          (speed-type--accuracy entries (- entries errors) corrections)
+          (format-seconds "%M %z%S" seconds)
+          entries
+          corrections
+          (+ errors corrections) ))
+
 (defun speed-type--gb-url (book-num)
   "Return url for BOOK-NUM."
   (format speed-type--gb-url-format book-num book-num))
@@ -372,17 +403,17 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
   (kill-current-buffer )
   )
 (defun speed-type--save-stats-filename ()
-  "Show the stats filename."
+  "Show the complete path  plus stats filename."
   (interactive)
-  (concat speed-type--save-stats-dir "/" speed-type--general-save-filename))
+  (expand-file-name (concat speed-type--save-stats-dir "/" speed-type--general-save-filename)))
 
 (defun speed-type--remove-extra-earlier-records ()
 	"Remove extra earlier saved records."
 	(interactive)
-	(let ((old-buffer (current-buffer))
-	      (stat-file-buffer (find-file-noselect (speed-type--save-stats-filename))))
+	(let ((stat-file-buffer (find-file-noselect (speed-type--save-stats-filename))))
 	  (with-current-buffer  stat-file-buffer
 	    (save-excursion
+	      
 	      (let ((number-of-lines (count-lines (point-min) (point-max))))
 		(while  (and speed-type--max-num-records
 			     (< speed-type--max-num-records number-of-lines))
@@ -390,10 +421,10 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
 		  (delete-line )
 		  (setq number-of-lines (count-lines (point-min) (point-max)))
 		  ))
-	      (save-buffer (current-buffer))))) )
+	      (save-buffer (current-buffer))))))
 
 (defun speed-type--save-stats ()
-  "Save the stats in the file."
+  "Save the stats in the configured  file."
   (save-excursion
     (let* (
 	  (game-name
@@ -410,7 +441,7 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
       (unless  (file-directory-p speed-type--save-stats-dir )
 	(make-directory speed-type--save-stats-dir t  ))
       (append-to-file stats nil
-		      (concat speed-type--save-stats-dir "/" speed-type--general-save-filename ))
+		      (speed-type--save-stats-filename))
       (speed-type--remove-extra-earlier-records) )))
 
 
@@ -445,6 +476,27 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
       (kill-current-buffer)
       (funcall fn))))
 
+(defun speed-type--process-saved-stats ()
+    "Process  save-stats."
+    (interactive)
+    (if
+	(and
+	     (file-readable-p   (speed-type--save-stats-filename))
+	     (not (equal   speed-type--save-stats-p "never")))
+      (let ((stats-file-buffer (find-file-noselect (speed-type--save-stats-filename ))))
+	(with-current-buffer stats-file-buffer
+	  (save-excursion
+	    (let* ((content (buffer-substring (point-min) (point-max)))
+		   (raw-records (parse-csv-string-rows content ?\, ?\" "\n"))
+                   (numbers (cl-mapcar (lambda (list) (cl-mapcar  'string-to-number (cdr list))) raw-records ))
+		   (num-of-records (length numbers ))
+		   (all-sums (reduce (lambda (l1 l2)
+				       (if (equal l2 nil)
+					   l1
+					 (cl-mapcar '+ l1 l2)))  numbers))
+	           (medians (mapcar (lambda (x) (/ x num-of-records )) all-sums)))
+	      (cons num-of-records  medians)))))))
+
 (defun speed-type-complete ()
   "Remove typing hooks from the buffer and print statistics."
   (interactive)
@@ -463,6 +515,11 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
            speed-type--errors
            speed-type--corrections
            (speed-type--elapsed-time)))
+
+  (unless   (equal speed-type--save-stats-p "never")
+    (insert "\n\nMadian of previous attemps\n" )
+    (insert (apply 'speed-type--generate-stats-of-previous-records
+           (speed-type--process-saved-stats) )))
   (insert "\n\n")
   (insert (format "    [%s]uit\n"
                   (propertize "q" 'face 'highlight)))
