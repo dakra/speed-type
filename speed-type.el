@@ -60,7 +60,7 @@
   :group 'speed-type
   :type 'string)
 
-(defcustom speed-type--max-num-records 13
+(defcustom speed-type--max-num-records 20
   "Maximum number of saved records."
   :group 'speed-type
   :type '(choice (const :tag "Infinity " nil )
