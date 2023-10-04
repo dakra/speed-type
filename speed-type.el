@@ -410,10 +410,8 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
 (defun speed-type--remove-extra-earlier-records ()
 	"Remove extra earlier saved records."
 	(interactive)
-	(let ((stat-file-buffer (find-file-noselect (speed-type--save-stats-filename))))
-	  (with-current-buffer  stat-file-buffer
-	    (save-excursion
-	      
+	  (with-temp-buffer
+	    (insert-file-contents  (speed-type--save-stats-filename))
 	      (let ((number-of-lines (count-lines (point-min) (point-max))))
 		(while  (and speed-type--max-num-records
 			     (< speed-type--max-num-records number-of-lines))
@@ -421,18 +419,15 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
 		  (delete-line )
 		  (setq number-of-lines (count-lines (point-min) (point-max)))
 		  ))
-	      (save-buffer (current-buffer))))))
+	      (write-file  (speed-type--save-stats-filename) nil)))
 
 (defun speed-type--save-stats ()
   "Save the stats in the configured  file."
   (save-excursion
-    (let* (
-	  (game-name
-	   (if speed-type--title
-	        (concat speed-type--title)
-	     (concat  speed-type--general-save-filename)))
-	  (stats
-	   (format speed-type--stats-save-format
+    (let* ((game-name   (if speed-type--title
+			    (concat speed-type--title)
+			  (concat  speed-type--general-save-filename)))
+	   (stats (format speed-type--stats-save-format
 		   game-name
 		   speed-type--entries
 		   speed-type--errors
@@ -442,7 +437,7 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
 	(make-directory speed-type--save-stats-dir t  ))
       (append-to-file stats nil
 		      (speed-type--save-stats-filename))
-      (speed-type--remove-extra-earlier-records) )))
+      (speed-type--remove-extra-earlier-records) ))))
 
 
 (defun speed-type--save-and-replay ()
@@ -658,6 +653,7 @@ CALLBACK is called when the setup process has been completed."
       (add-hook 'after-change-functions 'speed-type--change nil t)
       (add-hook 'first-change-hook 'speed-type--first-change nil t)
       (setq-local post-self-insert-hook nil)
+
       (when callback (funcall callback))
       (message "Timer will start when you type the first character."))))
 
@@ -734,6 +730,7 @@ been completed."
                                text syntax-table font-lock-df go-next-fn)))
     (speed-type--setup-code text #'replay-fn go-next-fn syntax-table font-lock-df)))
 
+
 (defun speed-type--get-replay-fn (go-next-fn)
   "Return a replay function which will use GO-NEXT-FN after completion."
   (lambda (text) (speed-type--setup text
@@ -755,6 +752,8 @@ been completed."
     (newline) (move-beginning-of-line nil) (speed-type-code-tab)))
 
 ;;;###autoload
+
+
 (defun speed-type-top-x (n)
   "Speed type the N most common words."
   (interactive "nTrain X most common words: ")
@@ -816,7 +815,7 @@ will be used.  Else some text will be picked randomly."
       (speed-type-region (point-min) (point-max))
     (let* ((buf (current-buffer))
            (text (speed-type--pick-text-to-type))
-           (go-next-fn (lambda ()
+           (ggo-next-fn (lambda ()
                          (with-current-buffer buf
                            (speed-type-buffer nil)))))
       (if (derived-mode-p 'prog-mode)
@@ -824,7 +823,7 @@ will be used.  Else some text will be picked randomly."
                                               (syntax-table)
                                               font-lock-defaults
                                               go-next-fn)
-        (speed-type--setup text :go-next-fn go-next-fn)))))
+        (speed-type--setup text :go-next-fn ggo-next-fn)))))
 
 ;;;###autoload
 (defun speed-type-text ()
