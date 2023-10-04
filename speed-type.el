@@ -1,6 +1,3 @@
-;;; speed-type.el --- Practice touch and speed typing -*- lexical-binding: t -*-
-
-;; Copyright (C) 2015 Gunther Hagleitner
 
 ;; Author: Gunther Hagleitner
 ;; Maintainer: Daniel Kraus <daniel@kraus.my>
@@ -41,20 +38,44 @@
 (require 'url)
 (require 'url-handlers)
 (require 'url-http)
-
+(require 'parse-csv)
 (defgroup speed-type nil
   "Practice touch-typing in Emacs."
   :group 'games)
 
-(defcustom speed-type-min-chars 200
+(defcustom speed-type--save-stats-p "always"
+  "Save the stats for the play or not."
+  :group 'speed-type
+  :type '(choice (const  :tag "Always" "always")
+		(const :tag "Never" "never" )
+		(const :tag "Ask" "ask")) )
+
+(defcustom speed-type--general-save-filename "stats"
+  "Name of file for general stats."
+  :group 'speed-type
+  :type 'string)
+
+(defcustom speed-type--save-file-extension ".txt"
+  "Extention of save files."
+  :group 'speed-type
+  :type 'string)
+
+(defcustom speed-type--max-num-records 20
+  "Maximum number of saved records."
+  :group 'speed-type
+  :type '(choice (const :tag "Infinity " nil )
+		 (natnum :tag "None negative number." )))
+
+(defcustom speed-type-min-chars  10 ;;200
   "The minimum number of chars to type required when the text is picked randomly."
   :group 'speed-type
   :type 'integer)
 
-(defcustom speed-type-max-chars 450
+(defcustom speed-type-max-chars 14 ;; 450
   "The maximum number of chars to type required when the text is picked randomly."
   :group 'speed-type
   :type 'integer)
+
 
 (defcustom speed-type-gb-book-list
   '(1342 11 1952 1661 74 1232 23 135 5200 2591 844 84 98 2701 1400 16328 174
@@ -70,6 +91,12 @@ a book url.  E.G, https://www.gutenberg.org/ebooks/14577."
   "Directory in which the gutenberg books will be saved."
   :group 'speed-type
   :type 'directory)
+
+(defcustom speed-type--save-stats-dir (concat speed-type-gb-dir  "/Stats")
+  "Directory that statistics are saved."
+  :group 'speed-type
+  :type 'directory)
+
 
 (defcustom speed-type-wordlist-urls
   '((English . "http://web.archive.org/web/20170227200416/http://wortschatz.uni-leipzig.de/Papers/top10000en.txt")
@@ -96,6 +123,7 @@ E.g. if you always want lowercase words, set:
                  (const :tag "German" German)
                  (const :tag "French" French)
                  (const :tag "Dutch" Dutch)))
+
 
 (defcustom speed-type-replace-strings '(("“" . "\"") ("”" . "\"") ("‘" . "'") ("’" . "'"))
   "Alist of strings to replace and their replacement, in the form:
@@ -141,12 +169,47 @@ Corrections:  %d
 Total errors: %d
 %s")
 
-(defvar speed-type--completed-keymap
+(defvar speed-type-previous-saved-stats-format  "\n
+Num of records:      %d
+Median Skill:        %s
+Median Net WPM:      %d
+Median Net CPM:      %d
+Median Gross WPM:    %d
+Median Gross CPM:    %d
+Median Accuracy:     %.2f%%
+Median Total time:   %s
+Median Total chars:  %d
+Median Corrections:  %d
+Median Total errors: %d")
+
+
+
+(defvar speed-type--stats-save-format "%s,%d,%d,%d,%d\n")
+
+(defvar speed-type--completed-keymap-ask-save
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "q") 'kill-current-buffer)
-    (define-key map (kbd "r") 'speed-type--replay)
-    (define-key map (kbd "n") 'speed-type--play-next)
-    map))
+	(keymap-set map  "q" 'kill-current-buffer )
+	 (keymap-set map  "s" 'speed-type--save-and-kill-current-buffer)
+	 (keymap-set  map "r" 'speed-type--replay)
+         (keymap-set  map "e" 'speed-type--save-and-replay)
+	 (keymap-set map  "n" 'speed-type--play-next)
+         (keymap-set  map  "x" 'speed-type--save-and-play-next)
+	map ))
+
+(defvar speed-type--completed-keymap-never-save
+  (let ((map (make-sparse-keymap)))
+      (define-key  map (kbd "q") 'kill-current-buffer )
+       (define-key   map (kbd "r") 'speed-type--replay)
+       (define-key  map (kbd "n") 'speed-type--play-next)
+      map ))
+
+(defvar speed-type-completed-keymap-always-save
+  (let ((map (make-sparse-keymap)))
+       (keymap-set map (kbd "q") 'speed-type--save-and-kill-current-buffer  )
+       (keymap-set  map (kbd "r") 'speed-type--save-and-replay)
+       (keymap-set map (kbd "n") 'speed-type--save-and-play-next)
+      map))
+	
 
 (defvar speed-type-mode-map
   (let ((keymap (make-sparse-keymap)))
@@ -250,6 +313,21 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
           (+ errors corrections)
           speed-type-explaining-message))
 
+(defun speed-type--generate-stats-of-previous-records  (num-records entries errors corrections seconds)
+  "Return string of statistics of previous saved records."
+  (format speed-type-previous-saved-stats-format
+	  num-records
+          (speed-type--skill (speed-type--net-wpm entries errors seconds))
+          (speed-type--net-wpm entries errors seconds)
+          (speed-type--net-cpm entries errors seconds)
+          (speed-type--gross-wpm entries seconds)
+          (speed-type--gross-cpm entries seconds)
+          (speed-type--accuracy entries (- entries errors) corrections)
+          (format-seconds "%M %z%S" seconds)
+          entries
+          corrections
+          (+ errors corrections) ))
+
 (defun speed-type--gb-url (book-num)
   "Return url for BOOK-NUM."
   (format speed-type--gb-url-format book-num book-num))
@@ -287,7 +365,7 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
 (defun speed-type--wordlist-retrieve (lang)
   "Return buffer with wordlist for language LANG in it."
   (speed-type--retrieve lang (cdr (assoc lang speed-type-wordlist-urls))))
-
+ 
 (defun speed-type--elapsed-time ()
   "Return float with the total time since start."
   (let ((end-time (float-time)))
@@ -317,6 +395,58 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
                             (cl-incf speed-type--corrections))))
       (store-substring speed-type--mod-str pos 0))))
 
+(defun speed-type--save-and-kill-current-buffer ()
+  "Save Stats and kill the current buffer."
+  (interactive)
+  (message "save and kill current buffer.")
+  (speed-type--save-stats)
+  (kill-current-buffer )
+  )
+(defun speed-type--save-stats-filename ()
+  "Show the complete path  plus stats filename."
+  (interactive)
+  (expand-file-name (concat speed-type--save-stats-dir "/" speed-type--general-save-filename)))
+
+(defun speed-type--remove-extra-earlier-records ()
+	"Remove extra earlier saved records."
+	(interactive)
+	  (with-temp-buffer
+	    (insert-file-contents  (speed-type--save-stats-filename))
+	      (let ((number-of-lines (count-lines (point-min) (point-max))))
+		(while  (and speed-type--max-num-records
+			     (< speed-type--max-num-records number-of-lines))
+		  (beginning-of-buffer)
+		  (delete-line )
+		  (setq number-of-lines (count-lines (point-min) (point-max)))
+		  ))
+	      (write-file  (speed-type--save-stats-filename) nil)))
+
+(defun speed-type--save-stats ()
+  "Save the stats in the configured  file."
+  (save-excursion
+    (let* ((game-name   (if speed-type--title
+			    (concat speed-type--title)
+			  (concat  speed-type--general-save-filename)))
+	   (stats (format speed-type--stats-save-format
+		   game-name
+		   speed-type--entries
+		   speed-type--errors
+		   speed-type--corrections
+		   (speed-type--elapsed-time ))))
+      (unless  (file-directory-p speed-type--save-stats-dir )
+	(make-directory speed-type--save-stats-dir t  ))
+      (append-to-file stats nil
+		      (speed-type--save-stats-filename))
+      (speed-type--remove-extra-earlier-records) ))))
+
+
+(defun speed-type--save-and-replay ()
+	"Save and replay a speed type session."
+	(interactive)
+	(message "Save and replay.")
+	(speed-type--save-stats)
+	(speed-type--replay))
+
 (defun speed-type--replay ()
   "Replay a speed-type session."
   (interactive)
@@ -326,6 +456,13 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
       (kill-current-buffer)
       (funcall fn text))))
 
+(defun speed-type--save-and-play-next()
+  "Save results and Play a new speed-type session, base on the current one."
+  (interactive)
+  (message "Save and play next.")
+  (speed-type--save-stats)
+  (speed-type--play-next))
+
 (defun speed-type--play-next ()
   "Play a new speed-type session, based on the current one."
   (interactive)
@@ -333,6 +470,27 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
     (let ((fn speed-type--go-next-fn))
       (kill-current-buffer)
       (funcall fn))))
+
+(defun speed-type--process-saved-stats ()
+    "Process  save-stats."
+    (interactive)
+    (if
+	(and
+	     (file-readable-p   (speed-type--save-stats-filename))
+	     (not (equal   speed-type--save-stats-p "never")))
+      (let ((stats-file-buffer (find-file-noselect (speed-type--save-stats-filename ))))
+	(with-current-buffer stats-file-buffer
+	  (save-excursion
+	    (let* ((content (buffer-substring (point-min) (point-max)))
+		   (raw-records (parse-csv-string-rows content ?\, ?\" "\n"))
+                   (numbers (cl-mapcar (lambda (list) (cl-mapcar  'string-to-number (cdr list))) raw-records ))
+		   (num-of-records (length numbers ))
+		   (all-sums (reduce (lambda (l1 l2)
+				       (if (equal l2 nil)
+					   l1
+					 (cl-mapcar '+ l1 l2)))  numbers))
+	           (medians (mapcar (lambda (x) (/ x num-of-records )) all-sums)))
+	      (cons num-of-records  medians)))))))
 
 (defun speed-type-complete ()
   "Remove typing hooks from the buffer and print statistics."
@@ -352,16 +510,36 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
            speed-type--errors
            speed-type--corrections
            (speed-type--elapsed-time)))
+
+  (unless   (equal speed-type--save-stats-p "never")
+    (insert "\n\nMadian of previous attemps\n" )
+    (insert (apply 'speed-type--generate-stats-of-previous-records
+           (speed-type--process-saved-stats) )))
   (insert "\n\n")
   (insert (format "    [%s]uit\n"
                   (propertize "q" 'face 'highlight)))
+  (when (equal  speed-type--save-stats-p "ask")
+    (insert (format "    [%s]ave and quite\n" (propertize "s" 'face 'highlight))))
   (insert (format "    [%s]eplay this sample\n"
                   (propertize "r" 'face 'highlight)))
-  (when speed-type--go-next-fn (insert (format "    [%s]ext random sample\n"
-                                               (propertize "n" 'face 'highlight))))
+  (when (equal  speed-type--save-stats-p "ask")
+    (insert (format "    save and r[%s]play this sample\n"
+                  (propertize "e" 'face 'highlight))))
+  (when speed-type--go-next-fn
+    (insert (format "    [%s]ext random sample\n"
+                    (propertize "n" 'face 'highlight))))
+  (when (and speed-type--go-next-fn (equal  speed-type--save-stats-p "ask"))
+    (insert (format "    Save and ne[%s]t random sample\n"
+                    (propertize "x" 'face 'highlight))))
   (let ((view-read-only nil))
     (read-only-mode))
-  (use-local-map speed-type--completed-keymap))
+  
+  (if (equal  speed-type--save-stats-p "ask")
+      (use-local-map speed-type--completed-keymap-ask-save)
+    (if (equal  speed-type--save-stats-p "always" )
+	(use-local-map speed-type-completed-keymap-always-save)
+      (use-local-map speed-type--completed-keymap-never-save)))
+  )
 
 (defun speed-type--diff (orig new start end)
   "Update stats and buffer contents with result of changes in text."
@@ -475,6 +653,7 @@ CALLBACK is called when the setup process has been completed."
       (add-hook 'after-change-functions 'speed-type--change nil t)
       (add-hook 'first-change-hook 'speed-type--first-change nil t)
       (setq-local post-self-insert-hook nil)
+
       (when callback (funcall callback))
       (message "Timer will start when you type the first character."))))
 
@@ -551,6 +730,7 @@ been completed."
                                text syntax-table font-lock-df go-next-fn)))
     (speed-type--setup-code text #'replay-fn go-next-fn syntax-table font-lock-df)))
 
+
 (defun speed-type--get-replay-fn (go-next-fn)
   "Return a replay function which will use GO-NEXT-FN after completion."
   (lambda (text) (speed-type--setup text
@@ -572,6 +752,8 @@ been completed."
     (newline) (move-beginning-of-line nil) (speed-type-code-tab)))
 
 ;;;###autoload
+
+
 (defun speed-type-top-x (n)
   "Speed type the N most common words."
   (interactive "nTrain X most common words: ")
@@ -633,7 +815,7 @@ will be used.  Else some text will be picked randomly."
       (speed-type-region (point-min) (point-max))
     (let* ((buf (current-buffer))
            (text (speed-type--pick-text-to-type))
-           (go-next-fn (lambda ()
+           (ggo-next-fn (lambda ()
                          (with-current-buffer buf
                            (speed-type-buffer nil)))))
       (if (derived-mode-p 'prog-mode)
@@ -641,7 +823,7 @@ will be used.  Else some text will be picked randomly."
                                               (syntax-table)
                                               font-lock-defaults
                                               go-next-fn)
-        (speed-type--setup text :go-next-fn go-next-fn)))))
+        (speed-type--setup text :go-next-fn ggo-next-fn)))))
 
 ;;;###autoload
 (defun speed-type-text ()
