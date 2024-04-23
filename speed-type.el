@@ -665,29 +665,35 @@ LIMIT is supplied to the random-function."
   "Add extra words of text to be typed for the typing-session to be complete."
   (when (and (> (or speed-type-add-extra-words-on-mistake 0) 0)
 	     speed-type--add-extra-word-content-fn)
-    (dotimes (_ speed-type-add-extra-words-on-mistake)
-      (let ((word (funcall speed-type--add-extra-word-content-fn)))
-	(setq speed-type--extra-words-queue (append speed-type--extra-words-queue '(" ") (split-string word "" t)))
-	(setq speed-type--orig-text (concat speed-type--orig-text " " word))
-	(setq speed-type--mod-str (concat speed-type--mod-str (make-string (+ 1 (length word)) 0)))
-	(setq speed-type--remaining (+ 1 (length word) speed-type--remaining))))
+    (let ((words '()))
+      (dotimes (_ speed-type-add-extra-words-on-mistake)
+	(let ((word (funcall speed-type--add-extra-word-content-fn)))
+	  (if (string-empty-p word)
+g	      (message "Extra word function resulted in empty string.")
+	    (push word words))))
+      (let ((words-as-string (concat " " (string-trim (mapconcat 'identity words " ")))))
+	(setq speed-type--extra-words-queue (append speed-type--extra-words-queue (split-string words-as-string "" t)))
+	(setq speed-type--orig-text (concat speed-type--orig-text "-" words-as-string))
+	(setq speed-type--mod-str (concat speed-type--mod-str (make-string (+ 1 (length words-as-string)) 0)))
+	(setq speed-type--remaining (+ 1 (length words-as-string) speed-type--remaining))))
     (when (not (timerp speed-type--extra-words-animation-time))
       (setq speed-type--extra-words-animation-time (run-at-time nil 0.01 'speed-type-animate-extra-word-inseration)))))
 
 (defun speed-type-animate-extra-word-inseration ()
   "Animation which comes with punishment-lines."
-  (remove-hook 'after-change-functions 'speed-type--change t)
   (save-excursion
-    (if speed-type--extra-words-queue
-	(let ((token (pop speed-type--extra-words-queue)))
-	  (goto-char (point-max))
-	  (when (not (string= token "\n"))
-	    (end-of-line 1))
-	  (insert token))
-      (fill-region (point) (point-max))
-      (cancel-timer speed-type--extra-words-animation-time)
-      (setq speed-type--extra-words-animation-time nil)))
-  (add-hook 'after-change-functions 'speed-type--change nil t))
+    (with-current-buffer speed-type-buffer-name
+      (remove-hook 'after-change-functions 'speed-type--change t)
+      (if speed-type--extra-words-queue
+	  (let ((token (pop speed-type--extra-words-queue)))
+	    (goto-char (point-max))
+	    (when (not (string= token "\n"))
+	      (end-of-line 1))
+	    (insert token))
+	(fill-region (point) (point-max))
+	(cancel-timer speed-type--extra-words-animation-time)
+	(setq speed-type--extra-words-animation-time nil))
+      (add-hook 'after-change-functions 'speed-type--change nil t))))
 
 (defun speed-type-code-tab ()
   "A command to be mapped to TAB when speed typing code."
