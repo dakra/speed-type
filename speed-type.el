@@ -499,7 +499,8 @@ CALLBACK is called when the setup process has been completed."
       (setq speed-type--add-extra-word-content-fn add-extra-word-content-fn)
       (setq speed-type--go-next-fn go-next-fn)
       (when content-buffer
-	(setq speed-type--content-buffer content-buffer))
+	(setq speed-type--content-buffer content-buffer)
+	(setq-local speed-type--buffer buf))
       (with-current-buffer speed-type--content-buffer
 	(setq-local speed-type--buffer buf))
       (when replay-fn
@@ -521,6 +522,7 @@ CALLBACK is called when the setup process has been completed."
     (with-current-buffer buf
       (add-hook 'kill-buffer-hook 'speed-type--kill-content-buffer-hook nil t)
       (insert-buffer-substring buffer)
+      (setq buffer-read-only nil)
       (funcall (buffer-local-value 'major-mode buffer))
       (goto-char (point-min)))
     (get-buffer-create buf)))
@@ -531,6 +533,7 @@ CALLBACK is called when the setup process has been completed."
     (with-current-buffer buf
       (add-hook 'kill-buffer-hook 'speed-type--kill-content-buffer-hook nil t)
       (insert-file-contents file-path)
+      (setq buffer-read-only nil)
       (goto-char (point-min))
       (get-buffer-create buf))))
 
@@ -650,6 +653,8 @@ been completed."
   "Get next word from point in CONTENT-BUFFER."
   (with-current-buffer content-buffer
     (forward-word)
+    (if (= (point-max) (point))
+	(beginning-of-buffer))
     (or (word-at-point) "")))
 
 (defun speed-type--get-random-word (content-buffer limit)
@@ -677,12 +682,12 @@ LIMIT is supplied to the random-function."
 	(setq speed-type--mod-str (concat speed-type--mod-str (make-string (+ 1 (length words-as-string)) 0)))
 	(setq speed-type--remaining (+ 1 (length words-as-string) speed-type--remaining))))
     (when (not (timerp speed-type--extra-words-animation-time))
-      (setq speed-type--extra-words-animation-time (run-at-time nil 0.01 'speed-type-animate-extra-word-inseration)))))
+      (setq speed-type--extra-words-animation-time (run-at-time nil 0.01 'speed-type-animate-extra-word-inseration speed-type--buffer)))))
 
-(defun speed-type-animate-extra-word-inseration ()
-  "Animation which comes with punishment-lines."
+(defun speed-type-animate-extra-word-inseration (buf)
+  "Add words of punishment-lines in animated fashion to ‘BUF’."
   (save-excursion
-    (with-current-buffer speed-type-buffer-name
+    (with-current-buffer buf
       (remove-hook 'after-change-functions 'speed-type--change t)
       (if speed-type--extra-words-queue
 	  (let ((token (pop speed-type--extra-words-queue)))
@@ -796,7 +801,7 @@ will be used.  Else some text will be picked randomly."
                                     go-next-fn)
         (speed-type--setup buf
 		 text
-		 :add-extra-word-content-fn (lambda () (speed-type--get-next-word buf))
+		 :add-extra-word-content-fn (lambda () (speed-type--get-random-word buf))
 		 :go-next-fn go-next-fn)))))
 
 ;;;###autoload
