@@ -169,6 +169,7 @@ Total errors: %d
 (defvar speed-type-mode-map
   (let ((keymap (make-sparse-keymap)))
     (define-key keymap (kbd "C-c C-k")  #'speed-type-complete)
+    (define-key keymap (kbd "M-q") #'speed-type-fill-paragraph)
     keymap)
   "Keymap for `speed-type-mode'.")
 
@@ -357,6 +358,11 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
 	  (cb (current-buffer)))
       (funcall fn)
       (kill-buffer cb))))
+
+(defun speed-type-fill-paragraph ()
+  "Override keybinding of fill-paragraph with this to not destory session."
+  (interactive)
+  (message "Fill paragraph not available"))
 
 (defun speed-type-complete ()
   "Remove typing hooks from the buffer and print statistics."
