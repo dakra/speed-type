@@ -363,29 +363,31 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
   (interactive)
   (remove-hook 'after-change-functions 'speed-type--change)
   (remove-hook 'first-change-hook 'speed-type--first-change)
+  (speed-type-finish-animation speed-type--buffer)
   (goto-char (point-max))
-  (when speed-type--title
+  (with-current-buffer speed-type--buffer
+    (when speed-type--title
+      (insert "\n\n")
+      (insert (propertize speed-type--title 'face 'italic))
+      (when speed-type--author
+	(insert (propertize
+		 (format ", by %s" speed-type--author)
+		 'face 'italic))))
+    (insert (speed-type--generate-stats
+             speed-type--entries
+             speed-type--errors
+             speed-type--corrections
+             (speed-type--elapsed-time)))
     (insert "\n\n")
-    (insert (propertize speed-type--title 'face 'italic))
-    (when speed-type--author
-      (insert (propertize
-               (format ", by %s" speed-type--author)
-               'face 'italic))))
-  (insert (speed-type--generate-stats
-           speed-type--entries
-           speed-type--errors
-           speed-type--corrections
-           (speed-type--elapsed-time)))
-  (insert "\n\n")
-  (insert (format "    [%s]uit\n"
-                  (propertize "q" 'face 'highlight)))
-  (insert (format "    [%s]eplay this sample\n"
-                  (propertize "r" 'face 'highlight)))
-  (when speed-type--go-next-fn (insert (format "    [%s]ext random sample\n"
-                                     (propertize "n" 'face 'highlight))))
-  (let ((view-read-only nil))
-    (read-only-mode))
-  (use-local-map speed-type--completed-keymap))
+    (insert (format "    [%s]uit\n"
+                    (propertize "q" 'face 'highlight)))
+    (insert (format "    [%s]eplay this sample\n"
+                    (propertize "r" 'face 'highlight)))
+    (when speed-type--go-next-fn (insert (format "    [%s]ext random sample\n"
+                                       (propertize "n" 'face 'highlight))))
+    (let ((view-read-only nil))
+      (read-only-mode))
+    (use-local-map speed-type--completed-keymap)))
 
 (defun speed-type--diff (orig new start end)
   "Update stats and buffer contents with result of changes in text."
@@ -683,6 +685,17 @@ LIMIT is supplied to the random-function."
 	(setq speed-type--remaining (+ 1 (length words-as-string) speed-type--remaining))))
     (when (not (timerp speed-type--extra-words-animation-time))
       (setq speed-type--extra-words-animation-time (run-at-time nil 0.01 'speed-type-animate-extra-word-inseration speed-type--buffer)))))
+
+(defun speed-type-finish-animation (buf)
+  "Insert all remaining characters in ‘speed-type--extra-words-queue’."
+  (save-excursion
+    (with-current-buffer buf
+      (remove-hook 'after-change-functions 'speed-type--change t)
+      (cancel-timer speed-type--extra-words-animation-time)
+      (setq speed-type--extra-words-animation-time nil)
+      (when speed-type--extra-words-queue
+	  (insert (mapconcat 'identity speed-type--extra-words-queue))
+	  (fill-region (point-min) (point-max))))))
 
 (defun speed-type-animate-extra-word-inseration (buf)
   "Add words of punishment-lines in animated fashion to ‘BUF’."
