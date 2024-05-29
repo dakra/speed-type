@@ -662,7 +662,7 @@ been completed."
   (with-current-buffer content-buffer
     (forward-word)
     (if (= (point-max) (point))
-	(beginning-of-buffer))
+	(goto-char (point-min)))
     (or (word-at-point) "")))
 
 (defun speed-type--get-random-word (content-buffer limit)
@@ -820,7 +820,7 @@ will be used.  Else some text will be picked randomly."
                                     go-next-fn)
         (speed-type--setup buf
 		 text
-		 :add-extra-word-content-fn (lambda () (speed-type--get-random-word buf))
+		 :add-extra-word-content-fn (lambda () (speed-type--get-random-word buf speed-type--n-words))
 		 :go-next-fn go-next-fn)))))
 
 ;;;###autoload
