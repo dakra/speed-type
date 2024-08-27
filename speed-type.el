@@ -374,26 +374,31 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
   (with-current-buffer speed-type--buffer
     (when speed-type--title
       (insert "\n\n")
-      (insert (propertize speed-type--title 'face 'italic))
-      (when speed-type--author
-	(insert (propertize
-		 (format ", by %s" speed-type--author)
-		 'face 'italic))))
-    (insert (speed-type--generate-stats
-             speed-type--entries
-             speed-type--errors
-             speed-type--corrections
-             (speed-type--elapsed-time)))
-    (insert "\n\n")
-    (insert (format "    [%s]uit\n"
-                    (propertize "q" 'face 'highlight)))
-    (insert (format "    [%s]eplay this sample\n"
-                    (propertize "r" 'face 'highlight)))
-    (when speed-type--go-next-fn (insert (format "    [%s]ext random sample\n"
-                                       (propertize "n" 'face 'highlight))))
+      (save-excursion
+	(insert (propertize speed-type--title 'face 'italic))
+	(when speed-type--author
+	  (insert (propertize
+		   (format ", by %s" speed-type--author)
+		   'face 'italic)))
+	(insert (speed-type--generate-stats
+		 speed-type--entries
+		 speed-type--errors
+		 speed-type--corrections
+		 (speed-type--elapsed-time)))
+	(insert "\n\n")
+	(insert (format "    [%s]uit\n"
+			(propertize "q" 'face 'highlight)))
+	(insert (format "    [%s]eplay this sample\n"
+			(propertize "r" 'face 'highlight)))
+	(when speed-type--go-next-fn (insert (format "    [%s]ext random sample\n"
+					   (propertize "n" 'face 'highlight)))))
+      (let ((this-scroll-margin
+	     (min (max 0 scroll-margin)
+		  (truncate (/ (window-body-height) 4.0)))))
+	(recenter this-scroll-margin t))
     (let ((view-read-only nil))
       (read-only-mode))
-    (use-local-map speed-type--completed-keymap)))
+    (use-local-map speed-type--completed-keymap))))
 
 (defun speed-type--diff (orig new start end)
   "Update stats and buffer contents with result of changes in text."
@@ -514,6 +519,7 @@ CALLBACK is called when the setup process has been completed."
       (when replay-fn
         (setq speed-type--replay-fn replay-fn))
       (insert text)
+      (fill-region (point-min) (point-max))
       (set-buffer-modified-p nil)
       (switch-to-buffer buf)
       (goto-char 0)
@@ -684,20 +690,20 @@ LIMIT is supplied to the random-function."
 	  (if (string-empty-p word)
 	      (message "Extra word function resulted in empty string.")
 	    (push word words))))
-      (let ((words-as-string (concat " " (string-trim (mapconcat 'identity words " ")))))
+      (let ((words-as-string (concat " " (string-trim (mapconcat 'identity (nreverse words) " ")))))
 	(setq speed-type--extra-words-queue (append speed-type--extra-words-queue (split-string words-as-string "" t)))
 	(setq speed-type--orig-text (concat speed-type--orig-text words-as-string))
 	(setq speed-type--mod-str (concat speed-type--mod-str (make-string (+ 1 (length words-as-string)) 0)))
-	(setq speed-type--remaining (+ 1 (length words-as-string) speed-type--remaining))))
+	(setq speed-type--remaining (+ (length words-as-string) speed-type--remaining))))
     (when (not (timerp speed-type--extra-words-animation-time))
       (setq speed-type--extra-words-animation-time (run-at-time nil 0.01 'speed-type-animate-extra-word-inseration speed-type--buffer)))))
 
 (defun speed-type-finish-animation (buf)
-  "Insert all remaining characters in ‘speed-type--extra-words-queue’."
+  "Insert all remaining characters in ‘speed-type--extra-words-queue’ to BUF."
   (save-excursion
     (with-current-buffer buf
       (remove-hook 'after-change-functions 'speed-type--change t)
-      (cancel-timer speed-type--extra-words-animation-time)
+      (when speed-type--extra-words-animation-time (cancel-timer speed-type--extra-words-animation-time))
       (setq speed-type--extra-words-animation-time nil)
       (when speed-type--extra-words-queue
 	  (insert (mapconcat 'identity speed-type--extra-words-queue))
@@ -719,7 +725,7 @@ LIMIT is supplied to the random-function."
 	(setq speed-type--extra-words-animation-time nil))
       (add-hook 'after-change-functions 'speed-type--change nil t))))
 
-(defun speed-type-code-tab ()
+(defun speed-type--code-tab ()
   "A command to be mapped to TAB when speed typing code."
   (interactive)
   (let ((start (point))
@@ -727,7 +733,7 @@ LIMIT is supplied to the random-function."
     (goto-char start)
     (when end (insert (buffer-substring-no-properties start (1- end))))))
 
-(defun speed-type-code-ret ()
+(defun speed-type--code-ret ()
   "A command to be mapped to RET when speed typing code."
   (interactive)
   (when (= (point) (line-end-position))
