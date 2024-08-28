@@ -671,6 +671,14 @@ been completed."
 	(goto-char (point-min)))
     (or (word-at-point) "")))
 
+(defun speed-type--get-separated-thing-at-random-line (content-buffer limit separator)
+  "Get thing that is SEPARATOR at random line in CONTENT-BUFFER."
+  (with-current-buffer content-buffer
+    (save-excursion
+      (goto-char (point-min))
+      (beginning-of-line (+ 1 (random limit)))
+      (car (split-string (or (thing-at-point 'line) "") separator)))))
+
 (defun speed-type--get-random-word (content-buffer limit)
   "Get random word in CONTENT-BUFFER.
 LIMIT is supplied to the random-function."
@@ -688,7 +696,7 @@ LIMIT is supplied to the random-function."
       (dotimes (_ speed-type-add-extra-words-on-mistake)
 	(let ((word (funcall speed-type--add-extra-word-content-fn)))
 	  (if (string-empty-p word)
-	      (message "Extra word function resulted in empty string.")
+	      (message "You got lucky! Extra word function resulted in empty string.")
 	    (push word words))))
       (let ((words-as-string (concat " " (string-trim (mapconcat 'identity (nreverse words) " ")))))
 	(setq speed-type--extra-words-queue (append speed-type--extra-words-queue (split-string words-as-string "" t)))
@@ -814,6 +822,7 @@ will be used.  Else some text will be picked randomly."
     (let* ((buf (speed-type-prepare-content-buffer-from-buffer (current-buffer)))
            (text (with-current-buffer buf
 		   (speed-type--pick-text-to-type)))
+	   (line-count (with-current-buffer buf (count-lines (point-min) (point-max))))
            (go-next-fn (lambda ()
                          (with-current-buffer buf
                            (speed-type-buffer nil)))))
@@ -826,7 +835,7 @@ will be used.  Else some text will be picked randomly."
                                     go-next-fn)
         (speed-type--setup buf
 		 text
-		 :add-extra-word-content-fn (lambda () (speed-type--get-random-word buf speed-type--n-words))
+		 :add-extra-word-content-fn (lambda () (speed-type--get-separated-thing-at-random-line buf line-count " "))
 		 :go-next-fn go-next-fn)))))
 
 ;;;###autoload
