@@ -1,4 +1,4 @@
-# Fork of speed-type
+# speed-type [![melpa badge][melpa-badge]][melpa-link] [![melpa stable badge][melpa-stable-badge]][melpa-stable-link]
 
 Practice touch/speed typing in GNU Emacs.
 
@@ -6,44 +6,23 @@ Practice touch/speed typing in GNU Emacs.
 
 ## Installation
 
-Because this is a Fork it’s not available on melpa.
+Install speed-type from [MELPA](melpa.org) with:
 
-You can use an `el-patch` with `straight`:
+```
+M-x package-install RET speed-type
+```
+
+If you prefer to install by hand: Put speed-type.el into a directory specified
+by the load-path variable. Alternatively, you can add a directory to the
+variable load-path by (add-to-list 'load-path "ADDITIONAL-DIRECTORY").
+
+If you put the file in "~/.emacs.d/speed-type/speed-type.el" for instance, the
+following snipped in your .emacs file will load and init the extension.
+
 ```emacs-lisp
-(use-package speed-type
-  :straight (speed-type :type git :host github :repo "lordnik22/speed-type"))
-```
-
-Alternatively, you can clone this project
-```
-mkdir -p ~/.emacs.d/elisp
-cd ~/.emacs.d/elisp
-git clone https://github.com/lordnik22/speed-type.git
-```
-...and add it to the load-path in your init-file:
-```
-(add-to-list 'load-path "~/.emacs.d/elisp/speed-type")
+(add-to-list 'load-path "~/.emacs.d/speed-type/speed-type.el")
 (require 'speed-type)
 ```
-
-## Configuration
-
-speed-type can be customized using:
-
-```
-M-x customize-group speed-type RET
-```
-
-## Why a Fork?
-
-If you like this fork also give a star to the origin: https://github.com/dakra/speed-type
-
-Main differences:
-- content-buffer from which the speed-type-buffer retrieves it’s content
-- integrated add-word-feature from typer-mode
-- some bugfixes and more consistent state-handling
-- deactivate keys which can break a typing session (e.g. fill-paragraph)
-- refactored code at some places
 
 ## Running speed-type
 
@@ -71,6 +50,33 @@ the selected region.
 `speed-type-top-x` (or -100/-1000) lets you practice the top X words
 for the selected language.
 
+## Customization
+
+See all custom variables of speed-type pressing:
+```
+M-x customize-group speed-type RET
+```
+
+### Statistics
+
+The default of `speed-type-save-statistic-option` is `always` which
+means speed-type session data is stored to file
+`speed-type-statistic-filename`. All values which you see at the end
+of each speed-type session are stored there.
+
+You can display the calculated medians from the data by pressing `d`
+at the end of a speed-type session.
+
+### Add words on error (typer-mode)
+
+The default of `speed-type-add-extra-words-on-mistake` is `0` which
+means no additional words are added on misstyping. If you like to
+challange yourself you can set this to a number higher than 0.
+Depending on your accuracy we recommanded a number between 1 and 7.
+
+It adds random or next words from the content the speed-type session
+took his content. If you replay the session, the added words will be
+included.
 
 [melpa-link]: https://melpa.org/#/speed-type
 [melpa-stable-link]: https://stable.melpa.org/#/speed-type

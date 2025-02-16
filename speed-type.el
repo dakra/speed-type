@@ -3,11 +3,11 @@
 ;; Copyright (C) 2015 Gunther Hagleitner
 
 ;; Author: Gunther Hagleitner
-;; Maintainer: Daniel Kraus <daniel@kraus.my>
-;; Version: 1.3
+;; Maintainer: Daniel Kraus <daniel@kraus.my>, lordnik22
+;; Version: 1.4
 ;; Keywords: games
 ;; URL: https://github.com/dakra/speed-type
-;; Package-Requires: ((emacs "25.1"))
+;; Package-Requires: ((emacs "26.1") (compat "29.1.3") (dash "2.19.1"))
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 
 ;; This file is NOT part of GNU Emacs.
@@ -40,6 +40,7 @@
 (require 'url-handlers)
 (require 'url-http)
 (require 'thingatpt)
+(require 'dash)
 
 (defgroup speed-type nil
   "Practice touch-typing in Emacs."
@@ -115,9 +116,27 @@ To remove without replacement, use the form: `(bad-string . \"\")'"
 (defcustom speed-type-add-extra-words-on-mistake 0
   "How many new words should be added on mistake.
 When 0 or less, no words are added. The typing-session will only
-be complete when these extra words are typed too."
+be complete when these extra words are typed too. Recommanded is
+something between 1 and 7."
   :group 'speed-type
   :type 'integer)
+
+(defcustom speed-type-save-statistic-option 'always
+  "Save the stats for the play or not."
+  :group 'speed-type
+  :type '(choice (const :tag "Always" 'always)
+		 (const :tag "Never" 'never)
+		 (const :tag "Ask" 'ask)))
+
+(defcustom speed-type-statistic-filename (concat speed-type-gb-dir "/" "speed-type-statistic.el")
+  "Name of file for general stats."
+  :group 'speed-type
+  :type 'string)
+
+(defcustom speed-type-max-num-records 10000
+  "Maximum number of saved records."
+  :group 'speed-type
+  :type '(natnum :tag "None negative number." ))
 
 (defface speed-type-default
   '()
@@ -157,9 +176,24 @@ Corrections:  %d
 Total errors: %d
 %s")
 
+(defvar speed-type-previous-saved-stats-format  "\n
+Num of records:      %d
+Median Skill:        %s
+Median Net WPM:      %d
+Median Net CPM:      %d
+Median Gross WPM:    %d
+Median Gross CPM:    %d
+Median Accuracy:     %.2f%%
+Median Total time:   %d
+Median Total chars:  %d
+Median Corrections:  %d
+Median Total errors: %d
+Median Remaining:    %d")
+
 (defvar speed-type--completed-keymap
   (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "q") 'kill-this-buffer)
+    (define-key map (kbd "q") 'speed-type--quit)
+    (define-key map (kbd "d") 'speed-type--display-statistic)
     (define-key map (kbd "r") 'speed-type--replay)
     (define-key map (kbd "n") 'speed-type--play-next)
     map))
@@ -257,20 +291,257 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
         ((< wpm 80) "Master")
         (t          "Racer")))
 
-(defun speed-type--generate-stats (entries errors corrections seconds)
-  "Return string of statistics."
-  (format speed-type-stats-format
-          (speed-type--skill (speed-type--net-wpm entries errors seconds))
-          (speed-type--net-wpm entries errors seconds)
-          (speed-type--net-cpm entries errors seconds)
-          (speed-type--gross-wpm entries seconds)
-          (speed-type--gross-cpm entries seconds)
-          (speed-type--accuracy entries (- entries errors) corrections)
-          (format-seconds "%M %z%S" seconds)
-          entries
-          corrections
-          (+ errors corrections)
-          speed-type-explaining-message))
+(defvar speed-type-coding-system 'utf-8-unix
+  "The coding system speed-type uses for saving the stats.
+Changing this value while Emacs is running is supported, but considered
+unwise, unless you know what you are doing.")
+
+(defconst speed-type-file-format-version 0
+  "The current version of the format used by speed-type statistic files.
+You should never need to change this.")
+
+(defun speed-type-statistic-variables ()
+  "Define the structure of raw-data used for calculating the median-stats.
+
+If the structure is changed, SPEED-TYPE-FILE-FORMAT-VERSION must
+be incremented and a migration must be coded in
+SPEED-TYPE-MAYBE-UPGRADE-FILE-FORMAT."
+  (let ((entries speed-type--entries)
+	(errors speed-type--errors)
+	(corrections speed-type--corrections)
+	(remaining speed-type--remaining)
+	(seconds (speed-type--elapsed-time)))
+    (list (cons 'speed-type--title speed-type--title)
+	  (cons 'speed-type--remaining remaining)
+	  (cons 'speed-type--author speed-type--author)
+	  (cons 'speed-type--lang speed-type--lang)
+	  (cons 'speed-type--n-words speed-type--n-words)
+	  (cons 'speed-type--entries entries)
+	  (cons 'speed-type--errors errors)
+	  (cons 'speed-type--corrections corrections)
+	  (cons 'speed-type--elapsed-time seconds)
+	  (cons 'speed-type--gross-wpm (speed-type--gross-wpm entries seconds))
+	  (cons 'speed-type--gross-cpm (speed-type--gross-cpm entries seconds))
+	  (cons 'speed-type--net-wpm (speed-type--net-wpm entries errors seconds))
+	  (cons 'speed-type--net-cpm (speed-type--net-cpm entries errors seconds))
+	  (cons 'speed-type--accuracy (speed-type--accuracy entries (- entries errors) corrections)))))
+
+(defun speed-type-grok-file-format-version ()
+  "Return an integer which is the file-format version of this speed-type statistic file.
+This expects to be called from `point-min' in a speed-type statistic file."
+  (declare (obsolete nil "27.1"))
+  (if (looking-at "^;;;;")
+      (save-excursion
+        (save-match-data
+          (re-search-forward "[0-9]")
+          (forward-char -1)
+          (read (current-buffer))))
+    ;; Else this is format version 0, the original one, which didn't
+    ;; even have version stamps.
+    0))
+
+(defun speed-type-maybe-upgrade-file-format ()
+  "Check the file-format version of current file.
+If the version is not up-to-date, upgrade it automatically.
+This expects to be called from `point-min' in a speed-type statistic file."
+  (declare (obsolete nil "27.1"))
+  (let ((version
+         (with-suppressed-warnings ((obsolete speed-type-grok-file-format-version)) ;; we use the same mechanism as bookmark file
+           (speed-type-grok-file-format-version))))
+    (cond
+     ((= version speed-type-file-format-version)
+      ) ; home free -- version is current
+     (t (error "Speed-type statistic file format version strangeness")))))
+
+(defconst speed-type-end-of-version-stamp-marker
+  "-*- End Of Speed Type File Format Version Stamp -*-\n"
+  "This string marks the end of the version stamp in a speed-type statistic file.")
+
+(defun speed-type-insert-file-format-version-stamp (coding)
+  "Insert text indicating current version of speed-type statistic file format.
+CODING is the symbol of the coding-system in which the file is encoded."
+  (if (memq (coding-system-base coding) '(undecided prefer-utf-8))
+      (setq coding 'utf-8-emacs))
+  (insert
+   (format
+    ";;;; Emacs Speed-type statisitic Format Version %d\
+;;;; -*- coding: %S; mode: lisp-data -*-\n"
+    speed-type-file-format-version (coding-system-base coding)))
+  (insert ";;; This format is meant to be slightly human-readable;\n"
+          ";;; nevertheless, you probably don't want to edit it.\n"
+          ";;; "
+          speed-type-end-of-version-stamp-marker))
+
+(defun speed-type-save-stats-when-customized ()
+  "Check the custom variable SPEED-TYPE-SAVE-STATISTIC-OPTION and save stats."
+  (when (not (eq speed-type-save-statistic-option 'never))
+    (when (if (eq speed-type-save-statistic-option 'ask) (y-or-n-p "Save statistic?") t)
+      (speed-type-save-stats speed-type-statistic-filename))))
+
+(defun speed-type-save-stats (file &optional alt-msg)
+  "Write stats of current speed-type session to FILE.
+
+Non-nil ALT-MSG is a message format string to use in place of the
+default, \"Saving statistics of current speed-type session to
+file `%s'...\". The string must contain a `%s' construct, so that
+it can be passed along with FILE to `format'. At the end,
+\"done\" is appended to the message."
+  (let ((msg                      (or alt-msg  "Saving statistics of current speed-type session to file `%s'..."))
+        (coding-system-for-write  speed-type-coding-system)
+        (print-length             nil)
+        (print-level              nil)
+        (existing-buf             (get-file-buffer file))
+        (emacs-lisp-mode-hook     nil) ; Avoid inserting automatic file header if existing empty file, so
+        (lisp-mode-hook           nil) ; better chance `speed-type-maybe-upgrade-file-format' signals error.
+	(speed-type-buffer (current-buffer))
+        bname fname last-fname start end)
+    (when (file-directory-p file) (error "`%s' is a directory, not a file" file))
+    (message msg (abbreviate-file-name file))
+    (with-current-buffer (let ((enable-local-variables ())) (find-file-noselect file))
+      (goto-char (point-min))
+      (if (file-exists-p file)
+          (speed-type-maybe-upgrade-file-format)
+	(delete-region (point-min) (point-max)) ; In case a find-file hook inserted a header, etc.
+	(unless (boundp 'speed-type-coding-system) ; Emacs < 25.2.
+	  (speed-type-insert-file-format-version-stamp))
+        (insert "(\n)"))
+      (setq start (and (file-exists-p file)
+                       (or (save-excursion (goto-char (point-min))
+                                           (search-forward (concat speed-type-end-of-version-stamp-marker "(")
+                                                           nil t))
+                           (error "Invalid speed-type-statisitic-file")))
+            end    (and start
+                        (or (save-excursion (goto-char start) (and (looking-at ")") start))
+                            (save-excursion (goto-char (point-max)) (re-search-backward "^)" nil t))
+                            (error "Invalid speed-type-statisitic-file"))))
+      (if (not start) ; New file, no header yet.
+          (goto-char 2)
+        ;;  Existing file - delete old entry unless max is not reached. Rolling.
+        (when (> (count-lines start end) speed-type-max-num-records)
+	  (save-excursion
+	    (goto-char start)
+	    (or (looking-at "(") (search-forward "(" nil t 1))
+	    (let ((bounds (bounds-of-thing-at-point 'sexp)))
+	      (kill-region (car bounds) (+ 1 (cdr bounds))))))
+        (goto-char (and start
+                        (or (save-excursion (goto-char start) (and (looking-at ")") start))
+                            (save-excursion (goto-char (point-max)) (re-search-backward "^)" nil t))
+                            (error "Invalid speed-type-statisitic-file")))))
+      (pp (with-current-buffer speed-type-buffer (speed-type-statistic-variables)) (current-buffer))
+      (when (boundp 'speed-type-coding-system) ; Emacs 25.2+.  See bug #25365
+        ;; Make sure specified encoding can encode the speed-type stats.  If not, suggest utf-8-emacs as default.
+        (with-coding-priority '(utf-8-emacs)
+          (setq coding-system-for-write (select-safe-coding-system (point-min) (point-max)
+                                                                   (list t coding-system-for-write))))
+        (when start (delete-region 1 (1- start))) ; Delete old header.
+        (goto-char 1)
+        (speed-type-insert-file-format-version-stamp coding-system-for-write))
+      (let ((require-final-newline t)
+            (errorp nil))
+        (condition-case nil
+            (write-file file)
+          (file-error (setq errorp  t)
+                      ;; Do NOT raise error.  (Need to be able to exit.)
+                      (let ((msg  (format "CANNOT WRITE FILE `%s'" file)))
+                        (if (fboundp 'display-warning)
+                            (display-warning 'speed-type msg)
+                          (message msg)
+                          (sit-for 4)))))
+        (when (boundp 'speed-type-coding-system) ; Emacs 25.2+
+          (setq speed-type-coding-system  coding-system-for-write))
+        (unless existing-buf (kill-buffer (current-buffer)))
+        (unless errorp (message (concat msg "done") file))))))
+
+(defun speed-type-stats-list-from-buffer ()
+  "Read and return a speed-type stats list from the current buffer.
+Point is irrelevant and unaffected."
+  (let ((stats (save-excursion
+                (goto-char (point-min))
+                (if (search-forward speed-type-end-of-version-stamp-marker nil t)
+                    (condition-case err
+                        (read (current-buffer))
+                      (error (error "Cannot read definitions in speed type statistic file:  %s"
+                                    (error-message-string err))))
+                   ;; Else we're dealing with format version 0
+		  (error "Buffer is not in speed-type statistic format")))))
+      stats))
+
+(defun speed-type--calc-median (symbol stats)
+  "Calculate the median of given SYMBOL in STATS."
+  (let* ((numbers (-sort #'< (mapcar (lambda (e) (cdr (assoc symbol e))) stats)))
+	 (num-of-records (length numbers))
+	 (medians (if (eq (% num-of-records 2) 0)
+		      (/ (+ (nth (- 1 (/ num-of-records 2)) numbers)
+			    (nth (/ num-of-records 2) numbers))
+			 2)
+		    (nth (- 1 (/ num-of-records 2)) numbers))))
+    medians))
+
+(defun speed-type--calc-stats (stats)
+  "Calculate the median of each numerical value in STATS. Additional provde length and skill-alue."
+  (let ((median-gross-wpm (speed-type--calc-median 'speed-type--gross-wpm stats)))
+    (list
+     (length stats)
+     (speed-type--skill median-gross-wpm)
+     (speed-type--calc-median 'speed-type--net-wpm stats)
+     (speed-type--calc-median 'speed-type--net-cpm stats)
+     median-gross-wpm
+     (speed-type--calc-median 'speed-type--gross-cpm stats)
+     (speed-type--calc-median 'speed-type--accuracy stats)
+     (speed-type--calc-median 'speed-type--elapsed-time stats)
+     (speed-type--calc-median 'speed-type--entries stats)
+     (speed-type--calc-median 'speed-type--corrections stats)
+     (speed-type--calc-median 'speed-type--errors stats)
+     (speed-type--calc-median 'speed-type--remaining stats))))
+
+(defun speed-type-display-menu ()
+  "Display and set controls the user can make in this speed-type session.
+leave buffer in read-only mode."
+  (read-only-mode -1)
+  (insert "\n\n"
+	  (format "    [%s]uit\n"
+		  (propertize "q" 'face 'highlight))
+	  (format "    [%s]eplay this sample\n"
+		  (propertize "r" 'face 'highlight)))
+  (when (not (eq 'never speed-type-save-statistic-option))
+    (insert (format "    [%s]isplay statistic\n"
+		    (propertize "d" 'face 'highlight))))
+  (when speed-type--go-next-fn
+    (insert (format "    [%s]ext random sample\n"
+		    (propertize "n" 'face 'highlight))))
+  (let ((this-scroll-margin
+	 (min (max 0 scroll-margin)
+	      (truncate (/ (window-body-height) 4.0)))))
+    (recenter this-scroll-margin t))
+  (let ((view-read-only nil))
+    (read-only-mode))
+  (use-local-map speed-type--completed-keymap))
+
+(defun speed-type-load-last-stats (file)
+  "Load speed-type stats from FILE (which must be in the standard format).
+Return the list of stats read from FILE.
+
+If you use `speed-type--load-stats' to load a file that does not contain a
+proper speed-type stats list, then when speed-type stats are saved the current
+speed-type stats file will likely become corrupted.  You should load only
+speed-type files that were created using the speed-type functions."
+  ;; Load.
+  (setq file (abbreviate-file-name (expand-file-name file)))
+  (when (file-directory-p file) (error "`%s' is a directory, not a file" file))
+  (unless (file-readable-p file) (error "Cannot read speed-type stats file `%s'" file))
+  (message "Loading speed-type stats from `%s'..." file)
+  (let ((existing-buf (get-file-buffer file))
+        blist)
+    (with-current-buffer (let ((enable-local-variables ())) (find-file-noselect file))
+      (goto-char (point-min))
+      (speed-type-maybe-upgrade-file-format)
+      (setq blist (speed-type-stats-list-from-buffer))
+      (unless (listp blist) (error "Invalid speed-type stats list in `%s'" file))
+      (when (boundp 'speed-type-coding-system)	; Emacs 25.2+
+        (setq speed-type-coding-system  buffer-file-coding-system))
+      (unless (eq existing-buf (current-buffer)) (kill-buffer (current-buffer))))
+    (message "Speed-type stats in `%s' loaded" file)
+    blist))
 
 (defun speed-type--gb-url (book-num)
   "Return url for BOOK-NUM."
@@ -339,6 +610,20 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
                             (cl-incf speed-type--corrections))))
       (store-substring speed-type--mod-str pos 0))))
 
+(defun speed-type--display-statistic ()
+  "Display median values from current and past entries."
+  (interactive)
+  (with-current-buffer speed-type--buffer
+    (goto-char (point-max))
+    (read-only-mode -1)
+    (insert (apply 'format speed-type-previous-saved-stats-format (speed-type--calc-stats (speed-type-load-last-stats speed-type-statistic-filename))))
+    (read-only-mode)
+    (speed-type--display-menu)))
+
+(defun speed-type--quit ()
+  (interactive)
+  (kill-current-buffer))
+
 (defun speed-type--replay ()
   "Replay a speed-type session."
   (interactive)
@@ -362,6 +647,21 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
   (interactive)
   (message "Fill paragraph not available"))
 
+(defun speed-type-generate-stats (entries errors corrections seconds)
+  "Return string of statistics."
+  (format speed-type-stats-format
+          (speed-type--skill (speed-type--net-wpm entries errors seconds))
+          (speed-type--net-wpm entries errors seconds)
+          (speed-type--net-cpm entries errors seconds)
+          (speed-type--gross-wpm entries seconds)
+          (speed-type--gross-cpm entries seconds)
+          (speed-type--accuracy entries (- entries errors) corrections)
+          (format-seconds "%M %z%S" seconds)
+          entries
+          corrections
+          (+ errors corrections)
+          speed-type-explaining-message))
+
 (defun speed-type-complete ()
   "Remove typing hooks from the buffer and print statistics."
   (interactive)
@@ -378,25 +678,13 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
 	  (insert (propertize
 		   (format ", by %s" speed-type--author)
 		   'face 'italic)))
-	(insert (speed-type--generate-stats
+	(insert (speed-type-generate-stats
 		 speed-type--entries
 		 speed-type--errors
 		 speed-type--corrections
 		 (speed-type--elapsed-time)))
-	(insert "\n\n")
-	(insert (format "    [%s]uit\n"
-			(propertize "q" 'face 'highlight)))
-	(insert (format "    [%s]eplay this sample\n"
-			(propertize "r" 'face 'highlight)))
-	(when speed-type--go-next-fn (insert (format "    [%s]ext random sample\n"
-					   (propertize "n" 'face 'highlight)))))
-      (let ((this-scroll-margin
-	     (min (max 0 scroll-margin)
-		  (truncate (/ (window-body-height) 4.0)))))
-	(recenter this-scroll-margin t))
-    (let ((view-read-only nil))
-      (read-only-mode))
-    (use-local-map speed-type--completed-keymap))))
+	(speed-type-save-stats-when-customized)
+	(speed-type-display-menu)))))
 
 (defun speed-type--diff (orig new start end)
   "Update stats and buffer contents with result of changes in text."
@@ -598,7 +886,7 @@ to (point-min) and (point-max)"
       (setq continue (re-search-backward (sentence-end) (mark) t))
       (when continue (setq fwd t)))
     (when fwd (forward-char)))
-  (unless (derived-mode-p 'prog-mode) (fill-region (region-beginning) (region-end) 'none t))
+  (unless (derived-mode-p 'prog-mode) (fill-region (point-min) (point-max) 'none t))
   (buffer-substring-no-properties (region-beginning) (region-end)))
 
 (defun speed-type--setup-code
@@ -659,7 +947,6 @@ been completed."
        (with-current-buffer speed-type--content-buffer font-lock-defaults)
        speed-type--go-next-fn)
     (speed-type--setup speed-type--content-buffer
-	     speed-type--title
 	     speed-type--orig-text
 	     :lang speed-type--lang
 	     :author speed-type--author
@@ -723,9 +1010,11 @@ LIMIT is supplied to the random-function."
       (when speed-type--extra-words-animation-time (cancel-timer speed-type--extra-words-animation-time))
       (setq speed-type--extra-words-animation-time nil)
       (when speed-type--extra-words-queue
-	(insert (mapconcat 'identity speed-type--extra-words-queue))
-	(unless (with-current-buffer speed-type--content-buffer (derived-mode-p 'prog-mode)
-				     (fill-region (point-min) (point-max) 'none t)))))))
+	(goto-char (point-max))
+	(insert (mapconcat 'identity speed-type--extra-words-queue ""))
+	(unless (with-current-buffer speed-type--content-buffer (derived-mode-p 'prog-mode))
+	  (fill-region (point-min) (point-max) 'none t))
+	(setq speed-type--extra-words-queue nil)))))
 
 (defun speed-type-animate-extra-word-inseration (buf)
   "Add words of punishment-lines in animated fashion to ‘BUF’."
@@ -775,7 +1064,7 @@ LIMIT is supplied to the random-function."
 		 (while (< (buffer-size) char-length)
 		   (insert (speed-type--get-random-word buf n))
                    (insert " "))
-		 (fill-region (point-min) (point-max) 'none t)
+		 (fill-region (point-min) (point-max))
 		 (if speed-type-wordlist-transform
                      (funcall speed-type-wordlist-transform (buffer-string))
                    (buffer-string))))
@@ -836,12 +1125,9 @@ will be used.  Else some text will be picked randomly."
   (if full
       (speed-type-region (point-min) (point-max))
     (let* ((buf (speed-type-prepare-content-buffer-from-buffer (current-buffer)))
-           (text (with-current-buffer buf
-		   (speed-type--pick-text-to-type)))
+           (text (with-current-buffer buf (speed-type--pick-text-to-type)))
 	   (line-count (with-current-buffer buf (count-lines (point-min) (point-max))))
-           (go-next-fn (lambda ()
-                         (with-current-buffer buf
-                           (speed-type-buffer nil)))))
+           (go-next-fn (lambda () (with-current-buffer buf (speed-type-buffer full)))))
       (if (with-current-buffer buf
 	    (derived-mode-p 'prog-mode))
           (speed-type--code-with-highlighting buf
@@ -856,6 +1142,7 @@ will be used.  Else some text will be picked randomly."
 		 :author (user-full-name)
 		 :title (buffer-name)
 		 :add-extra-word-content-fn (lambda () (speed-type--get-separated-thing-at-random-line buf line-count " "))
+		 :replay-fn #'speed-type--get-replay-fn
 		 :go-next-fn go-next-fn)))))
 
 ;;;###autoload
