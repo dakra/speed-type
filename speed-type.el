@@ -619,7 +619,7 @@ speed-type files that were created using the speed-type functions."
     (read-only-mode -1)
     (insert (apply 'format speed-type-previous-saved-stats-format (speed-type--calc-stats (speed-type-load-last-stats speed-type-statistic-filename))))
     (read-only-mode)
-    (speed-type--display-menu)))
+    (speed-type-display-menu)))
 
 (defun speed-type--quit ()
   (interactive)
