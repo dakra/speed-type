@@ -73,10 +73,10 @@ at the end of a speed-type session.
 The default of `speed-type-add-extra-words-on-mistake` is `0` which
 means no additional words are added on misstyping. If you like to
 challange yourself you can set this to a number higher than 0.
-Depending on your accuracy we recommanded a number between 1 and 7.
+A number between 1 and 7 is recommanded.
 
 It adds random or next words from the content the speed-type session
-took his content. If you replay the session, the added words will be
+was started from. If you replay the session, the added words will be
 included.
 
 [melpa-link]: https://melpa.org/#/speed-type
