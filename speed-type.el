@@ -663,7 +663,6 @@ speed-type files that were created using the speed-type functions."
           corrections
           (+ errors corrections)
           speed-type-explaining-message))
->>>>>>> 33f02a3a890731a345e51049a6ad8b031340c3a6
 
 (defun speed-type-complete ()
   "Remove typing hooks from the buffer and print statistics."
