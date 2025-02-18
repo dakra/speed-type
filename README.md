@@ -24,14 +24,6 @@ following snipped in your .emacs file will load and init the extension.
 (require 'speed-type)
 ```
 
-## Configuration
-
-speed-type can be customized using:
-
-```
-M-x customize-group speed-type RET
-```
-
 ## Running speed-type
 
 Executing `M-x speed-type-text` will start the typing exercise. A new buffer will
@@ -58,6 +50,34 @@ the selected region.
 
 `speed-type-top-x` (or -100/-1000) lets you practice the top X words
 for the selected language.
+
+## Customization
+
+See all custom variables of speed-type pressing:
+```
+M-x customize-group speed-type RET
+```
+
+### Statistics
+
+The default of `speed-type-save-statistic-option` is `always` which
+means speed-type session data is stored to file
+`speed-type-statistic-filename`. All values which you see at the end
+of each speed-type session are stored there.
+
+You can display the calculated medians from the data by pressing `d`
+at the end of a speed-type session.
+
+### Add words on error (typer-mode)
+
+The default of `speed-type-add-extra-words-on-mistake` is `0` which
+means no additional words are added on misstyping. If you like to
+challange yourself you can set this to a number higher than 0.
+Depending on your accuracy we recommanded a number between 1 and 7.
+
+It adds random or next words from the content the speed-type session
+took his content. If you replay the session, the added words will be
+included.
 
 [melpa-link]: https://melpa.org/#/speed-type
 [melpa-stable-link]: https://stable.melpa.org/#/speed-type
