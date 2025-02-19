@@ -328,8 +328,8 @@ SPEED-TYPE-MAYBE-UPGRADE-FILE-FORMAT."
 	  (cons 'speed-type--accuracy (speed-type--accuracy entries (- entries errors) corrections)))))
 
 (defun speed-type-grok-file-format-version ()
-  "Return an integer which is the file-format version of this speed-type statistic file.
-This expects to be called from `point-min' in a speed-type statistic file."
+  "Integer which indicates the file-format version of speed-type statistic file.
+Expects to be called from `point-min' in a speed-type statistic file."
   (declare (obsolete nil "27.1"))
   (if (looking-at "^;;;;")
       (save-excursion
@@ -615,15 +615,19 @@ speed-type files that were created using the speed-type functions."
   "Display median values from current and past entries."
   (interactive)
   (with-current-buffer speed-type--buffer
-    (goto-char (point-max))
-    (read-only-mode -1)
-    (insert (apply 'format speed-type-previous-saved-stats-format (speed-type--calc-stats (speed-type-load-last-stats speed-type-statistic-filename))))
-    (read-only-mode)
-    (speed-type-display-menu)))
+    (let ((original-max (point-max)))
+      (goto-char original-max)
+      (read-only-mode -1)
+      (insert (apply 'format speed-type-previous-saved-stats-format (speed-type--calc-stats (speed-type-load-last-stats speed-type-statistic-filename))))
+      (read-only-mode)
+      (speed-type-display-menu)
+      (goto-char original-max))))
 
 (defun speed-type--quit ()
+  "Kill buffer of speed-type session.
+Expects CURRENT-BUFFER to be buffer of speed-type session."
   (interactive)
-  (kill-current-buffer))
+  (kill-buffer speed-type--buffer))
 
 (defun speed-type--replay ()
   "Replay a speed-type session."
@@ -645,12 +649,13 @@ speed-type files that were created using the speed-type functions."
       (kill-buffer cb))))
 
 (defun speed-type-fill-paragraph ()
-  "Override keybinding of fill-paragraph with this to not destory session."
+  "Override keybinding of FILL-PARAGRAPH with this to not destory session."
   (interactive)
   (message "Fill paragraph not available"))
 
 (defun speed-type-generate-stats (entries errors corrections seconds)
-  "Return string of statistics."
+  "Generate string of statistic data for given arguments:
+ENTRIES ERRORS CORRECTIONS SECONDS."
   (format speed-type-stats-format
           (speed-type--skill (speed-type--net-wpm entries errors seconds))
           (speed-type--net-wpm entries errors seconds)
@@ -689,7 +694,10 @@ speed-type files that were created using the speed-type functions."
 	(speed-type-display-menu)))))
 
 (defun speed-type--diff (orig new start end)
-  "Update stats and buffer contents with result of changes in text."
+  "Synchronise local buffer state with buffer-content by comparing ORIG and NEW.
+ORIG is the original text. NEW is the new text.
+START is a point where the check starts to scan for diff.
+END is a point where the check stops to scan for diff."
   (let ((start0 (1- start))
         (_end0 (1- end))
         (correct nil))
@@ -709,8 +717,8 @@ speed-type files that were created using the speed-type functions."
 				       'speed-type-mistake)))))))
 
 (defun speed-type--change (start end length)
-  "Handle buffer change.
-
+  "Handle buffer change between START and END.
+LENGTH is ignored. Used for hook AFTER-CHANGE-FUNCTIONS.
 Make sure that the contents don't actually change, but rather the contents
 are color coded and stats are gathered about the typing performance."
   (let ((len (length speed-type--orig-text)))
@@ -893,7 +901,9 @@ to (point-min) and (point-max)"
 
 (defun speed-type--setup-code
     (content-buffer text title author &optional replay-fn go-next-fn syntax-table font-lock-df)
-  "Speed type the code snippet TEXT.
+  "Speed type the code snippet TEXT which was extracted from CONTENT-BUFFER.
+
+CONTENT-BUFFER will be linked to the SPEED-TYPE-BUFFER.
 
 If specified, call REPLAY-FN after completion of a speed type session
 and replay is selected.  Similarly call GO-NEXT-FN after completion of
@@ -919,7 +929,9 @@ and font lock defaults by FONT-LOCK-DF."
              :callback #'callback)))
 
 (defun speed-type--code-with-highlighting (content-buffer text title author &optional syntax-table font-lock-df go-next-fn)
-  "Speed type TEXT with syntax highlighting.
+  "Speed type TEXT with syntax highlight which was extracted from CONTENT-BUFFER.
+
+CONTENT-BUFFER will be linked to the SPEED-TYPE-BUFFER..
 
 Syntax highlighting data is given by SYNTAX-TABLE and
 FONT-LOCK-DF (font lock defaults).
@@ -967,7 +979,9 @@ been completed."
     (or (word-at-point) "")))
 
 (defun speed-type--get-separated-thing-at-random-line (content-buffer limit separator)
-  "Get thing that is SEPARATOR at random line in CONTENT-BUFFER."
+  "Get thing that is SEPARATOR at random line in CONTENT-BUFFER.
+
+LIMIT is supplied to RANDOM-function."
   (with-current-buffer content-buffer
     (save-excursion
       (goto-char (point-min))
