@@ -125,9 +125,9 @@ something between 1 and 7."
 (defcustom speed-type-save-statistic-option 'always
   "Save the stats for the play or not."
   :group 'speed-type
-  :type '(choice (const :tag "Always" 'always)
-		 (const :tag "Never" 'never)
-		 (const :tag "Ask" 'ask)))
+  :type '(choice (const :tag "Always" always)
+		 (const :tag "Never" never)
+		 (const :tag "Ask" ask)))
 
 (defcustom speed-type-statistic-filename (concat speed-type-gb-dir "/" "speed-type-statistic.el")
   "Name of file for general stats."
@@ -403,19 +403,19 @@ it can be passed along with FILE to `format'. At the end,
       (if (file-exists-p file)
           (speed-type-maybe-upgrade-file-format)
 	(delete-region (point-min) (point-max)) ; In case a find-file hook inserted a header, etc.
-	(unless (boundp 'speed-type-coding-system) ; Emacs < 25.2.
+	(unless (boundp 'speed-type-coding-system)	; Emacs < 25.2.
 	  (speed-type-insert-file-format-version-stamp))
         (insert "(\n)"))
       (setq start (and (file-exists-p file)
                        (or (save-excursion (goto-char (point-min))
                                            (search-forward (concat speed-type-end-of-version-stamp-marker "(")
                                                            nil t))
-                           (error "Invalid speed-type-statisitic-file")))
+                           (error "Invalid %s" file)))
             end    (and start
                         (or (save-excursion (goto-char start) (and (looking-at ")") start))
                             (save-excursion (goto-char (point-max)) (re-search-backward "^)" nil t))
-                            (error "Invalid speed-type-statisitic-file"))))
-      (if (not start) ; New file, no header yet.
+                            (error "Invalid %s" file))))
+      (if (not start)			; New file, no header yet.
           (goto-char 2)
         ;;  Existing file - delete old entry unless max is not reached. Rolling.
         (when (> (count-lines start end) speed-type-max-num-records)
@@ -427,7 +427,7 @@ it can be passed along with FILE to `format'. At the end,
         (goto-char (and start
                         (or (save-excursion (goto-char start) (and (looking-at ")") start))
                             (save-excursion (goto-char (point-max)) (re-search-backward "^)" nil t))
-                            (error "Invalid speed-type-statisitic-file")))))
+                            (error "Invalid %s" file)))))
       (pp (with-current-buffer speed-type-buffer (speed-type-statistic-variables)) (current-buffer))
       (when (boundp 'speed-type-coding-system) ; Emacs 25.2+.  See bug #25365
         ;; Make sure specified encoding can encode the speed-type stats.  If not, suggest utf-8-emacs as default.
