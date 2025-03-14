@@ -285,12 +285,14 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
 
 (defun speed-type--skill (wpm)
   "Return skill for WPM."
-  (cond ((< wpm 25) "Beginner")
-        ((< wpm 30) "Intermediate")
-        ((< wpm 40) "Average")
-        ((< wpm 55) "Pro")
-        ((< wpm 80) "Master")
-        (t          "Racer")))
+  (cond
+   ((null wpm) "Zero or Infinity")
+   ((< wpm 25) "Beginner")
+   ((< wpm 30) "Intermediate")
+   ((< wpm 40) "Average")
+   ((< wpm 55) "Pro")
+   ((< wpm 80) "Master")
+   (t          "Racer")))
 
 (defvar speed-type-coding-system 'utf-8-unix
   "The coding system speed-type uses for saving the stats.
@@ -475,11 +477,12 @@ Point is irrelevant and unaffected."
 		      (/ (+ (nth (- 1 (/ num-of-records 2)) numbers)
 			    (nth (/ num-of-records 2) numbers))
 			 2)
-		    (nth (- 1 (/ num-of-records 2)) numbers))))
+		    (nth (/ num-of-records 2) numbers))))
     medians))
 
 (defun speed-type--calc-stats (stats)
-  "Calculate the median of each numerical value in STATS. Additional provde length and skill-alue."
+  "Calculate the median of each numerical value in STATS.
+Additional provide length and skill-value."
   (let ((median-gross-wpm (speed-type--calc-median 'speed-type--gross-wpm stats)))
     (list
      (length stats)
@@ -775,8 +778,8 @@ language symbol and N-WORDS is the top N words that should be trained.
 CONTENT-BUFFER defines the source from which the typing session
 get his content.
 
-If specified, call ADD-EXTRA-WORD-CONTENT-FN which provides an extra
-line when user makes an mistake.
+If specified, call ADD-EXTRA-WORD-CONTENT-FN which provides extra
+words when user makes an mistake.
 
 If specified, call REPLAY-FN after completion of a speed type session
 and replay is selected.  REPLAY-FN should take one argument, a string
