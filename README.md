@@ -51,6 +51,8 @@ the selected region.
 `speed-type-top-x` (or -100/-1000) lets you practice the top X words
 for the selected language.
 
+`speed-type-quote` by default will take a random quote from a random quote-url listed in `speed-type-quote-urls`. You can `C-u speed-type-quote` to specify the url.
+
 ## Customization
 
 See all custom variables of speed-type pressing:
