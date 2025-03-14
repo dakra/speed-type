@@ -88,6 +88,15 @@ a book url.  E.G, https://www.gutenberg.org/ebooks/14577."
     (French . "http://web.archive.org/web/20170227200416/http://wortschatz.uni-leipzig.de/Papers/top10000fr.txt")
     (Dutch . "http://web.archive.org/web/20170227200416/http://wortschatz.uni-leipzig.de/Papers/top10000nl.txt"))
   "Alist of language name as key and a URL where to download a wordlist for it."
+  :group 'speed-type
+  :type '(alist :key-type symbol :value-type string))
+
+(defcustom speed-type-quote-urls
+  '((johnVonNeumann . "https://www.azquotes.com/author/10753-John_von_Neumann")
+    (happiness . "https://www.azquotes.com/quotes/topics/happiness.html")
+    (alanTuring . "https://www.azquotes.com/author/14856-Alan_Turing"))
+  "list of name as key and an URL to azquotes which will be downloaded and parsed."
+  :group 'speed-type
   :type '(alist :key-type symbol :value-type string))
 
 (defcustom speed-type-wordlist-transform nil
@@ -827,7 +836,10 @@ CALLBACK is called when the setup process has been completed."
       (when content-buffer
 	(setq speed-type--content-buffer content-buffer)
 	(setq-local speed-type--buffer buf))
-      (with-current-buffer speed-type--content-buffer (setq-local speed-type--buffer buf))
+      (with-current-buffer speed-type--content-buffer
+	(setq-local speed-type--buffer buf)
+	(when (null (boundp 'speed-type--extra-word-quote))
+	  (setq-local speed-type--extra-word-quote nil)))
       (when replay-fn (setq speed-type--replay-fn replay-fn))
       (insert text)
       (unless (with-current-buffer speed-type--content-buffer (derived-mode-p 'prog-mode))
@@ -1216,6 +1228,40 @@ will be used.  Else some text will be picked randomly."
 	     :add-extra-word-content-fn (lambda () (speed-type--get-next-word buf))
              :replay-fn #'speed-type--get-replay-fn
              :go-next-fn #'speed-type-text)))
+
+;;;###autoload
+(defun speed-type-quotes (&optional arg)
+  "Do something cool with quotes."
+  (interactive "p")
+  (let* ((quote-url (if (= arg 1)
+			(nth (random (length speed-type-quote-urls)) speed-type-quote-urls)
+		      (assoc (intern (completing-read "Choose a quote: " (mapcar 'car speed-type-quote-urls) 'symbolp t nil nil "johnVonNeumann")) speed-type-quote-urls)))
+	 (buf (speed-type-prepare-content-buffer (speed-type--retrieve (car quote-url) (cdr quote-url))))
+	 (title (with-current-buffer buf
+		  (save-excursion (search-forward-regexp "<title>\\(.*\\)</title>")
+				  (match-string 1))))
+	 (dom-quotes (with-current-buffer buf
+		       (dom-by-class (dom-by-class (libxml-parse-html-region (point-min) (point-max) nil t) "list-quotes") "title")))
+	 (random-quote (nth (random (length dom-quotes)) dom-quotes))
+	 (author (dom-attr random-quote 'data-author))
+	 (text (dom-text random-quote))
+	 (add-extra-word-content-fn
+	  (lambda ()
+	    (with-current-buffer speed-type--content-buffer
+	      (when (null speed-type--extra-word-quote)
+		(let ((dom-quotes (dom-by-class (dom-by-class (libxml-parse-html-region (point-min) (point-max) nil t) "list-quotes") "title")))
+		  (setq-local speed-type--extra-word-quote (split-string (dom-text (nth (random (length dom-quotes)) dom-quotes)) " "))))
+	      (let ((word (nth 0 speed-type--extra-word-quote)))
+		(setq-local speed-type--extra-word-quote (cdr speed-type--extra-word-quote))
+		word))))
+	 (go-next-fn (lambda () (speed-type-quotes arg))))
+    (speed-type--setup buf
+	     text
+	     :title title
+	     :author author
+	     :add-extra-word-content-fn add-extra-word-content-fn
+	     :replay-fn #'speed-type--get-replay-fn
+	     :go-next-fn go-next-fn)))
 
 (provide 'speed-type)
 ;;; speed-type.el ends here
