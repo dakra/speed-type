@@ -828,14 +828,18 @@ CALLBACK is called when the setup process has been completed."
       (when callback (funcall callback))
       (message "Timer will start when you type the first character."))))
 
-(defun speed-type-prepare-content-buffer-from-buffer (buffer)
+(defun speed-type-prepare-content-buffer-from-buffer (buffer &optional start end)
   "Prepare content buffer from existing BUFFER."
   (let ((buf (generate-new-buffer speed-type-content-buffer-name)))
     (with-current-buffer buf
       (add-hook 'kill-buffer-hook 'speed-type--kill-content-buffer-hook nil t)
-      (insert-buffer-substring buffer)
+      (insert-buffer-substring buffer start end)
+      (when (with-current-buffer buffer (derived-mode-p 'prog-mode))
+	(prog-mode)
+	(set-syntax-table (with-current-buffer buffer (syntax-table)))
+	(setq font-lock-defaults (with-current-buffer buffer font-lock-defaults))
+        (ignore-errors (font-lock-ensure)))
       (setq buffer-read-only nil)
-      (funcall (buffer-local-value 'major-mode buffer))
       (goto-char (point-min)))
     (get-buffer-create buf)))
 
@@ -953,8 +957,7 @@ been completed."
 (defun speed-type--get-replay-fn ()
   "Return a replay function which will use GO-NEXT-FN after completion."
   (remove-hook 'kill-buffer-hook 'speed-type--kill-buffer-hook t)
-  (if (with-current-buffer speed-type--content-buffer
-	(derived-mode-p 'prog-mode))
+  (if (with-current-buffer speed-type--content-buffer (derived-mode-p 'prog-mode))
       (speed-type--code-with-highlighting
        speed-type--content-buffer
        speed-type--orig-text
@@ -1115,12 +1118,12 @@ LIMIT is supplied to the random-function."
 (defun speed-type-region (start end)
   "Open copy of [START,END] in a new buffer to speed type the text."
   (interactive "r")
-  (let* ((buf (speed-type-prepare-content-buffer-from-buffer (current-buffer)))
+  (let* ((buf (speed-type-prepare-content-buffer-from-buffer (current-buffer) start end))
 	 (title (concat (buffer-name)
 			(when (and start end) " Region: ")
 			(when start (int-to-string start))
 			(when end (concat ":" (int-to-string end)))))
-         (text (with-current-buffer buf (buffer-substring-no-properties start end))))
+         (text (with-current-buffer buf (buffer-substring-no-properties (point-min) (point-max)))))
     (if (with-current-buffer buf (derived-mode-p 'prog-mode))
         (speed-type--code-with-highlighting buf
 				  text
