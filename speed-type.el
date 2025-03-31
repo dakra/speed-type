@@ -90,6 +90,43 @@ a book url.  E.G, https://www.gutenberg.org/ebooks/14577."
   "Alist of language name as key and a URL where to download a wordlist for it."
   :type '(alist :key-type symbol :value-type string))
 
+
+(defcustom speed-type-quotes-urls
+  '((MonteCristo . "https://en.wikiquote.org/wiki/The_Count_of_Monte_Cristo")
+    (ComputerScience . "https://en.wikiquote.org/wiki/Computer_science")
+    (AliceWonderland . "https://en.wikiquote.org/wiki/Alice%27s_Adventures_in_Wonderland")
+    (GreatExpectations . "https://en.wikiquote.org/wiki/Great_Expectations")))
+
+(defun speed-type-quotes ()
+  "Do something cool with quotes."
+  (interactive)
+  (let* ((buf (speed-type-prepare-content-buffer (speed-type--retrieve 'GreatExpectations "https://en.wikiquote.org/wiki/Great_Expectations")))
+	 (dom-quote-content (with-current-buffer buf (dom-by-id (dom-by-id (libxml-parse-html-region (point-min) (point-max) nil t) "bodyContent") "mw-content-text")))
+         (title (with-current-buffer buf
+		  (save-excursion (search-forward-regexp "<title>\\(.*\\)</title>")
+				  (match-string 1))))
+	 (text (with-current-buffer buf
+		  (let* ((quotes (dom-by-tag dom-quote-content 'ul))
+			 (num-of-quotes (length quotes)))
+		    (dom-texts (dom-by-tag (nth (random (length quotes)) quotes) 'li)))))
+	 (add-extra-word-content-fn (lambda () (with-current-buffer buf
+						 (let* ((quotes (dom-by-tag (dom-by-tag dom-quote-content 'ul) 'li))
+							(num-of-quotes (length quotes)))
+						   (car (split-string (dom-texts (dom-by-tag (nth (random num-of-quotes) quotes) 'li)) "\\." t "[[:blank]]"))))))
+         (go-next-fn (lambda () (speed-type-quotes))))
+    (speed-type--setup buf
+	     text
+             :title title
+	     :author "Someone"
+	     :add-extra-word-content-fn add-extra-word-content-fn
+             :replay-fn #'speed-type--get-replay-fn
+             :go-next-fn go-next-fn))
+
+  ;; get chapter title: (insert (dom-texts (nth 2 (dom-by-tag recipe 'h3))))
+  ;; how to map to quote?
+  ;; how to parse author of quote?
+  )
+
 (defcustom speed-type-wordlist-transform nil
   "Function to transform wordlist before starting the exercise.
 The function should take the `buffer-string' as argument and return
