@@ -122,7 +122,7 @@ something between 1 and 7."
   :group 'speed-type
   :type 'integer)
 
-(defcustom speed-type-save-statistic-option 'never
+(defcustom speed-type-save-statistic-option 'always
   "Save the stats for the play or not."
   :group 'speed-type
   :type '(choice (const :tag "Always" always)
@@ -299,7 +299,7 @@ Accuracy is computed as (CORRECT-ENTRIES - CORRECTIONS) / TOTAL-ENTRIES."
 Changing this value while Emacs is running is supported, but considered
 unwise, unless you know what you are doing.")
 
-(defconst speed-type-file-format-version 0
+(defconst speed-type-file-format-version 1
   "The current version of the format used by speed-type statistic files.
 You should never need to change this.")
 
@@ -343,6 +343,21 @@ Expects to be called from `point-min' in a speed-type statistic file."
     ;; even have version stamps.
     0))
 
+(defun speed-type--maybe-insert-newline ()
+  "Move last closing parantheses to own line if not already.
+
+We use ‘pp’ to write the buffer state to the statistic-file.
+Since ‘pp’ works a bit differently on EMACS 30.1 for some
+reason. It is necessary to check if the last closing parantheses
+has it’s own line.
+
+This function fixes this, because otherwise we fail to load the file."
+  (save-excursion
+    (when (null (progn (goto-char (point-max))
+		       (re-search-backward "^)" nil t 1)))
+      (re-search-backward ")" nil t 1)
+      (insert "\n"))))
+
 (defun speed-type-maybe-upgrade-file-format ()
   "Check the file-format version of current file.
 If the version is not up-to-date, upgrade it automatically.
@@ -352,8 +367,8 @@ This expects to be called from `point-min' in a speed-type statistic file."
          (with-suppressed-warnings ((obsolete speed-type-grok-file-format-version)) ;; we use the same mechanism as bookmark file
            (speed-type-grok-file-format-version))))
     (cond
-     ((= version speed-type-file-format-version)
-      ) ; home free -- version is current
+     ((= version speed-type-file-format-version))
+     ((= version 0) (speed-type--maybe-insert-newline))
      (t (error "Speed-type statistic file format version strangeness")))))
 
 (defconst speed-type-end-of-version-stamp-marker
@@ -430,7 +445,9 @@ it can be passed along with FILE to `format'. At the end,
                         (or (save-excursion (goto-char start) (and (looking-at ")") start))
                             (save-excursion (goto-char (point-max)) (re-search-backward "^)" nil t))
                             (error "Invalid %s" file)))))
+      (save-excursion (insert "\n"))
       (pp (with-current-buffer speed-type-buffer (speed-type-statistic-variables)) (current-buffer))
+      (speed-type--maybe-insert-newline)
       (when (boundp 'speed-type-coding-system) ; Emacs 25.2+.  See bug #25365
         ;; Make sure specified encoding can encode the speed-type stats.  If not, suggest utf-8-emacs as default.
         (with-coding-priority '(utf-8-emacs)
