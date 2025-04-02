@@ -430,6 +430,7 @@ it can be passed along with FILE to `format'. At the end,
                         (or (save-excursion (goto-char start) (and (looking-at ")") start))
                             (save-excursion (goto-char (point-max)) (re-search-backward "^)" nil t))
                             (error "Invalid %s" file)))))
+      (save-excursion (insert "\n"))
       (pp (with-current-buffer speed-type-buffer (speed-type-statistic-variables)) (current-buffer))
       (when (boundp 'speed-type-coding-system) ; Emacs 25.2+.  See bug #25365
         ;; Make sure specified encoding can encode the speed-type stats.  If not, suggest utf-8-emacs as default.
