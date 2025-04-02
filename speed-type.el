@@ -122,7 +122,7 @@ something between 1 and 7."
   :group 'speed-type
   :type 'integer)
 
-(defcustom speed-type-save-statistic-option 'always
+(defcustom speed-type-save-statistic-option 'never
   "Save the stats for the play or not."
   :group 'speed-type
   :type '(choice (const :tag "Always" always)
