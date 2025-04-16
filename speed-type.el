@@ -332,7 +332,6 @@ SPEED-TYPE-MAYBE-UPGRADE-FILE-FORMAT."
 (defun speed-type-grok-file-format-version ()
   "Integer which indicates the file-format version of speed-type statistic file.
 Expects to be called from `point-min' in a speed-type statistic file."
-  (declare (obsolete nil "27.1"))
   (if (looking-at "^;;;;")
       (save-excursion
         (save-match-data
@@ -362,7 +361,6 @@ This function fixes this, because otherwise we fail to load the file."
   "Check the file-format version of current file.
 If the version is not up-to-date, upgrade it automatically.
 This expects to be called from `point-min' in a speed-type statistic file."
-  (declare (obsolete nil "27.1"))
   (let ((version
          (with-suppressed-warnings ((obsolete speed-type-grok-file-format-version)) ;; we use the same mechanism as bookmark file
            (speed-type-grok-file-format-version))))
@@ -412,7 +410,7 @@ it can be passed along with FILE to `format'. At the end,
         (emacs-lisp-mode-hook     nil) ; Avoid inserting automatic file header if existing empty file, so
         (lisp-mode-hook           nil) ; better chance `speed-type-maybe-upgrade-file-format' signals error.
 	(speed-type-buffer (current-buffer))
-        bname fname last-fname start end)
+        start end)
     (when (file-directory-p file) (error "`%s' is a directory, not a file" file))
     (message msg (abbreviate-file-name file))
     (with-current-buffer (let ((enable-local-variables ())) (find-file-noselect file))
@@ -445,7 +443,6 @@ it can be passed along with FILE to `format'. At the end,
                         (or (save-excursion (goto-char start) (and (looking-at ")") start))
                             (save-excursion (goto-char (point-max)) (re-search-backward "^)" nil t))
                             (error "Invalid %s" file)))))
-      (save-excursion (insert "\n"))
       (pp (with-current-buffer speed-type-buffer (speed-type-statistic-variables)) (current-buffer))
       (speed-type--maybe-insert-newline)
       (when (boundp 'speed-type-coding-system) ; Emacs 25.2+.  See bug #25365
