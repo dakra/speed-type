@@ -433,7 +433,7 @@ it can be passed along with FILE to `format'. At the end,
       (if (not start)			; New file, no header yet.
           (goto-char 2)
         ;;  Existing file - delete old entry unless max is not reached. Rolling.
-        (when (> (count-lines start end) speed-type-max-num-records)
+        (when (> (/ (count-lines start end) (length (or (speed-type-statistic-variables) '(1)))) speed-type-max-num-records)
 	  (save-excursion
 	    (goto-char start)
 	    (or (looking-at "(") (search-forward "(" nil t 1))
