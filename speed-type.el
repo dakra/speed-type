@@ -42,6 +42,7 @@
 (require 'url-http)
 (require 'thingatpt)
 (require 'dash)
+(require 'dom)
 
 (defgroup speed-type nil
   "Practice touch-typing in Emacs."
