@@ -675,6 +675,17 @@ Expects CURRENT-BUFFER to be buffer of speed-type session."
       (funcall fn)
       (kill-buffer cb))))
 
+(defun speed-type--fill-region ()
+  "'fill-region' and sync speed-type local buffer variables.
+
+'fill-region' replaces double spaces with one and breaks lines with newlines. To reflect the applied changes from 'fill-region' we set 'speed-type--orig-text' again and recalculate 'speed-type--remaining'."
+  (let ((orig-length (length speed-type--orig-text))
+	(fill-regioned-text (progn (fill-region (point-min) (point-max) 'none t)
+				   (buffer-substring (point-min) (point-max)))))
+    (setq speed-type--orig-text fill-regioned-text)
+    (when (not (= orig-length (length fill-regioned-text)))
+      (setq speed-type--remaining (+ speed-type--remaining (- orig-length (length fill-regioned-text)))))))
+
 (defun speed-type-fill-paragraph ()
   "Override keybinding of FILL-PARAGRAPH with this to not destory session."
   (interactive)
@@ -844,7 +855,7 @@ CALLBACK is called when the setup process has been completed."
       (when replay-fn (setq speed-type--replay-fn replay-fn))
       (insert text)
       (unless (with-current-buffer speed-type--content-buffer (derived-mode-p 'prog-mode))
-	(fill-region (point-min) (point-max) 'none t))
+	(speed-type--fill-region))
       (set-buffer-modified-p nil)
       (switch-to-buffer buf)
       (goto-char 0)
@@ -930,7 +941,7 @@ to (point-min) and (point-max)"
       (setq continue (re-search-backward (sentence-end) (mark) t))
       (when continue (setq fwd t)))
     (when fwd (forward-char)))
-  (unless (derived-mode-p 'prog-mode) (fill-region (point-min) (point-max) 'none t))
+  (unless (derived-mode-p 'prog-mode) (speed-type--fill-region))
   (buffer-substring-no-properties (region-beginning) (region-end)))
 
 (defun speed-type--setup-code
@@ -1062,7 +1073,7 @@ LIMIT is supplied to the random-function."
 	(goto-char (point-max))
 	(insert (mapconcat 'identity speed-type--extra-words-queue ""))
 	(unless (with-current-buffer speed-type--content-buffer (derived-mode-p 'prog-mode))
-	  (fill-region (point-min) (point-max) 'none t))
+	  (speed-type--fill-region))
 	(setq speed-type--extra-words-queue nil)))))
 
 (defun speed-type-animate-extra-word-inseration (buf)
@@ -1075,7 +1086,7 @@ LIMIT is supplied to the random-function."
 	    (goto-char (point-max))
 	    (insert token))
 	(unless (with-current-buffer speed-type--content-buffer (derived-mode-p 'prog-mode))
-	  (fill-region (point-min) (point-max) 'none t))
+	  (speed-type--fill-region))
 	(cancel-timer speed-type--extra-words-animation-time)
 	(setq speed-type--extra-words-animation-time nil))
       (add-hook 'after-change-functions 'speed-type--change nil t))))
@@ -1113,7 +1124,7 @@ LIMIT is supplied to the random-function."
 		 (while (< (buffer-size) char-length)
 		   (insert (speed-type--get-random-word buf n))
                    (insert " "))
-		 (fill-region (point-min) (point-max))
+		 (speed-type--fill-region)
 		 (if speed-type-wordlist-transform
                      (funcall speed-type-wordlist-transform (buffer-string))
                    (buffer-string))))
