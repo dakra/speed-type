@@ -68,6 +68,15 @@
   :group 'speed-type
   :type 'integer)
 
+(defcustom speed-type-on-error 'mark-red-and-move
+  "Define the behavior of point when mistyping a character.
+
+when mark-red-and-move (default), makes typed character red
+ and moves the point one character further.
+
+when mark-red-and-stay, makes typed character red
+ and stays at the current position until correct character is typed.")
+
 (defcustom speed-type-gb-book-list
   '(1342 11 1952 1661 74 1232 23 135 5200 2591 844 84 98 2701 1400 16328 174
          46 4300 345 1080 2500 829 1260 6130 1184 768 32032 521 1399 55)
@@ -736,12 +745,14 @@ END is a point where the check stops to scan for diff."
                    (store-substring speed-type--mod-str pos0 1))
           (progn (cl-incf speed-type--errors)
                  (store-substring speed-type--mod-str pos0 2)
-		 (when speed-type-add-extra-words-on-mistake (speed-type-add-extra-words))))
+		 (when (and speed-type-add-extra-words-on-mistake
+			    (or (eq speed-type-on-error 'mark-red-and-move) speed-type--extra-words-queue))
+		   (speed-type-add-extra-words))))
         (cl-incf speed-type--entries)
         (cl-decf speed-type--remaining)
-	(let ((overlay (make-overlay pos (1+ pos))))
-	  (overlay-put overlay 'face (if correct 'speed-type-correct
-				       'speed-type-mistake)))))))
+	(let ((overlay (or (car (overlays-at pos)) (make-overlay pos (1+ pos)))))
+	  (overlay-put overlay 'face (if correct 'speed-type-correct 'speed-type-mistake)))))
+    correct))
 
 (defun speed-type--change (start end length)
   "Handle buffer change between START and END.
@@ -760,8 +771,14 @@ are color coded and stats are gathered about the typing performance."
              (orig (substring speed-type--orig-text start0 end0)))
         (speed-type--handle-del start end)
         (insert old-text)
-        (speed-type--diff orig new-text start end)
-        (goto-char end)
+	(if (or
+	     (speed-type--diff orig new-text start end)
+	     (equal new-text "")
+	     (eq speed-type-on-error 'mark-red-and-move))
+            (goto-char end)
+	  (goto-char (- end 1))
+	  (beep)
+	  (message "Wrong key"))
         (when (= speed-type--remaining 0)
           (speed-type-complete))))))
 
