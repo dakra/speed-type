@@ -124,11 +124,31 @@ E.g. if you always want lowercase words, set:
 To remove without replacement, use the form: `(bad-string . \"\")'"
   :type '(alist :key-type string :value-type string))
 
-(defcustom speed-type-add-extra-words-on-mistake 0
-  "How many new words should be added on mistake.
+(defcustom speed-type-point-motion-on-error 'point-move
+  "Define the behavior of point when mistyping a character.
+
+when point-move (default), moves the point one character further.
+
+when point-stay, stays at the current position until correct character is typed.")
+
+(defcustom speed-type-add-extra-words-on-error 0
+  "How many new words should be added on error.
 When 0 or less, no words are added. The typing-session will only
 be complete when these extra words are typed too. Recommanded is
-something between 1 and 7."
+something between 1 and 7.
+
+Similar to `speed-type-add-extra-words-on-non-consecutive-errors' they accumulate each other if both variables are set."
+  :group 'speed-type
+  :type 'integer)
+
+(defcustom speed-type-add-extra-words-on-non-consecutive-errors 0
+ "How many new words should be added on a non-consecutive error.
+A non-consecutive error is a mistyped character where the previous one was correctly typed.
+When 0 or less, no words are added. The typing-session will only
+be complete when these extra words are typed too. Recommanded is
+something between 1 and 7.
+
+Similar to `speed-type-add-extra-words-on-error', they accumulate each other if both variables are set."
   :group 'speed-type
   :type 'integer)
 
@@ -154,12 +174,17 @@ something between 1 and 7."
   "Default face for `speed-type'."
   :group 'speed-type)
 
-(defface speed-type-correct
+(defface speed-type-correct-face
   `((t (:inherit 'default :foreground ,(face-foreground 'success))))
   "Face for correctly typed characters."
   :group 'speed-type)
 
-(defface speed-type-mistake
+(defface speed-type-consecutive-error-face
+  `((t (:inherit 'default :foreground ,(face-foreground 'error) :underline t)))
+  "Face for incorrectly typed characters where the previous character is already an error."
+  :group 'speed-type)
+
+(defface speed-type-error-face
   `((t (:inherit 'default :foreground ,(face-foreground 'error) :underline t)))
   "Face for incorrectly typed characters."
   :group 'speed-type)
@@ -175,31 +200,34 @@ Net wpm/cpm take uncorrected errors into account and are a measure
 of effective or net speed.")
 
 (defvar speed-type-stats-format "\n
-Skill:        %s
-Net WPM:      %d
-Net CPM:      %d
-Gross WPM:    %d
-Gross CPM:    %d
-Accuracy:     %.2f%%
-Total time:   %s
-Total chars:  %d
-Corrections:  %d
-Total errors: %d
+Skill:                        %s
+Net WPM:                      %d
+Net CPM:                      %d
+Gross WPM:                    %d
+Gross CPM:                    %d
+Accuracy:                     %.2f%%
+Total time:                   %s
+Total chars:                  %d
+Corrections:                  %d
+Total errors:                 %d
+Total non-consecutive errors: %d
 %s")
 
 (defvar speed-type-previous-saved-stats-format  "\n
-Num of records:      %d
-Median Skill:        %s
-Median Net WPM:      %d
-Median Net CPM:      %d
-Median Gross WPM:    %d
-Median Gross CPM:    %d
-Median Accuracy:     %.2f%%
-Median Total time:   %d
-Median Total chars:  %d
-Median Corrections:  %d
-Median Total errors: %d
-Median Remaining:    %d")
+Num of records:                %d
+Note: 'nil' values are excluded from the median calculations.
+Median Skill:                  %s
+Median Net WPM:                %d
+Median Net CPM:                %d
+Median Gross WPM:              %d
+Median Gross CPM:              %d
+Median Accuracy:               %.2f%%
+Median Total time:             %d
+Median Total chars:            %d
+Median Corrections:            %d
+Median Total errors:           %d
+Median Non-consecutive errors: %d
+Median Remaining:              %d")
 
 (defvar speed-type--completed-keymap
   (let ((map (make-sparse-keymap)))
@@ -228,6 +256,7 @@ Median Remaining:    %d")
 (defvar-local speed-type--content-buffer nil)
 (defvar-local speed-type--entries 0)
 (defvar-local speed-type--errors 0)
+(defvar-local speed-type--non-consecutive-errors 0)
 (defvar-local speed-type--remaining 0)
 (defvar-local speed-type--mod-str nil)
 (defvar-local speed-type--corrections 0)
@@ -331,6 +360,7 @@ SPEED-TYPE-MAYBE-UPGRADE-FILE-FORMAT."
 	  (cons 'speed-type--n-words speed-type--n-words)
 	  (cons 'speed-type--entries entries)
 	  (cons 'speed-type--errors errors)
+	  (cons 'speed-type--non-consecutive-errors speed-type--non-consecutive-errors)
 	  (cons 'speed-type--corrections corrections)
 	  (cons 'speed-type--elapsed-time seconds)
 	  (cons 'speed-type--gross-wpm (speed-type--gross-wpm entries seconds))
@@ -495,7 +525,7 @@ Point is irrelevant and unaffected."
 
 (defun speed-type--calc-median (symbol stats)
   "Calculate the median of given SYMBOL in STATS."
-  (let* ((numbers (-sort #'< (mapcar (lambda (e) (cdr (assoc symbol e))) stats)))
+  (let* ((numbers (-sort #'< (remove nil (mapcar (lambda (e) (cdr (assoc symbol e))) stats))))
 	 (num-of-records (length numbers))
 	 (medians (if (eq (% num-of-records 2) 0)
 		      (/ (+ (nth (- 1 (/ num-of-records 2)) numbers)
@@ -520,6 +550,7 @@ Additional provide length and skill-value."
      (speed-type--calc-median 'speed-type--entries stats)
      (speed-type--calc-median 'speed-type--corrections stats)
      (speed-type--calc-median 'speed-type--errors stats)
+     (speed-type--calc-median 'speed-type--non-consecutive-errors stats)
      (speed-type--calc-median 'speed-type--remaining stats))))
 
 (defun speed-type-display-menu ()
@@ -628,15 +659,14 @@ speed-type files that were created using the speed-type functions."
   (delete-region start end)
   (dotimes (i (- end start))
     (let* ((pos (+ (1- start) i))
-           (q (aref speed-type--mod-str pos)))
+           (q (aref speed-type--mod-str pos))
+	   (pq (or (when (< pos 1) 1)
+		   (aref speed-type--mod-str (1- pos)))))
       (cond ((= q 0) ())
-            ((= q 1) (progn (cl-decf speed-type--entries)
-                            (cl-incf speed-type--remaining)))
-            ((= q 2) (progn (cl-decf speed-type--entries)
-                            (cl-incf speed-type--remaining)
-                            (cl-decf speed-type--errors)
-                            (cl-incf speed-type--corrections))))
-      (store-substring speed-type--mod-str pos 0))))
+            ((or (= q 1)
+		 (= q 2))
+	     (progn (cl-decf speed-type--entries)
+                    (cl-incf speed-type--remaining)))))))
 
 (defun speed-type--display-statistic ()
   "Display median values from current and past entries."
@@ -680,7 +710,7 @@ Expects CURRENT-BUFFER to be buffer of speed-type session."
   (interactive)
   (message "Fill paragraph not available"))
 
-(defun speed-type-generate-stats (entries errors corrections seconds)
+(defun speed-type-generate-stats (entries errors non-consecutive-errors corrections seconds)
   "Generate string of statistic data for given arguments:
 ENTRIES ERRORS CORRECTIONS SECONDS."
   (format speed-type-stats-format
@@ -693,7 +723,8 @@ ENTRIES ERRORS CORRECTIONS SECONDS."
           (format-seconds "%M %z%S" seconds)
           entries
           corrections
-          (+ errors corrections)
+          errors
+	  non-consecutive-errors
           speed-type-explaining-message))
 
 (defun speed-type-complete ()
@@ -715,6 +746,7 @@ ENTRIES ERRORS CORRECTIONS SECONDS."
 	(insert (speed-type-generate-stats
 		 speed-type--entries
 		 speed-type--errors
+		 speed-type--non-consecutive-errors
 		 speed-type--corrections
 		 (speed-type--elapsed-time)))
 	(speed-type-save-stats-when-customized)
@@ -729,19 +761,34 @@ END is a point where the check stops to scan for diff."
         (_end0 (1- end))
         (correct nil))
     (dotimes (i (- end start))
-      (let ((pos0 (+ start0 i))
-            (pos (+ start i)))
+      (let* ((pos0 (+ start0 i))
+             (pos (+ start i))
+	     (non-consecutive-error-p (or (and (<= pos0 0) (= speed-type--non-consecutive-errors 0)) ;; first char is always a non-consecutive error if counter is 0
+					 (or (and (eq speed-type-cursor-motion-on-error 'point-stay) (not (= (aref speed-type--mod-str pos0) 2))) ;; staying, no movement, check current
+					     (and (> pos0 0) (eq speed-type-cursor-motion-on-error 'point-move) (= (aref speed-type--mod-str (1- pos0)) 1)))))) ;; moving, check previous
         (if (speed-type--check-same i orig new)
             (progn (setq correct t)
+		   (when (= (aref speed-type--mod-str pos0) 2) (cl-incf speed-type--corrections))
                    (store-substring speed-type--mod-str pos0 1))
           (progn (cl-incf speed-type--errors)
+		 (unless any-error (setq any-error t))
+		 (when non-consecutive-error-p (cl-incf speed-type--non-consecutive-errors))
                  (store-substring speed-type--mod-str pos0 2)
-		 (when speed-type-add-extra-words-on-mistake (speed-type-add-extra-words))))
+		 (speed-type-add-extra-words (+ (or speed-type-add-extra-words-on-error 0)
+				      (or (and non-consecutive-error-p speed-type-add-extra-words-on-non-consecutive-errors) 0)))))
         (cl-incf speed-type--entries)
         (cl-decf speed-type--remaining)
-	(let ((overlay (make-overlay pos (1+ pos))))
-	  (overlay-put overlay 'face (if correct 'speed-type-correct
-				       'speed-type-mistake)))))))
+	(let ((overlay (or (car (overlays-at pos)) (make-overlay pos (1+ pos)))))
+	  (overlay-put overlay 'face
+		       (if correct 'speed-type-correct-face
+			 (if non-consecutive-error-p 'speed-type-error-face 'speed-type-consecutive-error-face))))))
+    (if (or (eq speed-type-cursor-motion-on-error 'point-move)
+	    (equal new "")
+	    (not any-error))
+        (goto-char end)
+      (goto-char (- end 1))
+      (beep)
+      (message "Wrong key"))))
 
 (defun speed-type--change (start end length)
   "Handle buffer change between START and END.
@@ -760,8 +807,14 @@ are color coded and stats are gathered about the typing performance."
              (orig (substring speed-type--orig-text start0 end0)))
         (speed-type--handle-del start end)
         (insert old-text)
-        (speed-type--diff orig new-text start end)
-        (goto-char end)
+	(if (or
+	     (speed-type--diff orig new-text start end)
+	     (equal new-text "")
+	     (eq speed-type-cursor-motion-on-error 'mark-red-and-move))
+            (goto-char end)
+	  (goto-char (- end 1))
+	  (beep)
+	  (message "Wrong key"))
         (when (= speed-type--remaining 0)
           (speed-type-complete))))))
 
@@ -803,7 +856,7 @@ CONTENT-BUFFER defines the source from which the typing session
 get his content.
 
 If specified, call ADD-EXTRA-WORD-CONTENT-FN which provides extra
-words when user makes an mistake.
+words when user makes an error.
 
 If specified, call REPLAY-FN after completion of a speed type session
 and replay is selected.  REPLAY-FN should take one argument, a string
@@ -1033,12 +1086,11 @@ LIMIT is supplied to the random-function."
       (beginning-of-line (+ 1 (random limit)))
       (or (word-at-point) ""))))
 
-(defun speed-type-add-extra-words ()
-  "Add extra words of text to be typed for the typing-session to be complete."
-  (when (and (> (or speed-type-add-extra-words-on-mistake 0) 0)
-	     speed-type--add-extra-word-content-fn)
+(defun speed-type-add-extra-words (x)
+  "Add `X' extra words of text to be typed for the typing-session to be complete."
+  (when (and (> x 0) speed-type--add-extra-word-content-fn)
     (let ((words '()))
-      (dotimes (_ speed-type-add-extra-words-on-mistake)
+      (dotimes (_ x)
 	(let ((word (string-trim (funcall speed-type--add-extra-word-content-fn))))
 	  (if (string-empty-p word)
 	      (message "You got lucky! Extra word function resulted in empty string.")

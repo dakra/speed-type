@@ -60,6 +60,27 @@ See all custom variables of speed-type pressing:
 M-x customize-group speed-type RET
 ```
 
+### Customize cursor motion
+
+By default the cursor moves forward with each typed character and
+makes it red.
+
+If you'd like to stay on the character until it's correctly typed, you
+can customize the `speed-type-cursor-motion-on-error` to
+`mark-red-and-stay`.
+
+### Make consecutive errors appear in different color (yellow)
+
+Speed-type differenciate between errors and consecutive-errors.
+
+An error is a mistyped character. A consectuive-error is a mistyped
+character where previous character was already an error.
+
+You can make consecutive errors yellow/orange (warning-color) by customizing the face as follows:
+```emacs-lisp
+(face-spec-set 'speed-type-consecutive-error-face `((t (:inherit 'default :foreground ,(face-foreground 'warning) :underline t))))
+```
+
 ### Statistics
 
 The default of `speed-type-save-statistic-option` is `always` which
