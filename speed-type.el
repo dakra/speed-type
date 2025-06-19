@@ -207,6 +207,7 @@ Median Remaining:    %d")
     (define-key map (kbd "d") 'speed-type--display-statistic)
     (define-key map (kbd "r") 'speed-type--replay)
     (define-key map (kbd "n") 'speed-type--play-next)
+    (define-key map (kbd "c") 'speed-type--continue)
     map))
 
 (defvar speed-type-mode-map
@@ -239,6 +240,7 @@ Median Remaining:    %d")
 (defvar-local speed-type--extra-words-animation-time nil)
 (defvar-local speed-type--extra-words-queue '())
 (defvar-local speed-type--go-next-fn nil)
+(defvar-local speed-type--continue nil)
 (defvar-local speed-type--replay-fn #'speed-type--setup)
 
 (defun speed-type--/ (number divisor)
@@ -531,6 +533,9 @@ leave buffer in read-only mode."
 		  (propertize "q" 'face 'highlight))
 	  (format "    [%s]eplay this sample\n"
 		  (propertize "r" 'face 'highlight)))
+  (when speed-type--continue
+    (insert (format "    [%s]ontinue on this sample\n"
+		    (propertize "c" 'face 'highlight))))
   (when (not (eq 'never speed-type-save-statistic-option))
     (insert (format "    [%s]isplay statistic\n"
 		    (propertize "d" 'face 'highlight))))
@@ -665,9 +670,17 @@ Expects CURRENT-BUFFER to be buffer of speed-type session."
       (funcall fn)
       (kill-buffer cb))))
 
+(defun speed-type--continue ()
+  "Play a new speed-type-session continuing the content where point is currently at."
+  (interactive)
+  (when speed-type--continue
+    (let ((fn speed-type--continue)
+	  (cb (current-buffer)))
+      (funcall fn)
+      (kill-buffer cb))))
 
 (defun speed-type--play-next ()
-  "Play a new speed-type session, based on the current one."
+  "Play a new speed-type session with random content, based on the current one."
   (interactive)
   (when speed-type--go-next-fn
     (let ((fn speed-type--go-next-fn)
@@ -790,7 +803,7 @@ Replacements are found in `speed-type-replace-strings'."
    :initial-value text))
 
 (cl-defun speed-type--setup
-    (content-buffer text &key author title lang n-words add-extra-word-content-fn replay-fn go-next-fn callback)
+    (content-buffer text &key author title lang n-words continue-fn add-extra-word-content-fn replay-fn go-next-fn callback)
   "Set up a new buffer for the typing exercise on TEXT.
 
 AUTHOR and TITLE can be given, this happen when the text to type comes
@@ -833,6 +846,7 @@ CALLBACK is called when the setup process has been completed."
 	    speed-type--lang lang
 	    speed-type--n-words n-words
 	    speed-type--add-extra-word-content-fn add-extra-word-content-fn
+	    speed-type--continue continue-fn
 	    speed-type--go-next-fn go-next-fn)
       (when content-buffer
 	(setq speed-type--content-buffer content-buffer)
@@ -895,7 +909,7 @@ CALLBACK is called when the setup process has been completed."
       (setq speed-type--buffer nil)
       (kill-buffer buf))))
 
-(defun speed-type--pick-text-to-type (&optional start end)
+(defun speed-type--pick-text-to-type (&optional start end non-random)
   "Return a random section of the buffer usable for playing.
 
 START and END allow to limit to a buffer section - they default
@@ -903,38 +917,40 @@ to (point-min) and (point-max)"
   (unless start (setq start (point-min)))
   (unless end (setq end (point-max)))
   (goto-char start)
-  (forward-paragraph
+  (apply
+   (if (derived-mode-p 'prog-mode) 'forward-line 'forward-paragraph)
    ;; count the paragraphs, and pick a random one
-   (random (let ((nb 0))
-             (while (< (point) end)
-               (forward-paragraph)
-               (setq nb (+ 1 nb)))
-             (goto-char start)
-             nb)))
-  (mark-paragraph)
+   (list (if non-random 1 (random (let ((nb 0))
+				    (while (< (point) end)
+				      (if (derived-mode-p 'prog-mode) (forward-line) (forward-paragraph))
+				      (setq nb (+ 1 nb)))
+				    (goto-char start)
+				    nb)))))
+  (if (derived-mode-p 'prog-mode) (mark-sexp) (mark-paragraph))
   ;; select more paragraphs until there are more than speed-type-min-chars
   ;; chars in the selection
-
   (while (and (< (mark) end)
               (< (- (mark) (point)) speed-type-min-chars))
-    (mark-paragraph 1 t))
+    (if (derived-mode-p 'prog-mode) (mark-sexp 1 t) (mark-paragraph 1 t)))
   (exchange-point-and-mark)
   ;; and remove sentences if we are above speed-type-max-chars
-
   (let ((continue t)
         (sentence-end-double-space nil)
         (fwd nil))
     (while (and (< (point) end)
                 (> (- (point) (mark)) speed-type-max-chars)
                 continue)
-      (setq continue (re-search-backward (sentence-end) (mark) t))
+      (setq continue
+	    (if (derived-mode-p 'prog-mode)
+		(beginning-of-line 0)
+	      (re-search-backward (sentence-end) (mark) t)))
       (when continue (setq fwd t)))
     (when fwd (forward-char)))
   (unless (derived-mode-p 'prog-mode) (fill-region (point-min) (point-max) 'none t))
   (buffer-substring-no-properties (region-beginning) (region-end)))
 
 (defun speed-type--setup-code
-    (content-buffer text title author &optional replay-fn go-next-fn syntax-table font-lock-df)
+    (content-buffer text title author &optional replay-fn go-next-fn syntax-table font-lock-df continue-fn)
   "Speed type the code snippet TEXT which was extracted from CONTENT-BUFFER.
 
 CONTENT-BUFFER will be linked to the SPEED-TYPE-BUFFER.
@@ -960,9 +976,10 @@ and font lock defaults by FONT-LOCK-DF."
 	     :title title
 	     :replay-fn replay-fn
              :go-next-fn go-next-fn
+	     :continue-fn continue-fn
              :callback #'callback)))
 
-(defun speed-type--code-with-highlighting (content-buffer text title author &optional syntax-table font-lock-df go-next-fn)
+(defun speed-type--code-with-highlighting (content-buffer text title author &optional syntax-table font-lock-df go-next-fn continue-fn)
   "Speed type TEXT with syntax highlight which was extracted from CONTENT-BUFFER.
 
 CONTENT-BUFFER will be linked to the SPEED-TYPE-BUFFER..
@@ -979,7 +996,8 @@ been completed."
 		#'speed-type--get-replay-fn
 		go-next-fn
 		syntax-table
-		font-lock-df))
+		font-lock-df
+		continue-fn))
 
 (defun speed-type--get-replay-fn ()
   "Return a replay function which will use GO-NEXT-FN after completion."
@@ -1165,7 +1183,7 @@ LIMIT is supplied to the random-function."
 	       :replay-fn #'speed-type--get-replay-fn))))
 
 ;;;###autoload
-(defun speed-type-buffer (full)
+(defun speed-type-buffer (full &optional continue-at-point)
   "Open copy of buffer contents in a new buffer to speed type the text.
 
 If using a prefix while calling this function `C-u', then the FULL text
@@ -1174,8 +1192,13 @@ will be used.  Else some text will be picked randomly."
   (if full
       (speed-type-region (point-min) (point-max))
     (let* ((buf (speed-type-prepare-content-buffer-from-buffer (current-buffer)))
-           (text (with-current-buffer buf (speed-type--pick-text-to-type)))
+           (text (with-current-buffer buf
+		   (if continue-at-point
+		       (speed-type--pick-text-to-type continue-at-point nil t)
+		     (speed-type--pick-text-to-type))))
 	   (line-count (with-current-buffer buf (count-lines (point-min) (point-max))))
+	   (continue-fn (lambda () (with-current-buffer speed-type--content-buffer
+				     (speed-type-buffer full (point)))))
            (go-next-fn (lambda () (with-current-buffer buf (speed-type-buffer full)))))
       (if (with-current-buffer buf
 	    (derived-mode-p 'prog-mode))
@@ -1185,14 +1208,16 @@ will be used.  Else some text will be picked randomly."
 				    (buffer-name)
                                     (syntax-table)
                                     font-lock-defaults
-                                    go-next-fn)
+                                    go-next-fn
+				    continue-fn)
         (speed-type--setup buf
 		 text
 		 :author (user-full-name)
 		 :title (buffer-name)
 		 :add-extra-word-content-fn (lambda () (speed-type--get-separated-thing-at-random-line buf line-count " "))
 		 :replay-fn #'speed-type--get-replay-fn
-		 :go-next-fn go-next-fn)))))
+		 :go-next-fn go-next-fn
+		 :continue-fn continue-fn)))))
 
 ;;;###autoload
 (defun speed-type-text ()
