@@ -7,7 +7,7 @@
 ;; Version: 1.4
 ;; Keywords: games
 ;; URL: https://github.com/dakra/speed-type
-;; Package-Requires: ((emacs "26.1") (compat "29.1.3") (dash "2.19.1"))
+;; Package-Requires: ((emacs "26.1") (compat "29.1.3"))
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 
 ;; This file is NOT part of GNU Emacs.
@@ -41,7 +41,6 @@
 (require 'url-handlers)
 (require 'url-http)
 (require 'thingatpt)
-(require 'dash)
 (require 'dom)
 
 (defgroup speed-type nil
@@ -525,10 +524,10 @@ Point is irrelevant and unaffected."
 
 (defun speed-type--calc-median (symbol stats)
   "Calculate the median of given SYMBOL in STATS."
-  (let* ((numbers (-sort #'< (remove nil (mapcar (lambda (e) (cdr (assoc symbol e))) stats))))
+  (let* ((numbers (sort (remove nil (mapcar (lambda (e) (cdr (assoc symbol e))) stats)) '<))
 	 (num-of-records (length numbers))
 	 (medians (if (eq (% num-of-records 2) 0)
-		      (/ (+ (nth (- 1 (/ num-of-records 2)) numbers)
+		      (/ (+ (nth (- (/ num-of-records 2) 1) numbers)
 			    (nth (/ num-of-records 2) numbers))
 			 2)
 		    (nth (/ num-of-records 2) numbers))))
