@@ -240,7 +240,7 @@ Median Remaining:    %d")
 (defvar-local speed-type--extra-words-animation-time nil)
 (defvar-local speed-type--extra-words-queue '())
 (defvar-local speed-type--go-next-fn nil)
-(defvar-local speed-type--continue nil)
+(defvar-local speed-type--continue-fn nil)
 (defvar-local speed-type--replay-fn #'speed-type--setup)
 
 (defun speed-type--/ (number divisor)
@@ -533,8 +533,8 @@ leave buffer in read-only mode."
 		  (propertize "q" 'face 'highlight))
 	  (format "    [%s]eplay this sample\n"
 		  (propertize "r" 'face 'highlight)))
-  (when speed-type--continue
-    (insert (format "    [%s]ontinue on this sample\n"
+  (when speed-type--continue-fn
+    (insert (format "    [%s]ontinue this session\n"
 		    (propertize "c" 'face 'highlight))))
   (when (not (eq 'never speed-type-save-statistic-option))
     (insert (format "    [%s]isplay statistic\n"
@@ -846,7 +846,7 @@ CALLBACK is called when the setup process has been completed."
 	    speed-type--lang lang
 	    speed-type--n-words n-words
 	    speed-type--add-extra-word-content-fn add-extra-word-content-fn
-	    speed-type--continue continue-fn
+	    speed-type--continue-fn continue-fn
 	    speed-type--go-next-fn go-next-fn)
       (when content-buffer
 	(setq speed-type--content-buffer content-buffer)
@@ -909,6 +909,33 @@ CALLBACK is called when the setup process has been completed."
       (setq speed-type--buffer nil)
       (kill-buffer buf))))
 
+(defun speed-type--pick-text-to-type-non-random-only-for-text (start)
+  "Return a random section of the buffer usable for playing.
+
+START and END allow to limit to a buffer section - they default
+to (point-min) and (point-max)"
+  (let ((end (point-max)))
+    (goto-char start)
+    (set-mark start)
+    (re-search-forward (sentence-end) nil t)
+    ;; select more paragraphs until there are more than speed-type-min-chars
+    ;; chars in the selection
+    (while (and (< (point) end)
+		(< (- (point) (mark)) speed-type-min-chars))
+      (re-search-forward (sentence-end) nil t))
+    ;; and remove sentences if we are above speed-type-max-chars
+    (let ((continue t)
+          (sentence-end-double-space nil)
+          (fwd nil))
+      (while (and (< (point) end)
+                  (> (- (point) (mark)) speed-type-max-chars)
+                  continue)
+	(setq continue (backward-word 1))
+	(when continue (setq fwd t))))
+    (let ((win (get-buffer-window (current-buffer))))
+      (when win (set-window-point win (point))))
+    (buffer-substring-no-properties (region-beginning) (region-end))))
+
 (defun speed-type--pick-text-to-type (&optional start end non-random)
   "Return a random section of the buffer usable for playing.
 
@@ -917,36 +944,33 @@ to (point-min) and (point-max)"
   (unless start (setq start (point-min)))
   (unless end (setq end (point-max)))
   (goto-char start)
-  (apply
-   (if (derived-mode-p 'prog-mode) 'forward-line 'forward-paragraph)
+  (forward-paragraph
    ;; count the paragraphs, and pick a random one
-   (list (if non-random 1 (random (let ((nb 0))
-				    (while (< (point) end)
-				      (if (derived-mode-p 'prog-mode) (forward-line) (forward-paragraph))
-				      (setq nb (+ 1 nb)))
-				    (goto-char start)
-				    nb)))))
-  (if (derived-mode-p 'prog-mode) (mark-sexp) (mark-paragraph))
-  ;; select more paragraphs until there are more than speed-type-min-chars
-  ;; chars in the selection
+   (random (let ((nb 0))
+             (while (< (point) end)
+               (forward-paragraph)
+               (setq nb (+ 1 nb)))
+             (goto-char start)
+             nb)))
+  (mark-paragraph)
   (while (and (< (mark) end)
               (< (- (mark) (point)) speed-type-min-chars))
-    (if (derived-mode-p 'prog-mode) (mark-sexp 1 t) (mark-paragraph 1 t)))
+    (mark-paragraph 1 t))
   (exchange-point-and-mark)
   ;; and remove sentences if we are above speed-type-max-chars
+
   (let ((continue t)
         (sentence-end-double-space nil)
         (fwd nil))
     (while (and (< (point) end)
                 (> (- (point) (mark)) speed-type-max-chars)
                 continue)
-      (setq continue
-	    (if (derived-mode-p 'prog-mode)
-		(beginning-of-line 0)
-	      (re-search-backward (sentence-end) (mark) t)))
+      (setq continue (re-search-backward (sentence-end) (mark) t))
       (when continue (setq fwd t)))
     (when fwd (forward-char)))
   (unless (derived-mode-p 'prog-mode) (fill-region (point-min) (point-max) 'none t))
+  (let ((win (get-buffer-window (current-buffer))))
+    (when win (set-window-point win (point))))
   (buffer-substring-no-properties (region-beginning) (region-end)))
 
 (defun speed-type--setup-code
@@ -999,6 +1023,31 @@ been completed."
 		font-lock-df
 		continue-fn))
 
+(defun speed-type--get-continue-fn ()
+  "Return a continue function which will use GO-NEXT-FN after completion."
+  (remove-hook 'kill-buffer-hook 'speed-type--kill-buffer-hook t)
+  (let ((text (with-current-buffer speed-type--content-buffer (speed-type--pick-text-to-type-non-random-only-for-text (point)))))
+    (if (with-current-buffer speed-type--content-buffer (derived-mode-p 'prog-mode))
+	(speed-type--code-with-highlighting
+	 speed-type--content-buffer
+	 text
+	 speed-type--title
+	 speed-type--author
+	 (with-current-buffer speed-type--content-buffer (syntax-table))
+	 (with-current-buffer speed-type--content-buffer font-lock-defaults)
+	 speed-type--go-next-fn
+	 speed-type--continue-fn)
+      (speed-type--setup speed-type--content-buffer
+	       text
+	       :lang speed-type--lang
+	       :author speed-type--author
+	       :title speed-type--title
+	       :n-words speed-type--n-words
+	       :add-extra-word-content-fn speed-type--add-extra-word-content-fn
+               :replay-fn #'speed-type--get-replay-fn
+	       :continue-fn #'speed-type--get-continue-fn
+               :go-next-fn speed-type--go-next-fn))))
+
 (defun speed-type--get-replay-fn ()
   "Return a replay function which will use GO-NEXT-FN after completion."
   (remove-hook 'kill-buffer-hook 'speed-type--kill-buffer-hook t)
@@ -1010,7 +1059,8 @@ been completed."
        speed-type--author
        (with-current-buffer speed-type--content-buffer (syntax-table))
        (with-current-buffer speed-type--content-buffer font-lock-defaults)
-       speed-type--go-next-fn)
+       speed-type--go-next-fn
+       speed-type--continue-fn)
     (speed-type--setup speed-type--content-buffer
 	     speed-type--orig-text
 	     :lang speed-type--lang
@@ -1019,7 +1069,8 @@ been completed."
 	     :n-words speed-type--n-words
 	     :add-extra-word-content-fn speed-type--add-extra-word-content-fn
              :replay-fn #'speed-type--get-replay-fn
-             :go-next-fn speed-type--go-next-fn)))
+             :go-next-fn speed-type--go-next-fn
+	     :continue-fn speed-type--contine-fn)))
 
 (defun speed-type--get-next-word (content-buffer)
   "Get next word from point in CONTENT-BUFFER."
@@ -1183,7 +1234,7 @@ LIMIT is supplied to the random-function."
 	       :replay-fn #'speed-type--get-replay-fn))))
 
 ;;;###autoload
-(defun speed-type-buffer (full &optional continue-at-point)
+(defun speed-type-buffer (full)
   "Open copy of buffer contents in a new buffer to speed type the text.
 
 If using a prefix while calling this function `C-u', then the FULL text
@@ -1197,8 +1248,6 @@ will be used.  Else some text will be picked randomly."
 		       (speed-type--pick-text-to-type continue-at-point nil t)
 		     (speed-type--pick-text-to-type))))
 	   (line-count (with-current-buffer buf (count-lines (point-min) (point-max))))
-	   (continue-fn (lambda () (with-current-buffer speed-type--content-buffer
-				     (speed-type-buffer full (point)))))
            (go-next-fn (lambda () (with-current-buffer buf (speed-type-buffer full)))))
       (if (with-current-buffer buf
 	    (derived-mode-p 'prog-mode))
@@ -1217,7 +1266,7 @@ will be used.  Else some text will be picked randomly."
 		 :add-extra-word-content-fn (lambda () (speed-type--get-separated-thing-at-random-line buf line-count " "))
 		 :replay-fn #'speed-type--get-replay-fn
 		 :go-next-fn go-next-fn
-		 :continue-fn continue-fn)))))
+		 :continue-fn #'speed-type--get-continue-fn)))))
 
 ;;;###autoload
 (defun speed-type-text ()
@@ -1253,7 +1302,8 @@ will be used.  Else some text will be picked randomly."
              :title title
 	     :add-extra-word-content-fn (lambda () (speed-type--get-next-word buf))
              :replay-fn #'speed-type--get-replay-fn
-             :go-next-fn #'speed-type-text)))
+             :go-next-fn #'speed-type-text
+	     :continue-fn #'speed-type--get-continue-fn)))
 
 ;;;###autoload
 (defun speed-type-quotes (&optional arg)
@@ -1287,7 +1337,8 @@ will be used.  Else some text will be picked randomly."
 	     :author author
 	     :add-extra-word-content-fn add-extra-word-content-fn
 	     :replay-fn #'speed-type--get-replay-fn
-	     :go-next-fn go-next-fn)))
+	     :go-next-fn go-next-fn
+	     :continue-fn #'speed-type--get-continue-fn)))
 
 (provide 'speed-type)
 ;;; speed-type.el ends here
