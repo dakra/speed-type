@@ -764,8 +764,8 @@ END is a point where the check stops to scan for diff."
 	     (pos0 (+ start0 i))
              (pos (+ start i))
 	     (non-consecutive-error-p (or (and (<= pos0 0) (= speed-type--non-consecutive-errors 0)) ;; first char is always a non-consecutive error if counter is 0
-					 (or (and (eq speed-type-cursor-motion-on-error 'point-stay) (not (= (aref speed-type--mod-str pos0) 2))) ;; staying, no movement, check current
-					     (and (> pos0 0) (eq speed-type-cursor-motion-on-error 'point-move) (= (aref speed-type--mod-str (1- pos0)) 1)))))) ;; moving, check previous
+					 (or (and (eq speed-type-point-motion-on-error 'point-stay) (not (= (aref speed-type--mod-str pos0) 2))) ;; staying, no movement, check current
+					     (and (> pos0 0) (eq speed-type-point-motion-on-error 'point-move) (= (aref speed-type--mod-str (1- pos0)) 1)))))) ;; moving, check previous
         (if (speed-type--check-same i orig new)
             (progn (setq correct t)
 		   (when (= (aref speed-type--mod-str pos0) 2) (cl-incf speed-type--corrections))
@@ -782,7 +782,7 @@ END is a point where the check stops to scan for diff."
 	  (overlay-put overlay 'face
 		       (if correct 'speed-type-correct-face
 			 (if non-consecutive-error-p 'speed-type-error-face 'speed-type-consecutive-error-face))))))
-    (if (or (eq speed-type-cursor-motion-on-error 'point-move)
+    (if (or (eq speed-type-point-motion-on-error 'point-move)
 	    (equal new "")
 	    (not any-error))
         (goto-char end)
