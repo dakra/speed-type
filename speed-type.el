@@ -758,9 +758,10 @@ START is a point where the check starts to scan for diff.
 END is a point where the check stops to scan for diff."
   (let ((start0 (1- start))
         (_end0 (1- end))
-        (correct nil))
+	(any-error nil))
     (dotimes (i (- end start))
-      (let* ((pos0 (+ start0 i))
+      (let* ((correct nil)
+	     (pos0 (+ start0 i))
              (pos (+ start i))
 	     (non-consecutive-error-p (or (and (<= pos0 0) (= speed-type--non-consecutive-errors 0)) ;; first char is always a non-consecutive error if counter is 0
 					 (or (and (eq speed-type-cursor-motion-on-error 'point-stay) (not (= (aref speed-type--mod-str pos0) 2))) ;; staying, no movement, check current
@@ -806,14 +807,7 @@ are color coded and stats are gathered about the typing performance."
              (orig (substring speed-type--orig-text start0 end0)))
         (speed-type--handle-del start end)
         (insert old-text)
-	(if (or
-	     (speed-type--diff orig new-text start end)
-	     (equal new-text "")
-	     (eq speed-type-cursor-motion-on-error 'mark-red-and-move))
-            (goto-char end)
-	  (goto-char (- end 1))
-	  (beep)
-	  (message "Wrong key"))
+	(speed-type--diff orig new-text start end)
         (when (= speed-type--remaining 0)
           (speed-type-complete))))))
 
