@@ -12,13 +12,14 @@ Install speed-type from [MELPA](melpa.org) with:
 M-x package-install RET speed-type
 ```
 
-If you prefer to install by hand: Put speed-type.el into a directory specified
-by the load-path variable. Alternatively, you can add a directory to the
-variable load-path by (add-to-list 'load-path "ADDITIONAL-DIRECTORY").
+Or via use-package and straight:
+```emacs-lisp
+(use-package speed-type
+  :straight t)
+```
 
-If you put the file in "~/.emacs.d/speed-type/speed-type.el" for instance, the
-following snipped in your .emacs file will load and init the extension.
-
+Alternatively, you can clone this project and add it to the load-path
+in your init-file:
 ```emacs-lisp
 (add-to-list 'load-path "~/.emacs.d/speed-type/speed-type.el")
 (require 'speed-type)
@@ -60,6 +61,27 @@ See all custom variables of speed-type pressing:
 M-x customize-group speed-type RET
 ```
 
+### Customize cursor motion
+
+By default the cursor moves forward with each typed character and
+marks it green if correct or red otherwise.
+
+If you'd like to stay on the character until it's correctly typed, you
+can customize the `speed-type-point-motion-on-error` to
+`point-stay`.
+
+### Make consecutive errors appear in different color (yellow)
+
+Speed-type differenciate between errors and consecutive-errors.
+
+An error is a mistyped character. A consectuive-error is a mistyped
+character where previous character was already an error.
+
+You can make consecutive errors yellow/orange (warning-color) by customizing the face as follows:
+```emacs-lisp
+(face-spec-set 'speed-type-consecutive-error-face `((t (:inherit 'default :foreground ,(face-foreground 'warning) :underline t))))
+```
+
 ### Statistics
 
 The default of `speed-type-save-statistic-option` is `always` which
@@ -72,10 +94,15 @@ at the end of a speed-type session.
 
 ### Add words on error (typer-mode)
 
-The default of `speed-type-add-extra-words-on-mistake` is `0` which
-means no additional words are added on misstyping. If you like to
-challange yourself you can set this to a number higher than 0.
-A number between 1 and 7 is recommanded.
+There exists two variable for this purpose:
+1. `speed-type-add-extra-words-on-non-consecutive-errors`
+2. `speed-type-add-extra-words-on-error`.
+
+Both have the default `0` which means no addittional words are added.
+If both are set they accumlate each other.
+
+If you like to challange yourself, it's recommanded to set one of them
+to a number between 1 and 7.
 
 It adds random or next words from the content the speed-type session
 was started from. If you replay the session, the added words will be
