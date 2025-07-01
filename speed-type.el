@@ -879,6 +879,8 @@ CALLBACK is called when the setup process has been completed."
     (with-temp-buffer
       (insert text)
       (delete-trailing-whitespace)
+      (unless (with-current-buffer content-buffer (derived-mode-p 'prog-mode))
+	(speed-type--fill-region))
       (setq text (speed-type--trim (buffer-string))))
     (let ((buf (generate-new-buffer speed-type-buffer-name))
           (len (length text)))
@@ -903,8 +905,6 @@ CALLBACK is called when the setup process has been completed."
 	  (setq-local speed-type--extra-word-quote nil)))
       (when replay-fn (setq speed-type--replay-fn replay-fn))
       (insert text)
-      (unless (with-current-buffer speed-type--content-buffer (derived-mode-p 'prog-mode))
-	(speed-type--fill-region))
       (set-buffer-modified-p nil)
       (switch-to-buffer buf)
       (goto-char 0)
