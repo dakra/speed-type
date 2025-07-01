@@ -712,8 +712,8 @@ Expects CURRENT-BUFFER to be buffer of speed-type session."
 	(fill-regioned-text (progn (fill-region (point-min) (point-max) 'none t)
 				   (buffer-substring (point-min) (point-max)))))
     (setq speed-type--orig-text fill-regioned-text)
-    (when (not (= orig-length (length fill-regioned-text)))
-      (setq speed-type--remaining (+ speed-type--remaining (- orig-length (length fill-regioned-text)))))))
+    (when (< orig-length (length fill-regioned-text))
+      (setq speed-type--remaining (- speed-type--remaining (- orig-length (length fill-regioned-text)))))))
 
 (defun speed-type-fill-paragraph ()
   "Override keybinding of FILL-PARAGRAPH with this to not destory session."
