@@ -79,7 +79,7 @@ character where previous character was already an error.
 
 You can make consecutive errors yellow/orange (warning-color) by customizing the face as follows:
 ```emacs-lisp
-(face-spec-set 'speed-type-consecutive-error-face `((t (:inherit 'default :foreground ,(face-foreground 'warning) :underline t))))
+(face-spec-set 'speed-type-consecutive-error-face '((t :inherit warning :underline t)))
 ```
 
 ### Statistics

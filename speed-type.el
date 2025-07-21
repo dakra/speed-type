@@ -36,6 +36,7 @@
 
 ;;; Code:
 (require 'cl-lib)
+(require 'cl-seq)
 (require 'compat)
 (require 'url)
 (require 'url-handlers)
@@ -174,17 +175,17 @@ Similar to `speed-type-add-extra-words-on-error', they accumulate each other if 
   :group 'speed-type)
 
 (defface speed-type-correct-face
-  `((t (:inherit 'default :foreground ,(face-foreground 'success))))
+  '((t :inherit success :weight normal))
   "Face for correctly typed characters."
   :group 'speed-type)
 
 (defface speed-type-consecutive-error-face
-  `((t (:inherit 'default :foreground ,(face-foreground 'error) :underline t)))
+  '((t :inherit error :underline t))
   "Face for incorrectly typed characters where the previous character is already an error."
   :group 'speed-type)
 
 (defface speed-type-error-face
-  `((t (:inherit 'default :foreground ,(face-foreground 'error) :underline t)))
+  '((t :inherit error :underline t))
   "Face for incorrectly typed characters."
   :group 'speed-type)
 
@@ -775,8 +776,8 @@ END is a point where the check stops to scan for diff."
 	     (pos0 (+ start0 i))
              (pos (+ start i))
 	     (non-consecutive-error-p (or (and (<= pos0 0) (= speed-type--non-consecutive-errors 0)) ;; first char is always a non-consecutive error if counter is 0
-					 (or (and (eq speed-type-point-motion-on-error 'point-stay) (not (= (aref speed-type--mod-str pos0) 2))) ;; staying, no movement, check current
-					     (and (> pos0 0) (eq speed-type-point-motion-on-error 'point-move) (= (aref speed-type--mod-str (1- pos0)) 1)))))) ;; moving, check previous
+					  (or (and (eq speed-type-point-motion-on-error 'point-stay) (not (= (aref speed-type--mod-str pos0) 2))) ;; staying, no movement, check current
+					      (and (> pos0 0) (eq speed-type-point-motion-on-error 'point-move) (= (aref speed-type--mod-str (1- pos0)) 1)))))) ;; moving, check previous
         (if (speed-type--check-same i orig new)
             (progn (setq correct t)
 		   (when (= (aref speed-type--mod-str pos0) 2) (cl-incf speed-type--corrections))
@@ -789,10 +790,12 @@ END is a point where the check stops to scan for diff."
 				      (or (and non-consecutive-error-p speed-type-add-extra-words-on-non-consecutive-errors) 0)))))
         (cl-incf speed-type--entries)
         (cl-decf speed-type--remaining)
-	(let ((overlay (or (car (overlays-at pos)) (make-overlay pos (1+ pos)))))
-	  (overlay-put overlay 'face
-		       (if correct 'speed-type-correct-face
-			 (if non-consecutive-error-p 'speed-type-error-face 'speed-type-consecutive-error-face))))))
+	(let ((overlay (or (cl-find-if
+			    (lambda (ov) (member (overlay-get ov 'face) '(speed-type-correct-face speed-type-error-face speed-type-consecutive-error-face)))
+			    (overlays-at pos))
+			   (make-overlay pos (1+ pos)))))
+	  (overlay-put overlay 'priority 1)
+	  (overlay-put overlay 'face (if correct 'speed-type-correct-face (if non-consecutive-error-p 'speed-type-error-face 'speed-type-consecutive-error-face))))))
     (if (or (eq speed-type-point-motion-on-error 'point-move)
 	    (equal new "")
 	    (not any-error))
