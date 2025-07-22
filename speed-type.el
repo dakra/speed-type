@@ -100,7 +100,8 @@ the transformed string that is used for the speed type exercise.
 E.g. if you always want lowercase words, set:
 `speed-type-wordlist-transform' to `downcase'."
   :type '(choice (const :tag "None" nil)
-                 (function :tag "Transform function")))
+                 (function :tag "Transform function"))
+  :group 'speed-type)
 
 (defcustom speed-type-default-lang nil
   "Default language for training wordlists.  Ask when NIL."
@@ -108,20 +109,24 @@ E.g. if you always want lowercase words, set:
                  (const :tag "English" English)
                  (const :tag "German" German)
                  (const :tag "French" French)
-                 (const :tag "Dutch" Dutch)))
+                 (const :tag "Dutch" Dutch))
+  :group 'speed-type)
 
 (defcustom speed-type-replace-strings '(("“" . "\"") ("”" . "\"") ("‘" . "'") ("’" . "'"))
   "Alist of strings to replace and their replacement, in the form:
 `(bad-string . good-string)'
 To remove without replacement, use the form: `(bad-string . \"\")'"
-  :type '(alist :key-type string :value-type string))
+  :type '(alist :key-type string :value-type string)
+  :group 'speed-type)
 
 (defcustom speed-type-point-motion-on-error 'point-move
   "Define the behavior of point when mistyping a character.
 
 when point-move (default), moves the point one character further.
 
-when point-stay, stays at the current position until correct character is typed.")
+when point-stay, stays at the current position until correct character is typed."
+  :type 'symbol
+  :group 'speed-type)
 
 (defcustom speed-type-add-extra-words-on-error 0
   "How many new words should be added on error.
@@ -255,6 +260,8 @@ Median Remaining:              %d")
 (defvar-local speed-type--extra-words-queue '())
 (defvar-local speed-type--go-next-fn nil)
 (defvar-local speed-type--replay-fn #'speed-type--setup)
+(defvar-local speed-type--extra-word-quote nil)
+
 
 (defun speed-type--/ (number divisor)
   "Divide NUMBER by DIVISOR when DIVISOR is not null.
@@ -645,9 +652,7 @@ speed-type files that were created using the speed-type functions."
   (delete-region start end)
   (dotimes (i (- end start))
     (let* ((pos (+ (1- start) i))
-           (q (aref speed-type--mod-str pos))
-	       (pq (or (when (< pos 1) 1)
-		           (aref speed-type--mod-str (1- pos)))))
+           (q (aref speed-type--mod-str pos)))
       (cond ((= q 0) ())
             ((or (= q 1)
 		         (= q 2))
@@ -1282,7 +1287,9 @@ will be used.  Else some text will be picked randomly."
 
 ;;;###autoload
 (defun speed-type-quotes (&optional arg)
-  "Do something cool with quotes."
+  "Setup a new quote to practice touch or speed typing.
+
+If `ARG' is given will prompt for a specific quote-URL."
   (interactive "p")
   (let* ((quote-url (if (= arg 1)
 			(nth (random (length speed-type-quote-urls)) speed-type-quote-urls)
@@ -1292,7 +1299,7 @@ will be used.  Else some text will be picked randomly."
 		  (save-excursion (search-forward-regexp "<title>\\(.*\\)</title>")
 				  (match-string 1))))
 	 (dom-quotes (with-current-buffer buf
-		       (dom-by-class (dom-by-class (libxml-parse-html-region (point-min) (point-max) nil t) "list-quotes") "title")))
+		       (dom-by-class (dom-by-class (libxml-parse-html-region (point-min) (point-max) nil) "list-quotes") "title")))
 	 (random-quote (nth (random (length dom-quotes)) dom-quotes))
 	 (author (dom-attr random-quote 'data-author))
 	 (text (dom-text random-quote))
@@ -1300,7 +1307,7 @@ will be used.  Else some text will be picked randomly."
 	  (lambda ()
 	    (with-current-buffer speed-type--content-buffer
 	      (when (null speed-type--extra-word-quote)
-		(let ((dom-quotes (dom-by-class (dom-by-class (libxml-parse-html-region (point-min) (point-max) nil t) "list-quotes") "title")))
+		(let ((dom-quotes (dom-by-class (dom-by-class (libxml-parse-html-region (point-min) (point-max) nil) "list-quotes") "title")))
 		  (setq-local speed-type--extra-word-quote (split-string (dom-text (nth (random (length dom-quotes)) dom-quotes)) " "))))
 	      (let ((word (nth 0 speed-type--extra-word-quote)))
 		(setq-local speed-type--extra-word-quote (cdr speed-type--extra-word-quote))
