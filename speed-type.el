@@ -129,17 +129,20 @@ When 0 or less, no words are added. The typing-session will only
 be complete when these extra words are typed too. Recommanded is
 something between 1 and 7.
 
-Similar to `speed-type-add-extra-words-on-non-consecutive-errors' they accumulate each other if both variables are set."
+Similar to `speed-type-add-extra-words-on-non-consecutive-errors'
+they accumulate each other if both variables are set."
   :type 'integer)
 
 (defcustom speed-type-add-extra-words-on-non-consecutive-errors 0
   "How many new words should be added on a non-consecutive error.
-A non-consecutive error is a mistyped character where the previous one was correctly typed.
-When 0 or less, no words are added. The typing-session will only
-be complete when these extra words are typed too. Recommanded is
+A non-consecutive error is a mistyped character where the previous
+one was correctly typed.
+When 0 or less, no words are added.  The typing-session will only
+be complete when these extra words are typed too.  Recommended is
 something between 1 and 7.
 
-Similar to `speed-type-add-extra-words-on-error', they accumulate each other if both variables are set."
+Similar to `speed-type-add-extra-words-on-error',
+they accumulate each other if both variables are set."
   :type 'integer)
 
 (defcustom speed-type-save-statistic-option 'always
@@ -166,7 +169,7 @@ Similar to `speed-type-add-extra-words-on-error', they accumulate each other if 
 
 (defface speed-type-consecutive-error-face
   '((t :inherit error :underline t))
-  "Face for incorrectly typed characters where the previous character is already an error.")
+  "Face for incorrectly typed characters where the previous is already an error.")
 
 (defface speed-type-error-face
   '((t :inherit error :underline t))
@@ -432,7 +435,7 @@ it can be passed along with FILE to `format'. At the end,
         (existing-buf             (get-file-buffer file))
         (emacs-lisp-mode-hook     nil) ; Avoid inserting automatic file header if existing empty file, so
         (lisp-mode-hook           nil) ; better chance `speed-type-maybe-upgrade-file-format' signals error.
-	(speed-type-buffer (current-buffer))
+	    (speed-type-buffer (current-buffer))
         start end)
     (when (file-directory-p file) (error "`%s' is a directory, not a file" file))
     (message msg (abbreviate-file-name file))
@@ -440,9 +443,9 @@ it can be passed along with FILE to `format'. At the end,
       (goto-char (point-min))
       (if (file-exists-p file)
           (speed-type-maybe-upgrade-file-format)
-	(delete-region (point-min) (point-max)) ; In case a find-file hook inserted a header, etc.
-	(unless (boundp 'speed-type-coding-system)	; Emacs < 25.2.
-	  (speed-type-insert-file-format-version-stamp))
+	    (delete-region (point-min) (point-max)) ; In case a find-file hook inserted a header, etc.
+	    (unless (boundp 'speed-type-coding-system)	; Emacs < 25.2.
+	      (speed-type-insert-file-format-version-stamp coding-system-for-write))
         (insert "(\n)"))
       (setq start (and (file-exists-p file)
                        (or (save-excursion (goto-char (point-min))
@@ -457,11 +460,11 @@ it can be passed along with FILE to `format'. At the end,
           (goto-char 2)
         ;;  Existing file - delete old entry unless max is not reached. Rolling.
         (when (> (/ (count-lines start end) (length (or (speed-type-statistic-variables) '(1)))) speed-type-max-num-records)
-	  (save-excursion
-	    (goto-char start)
-	    (or (looking-at "(") (search-forward "(" nil t 1))
-	    (let ((bounds (bounds-of-thing-at-point 'sexp)))
-	      (kill-region (car bounds) (+ 1 (cdr bounds))))))
+	      (save-excursion
+	        (goto-char start)
+	        (or (looking-at "(") (search-forward "(" nil t 1))
+	        (let ((bounds (bounds-of-thing-at-point 'sexp)))
+	          (kill-region (car bounds) (+ 1 (cdr bounds))))))
         (goto-char (and start
                         (or (save-excursion (goto-char start) (and (looking-at ")") start))
                             (save-excursion (goto-char (point-max)) (re-search-backward "^)" nil t))
@@ -643,12 +646,12 @@ speed-type files that were created using the speed-type functions."
   (dotimes (i (- end start))
     (let* ((pos (+ (1- start) i))
            (q (aref speed-type--mod-str pos))
-	   (pq (or (when (< pos 1) 1)
-		   (aref speed-type--mod-str (1- pos)))))
+	       (pq (or (when (< pos 1) 1)
+		           (aref speed-type--mod-str (1- pos)))))
       (cond ((= q 0) ())
             ((or (= q 1)
-		 (= q 2))
-	     (progn (cl-decf speed-type--entries)
+		         (= q 2))
+	         (progn (cl-decf speed-type--entries)
                     (cl-incf speed-type--remaining)))))))
 
 (defun speed-type--display-statistic ()
@@ -689,12 +692,14 @@ Expects CURRENT-BUFFER to be buffer of speed-type session."
       (kill-buffer cb))))
 
 (defun speed-type--fill-region ()
-  "'fill-region' and sync speed-type local buffer variables.
+  "`fill-region' and sync speed-type local buffer variables.
 
-'fill-region' replaces double spaces with one and breaks lines with newlines. To reflect the applied changes from 'fill-region' we set 'speed-type--orig-text' again and recalculate 'speed-type--remaining'."
+`fill-region' replaces double spaces with one and breaks lines with newlines.
+To reflect the applied changes from `fill-region' we set `speed-type--orig-text'
+again and recalculate `speed-type--remaining'."
   (let ((orig-length (length speed-type--orig-text))
-	(fill-regioned-text (progn (fill-region (point-min) (point-max) 'none t)
-				   (buffer-substring (point-min) (point-max)))))
+	    (fill-regioned-text (progn (fill-region (point-min) (point-max) 'none t)
+				                   (buffer-substring (point-min) (point-max)))))
     (setq speed-type--orig-text fill-regioned-text)
     (when (> orig-length (length fill-regioned-text))
       (setq speed-type--remaining (- speed-type--remaining (- orig-length (length fill-regioned-text)))))))
@@ -803,11 +808,11 @@ are color coded and stats are gathered about the typing performance."
                                   start0 (+ start0 length)))
              (orig (substring speed-type--orig-text start0 end0)))
         (speed-type--handle-del start end)
-	(insert old-text)
-	(when-let ((overlay (and (equal new-text "")
-				 (car (overlays-at end)))))
-	  (move-overlay overlay (1- (overlay-end overlay)) (overlay-end overlay)) (current-buffer))
-	(speed-type--diff orig new-text start end)
+	    (insert old-text)
+	    (when-let* ((overlay (and (equal new-text "")
+				                  (car (overlays-at end)))))
+	      (move-overlay overlay (1- (overlay-end overlay)) (overlay-end overlay)) (current-buffer))
+	    (speed-type--diff orig new-text start end)
         (when (= speed-type--remaining 0)
           (speed-type-complete))))))
 
