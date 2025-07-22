@@ -50,22 +50,18 @@
 
 (defcustom speed-type-buffer-name "*speed-type*"
   "Name of buffer in which the user completes his typing session."
-  :group 'speed-type
   :type 'string)
 
 (defcustom speed-type-content-buffer-name "*speed-type-content-buffer*"
   "Name of buffer consisting of the content-source for the speed-type buffer."
-  :group 'speed-type
   :type 'string)
 
 (defcustom speed-type-min-chars 200
   "The minimum number of chars to type required when the text is picked randomly."
-  :group 'speed-type
   :type 'integer)
 
 (defcustom speed-type-max-chars 450
   "The maximum number of chars to type required when the text is picked randomly."
-  :group 'speed-type
   :type 'integer)
 
 (defcustom speed-type-gb-book-list
@@ -75,12 +71,10 @@
 
 Book numbers can be picked from https://www.gutenberg.org, when looking at
 a book url.  E.G, https://www.gutenberg.org/ebooks/14577."
-  :group 'speed-type
   :type '(repeat integer))
 
 (defcustom speed-type-gb-dir (locate-user-emacs-file "speed-type")
   "Directory in which the gutenberg books will be saved."
-  :group 'speed-type
   :type 'directory)
 
 (defcustom speed-type-wordlist-urls
@@ -89,7 +83,6 @@ a book url.  E.G, https://www.gutenberg.org/ebooks/14577."
     (French . "http://web.archive.org/web/20170227200416/http://wortschatz.uni-leipzig.de/Papers/top10000fr.txt")
     (Dutch . "http://web.archive.org/web/20170227200416/http://wortschatz.uni-leipzig.de/Papers/top10000nl.txt"))
   "Alist of language name as key and a URL where to download a wordlist for it."
-  :group 'speed-type
   :type '(alist :key-type symbol :value-type string))
 
 (defcustom speed-type-quote-urls
@@ -97,7 +90,6 @@ a book url.  E.G, https://www.gutenberg.org/ebooks/14577."
     (happiness . "https://www.azquotes.com/quotes/topics/happiness.html")
     (alanTuring . "https://www.azquotes.com/author/14856-Alan_Turing"))
   "list of name as key and an URL to azquotes which will be downloaded and parsed."
-  :group 'speed-type
   :type '(alist :key-type symbol :value-type string))
 
 (defcustom speed-type-wordlist-transform nil
@@ -138,56 +130,47 @@ be complete when these extra words are typed too. Recommanded is
 something between 1 and 7.
 
 Similar to `speed-type-add-extra-words-on-non-consecutive-errors' they accumulate each other if both variables are set."
-  :group 'speed-type
   :type 'integer)
 
 (defcustom speed-type-add-extra-words-on-non-consecutive-errors 0
- "How many new words should be added on a non-consecutive error.
+  "How many new words should be added on a non-consecutive error.
 A non-consecutive error is a mistyped character where the previous one was correctly typed.
 When 0 or less, no words are added. The typing-session will only
 be complete when these extra words are typed too. Recommanded is
 something between 1 and 7.
 
 Similar to `speed-type-add-extra-words-on-error', they accumulate each other if both variables are set."
-  :group 'speed-type
   :type 'integer)
 
 (defcustom speed-type-save-statistic-option 'always
   "Save the stats for the play or not."
-  :group 'speed-type
   :type '(choice (const :tag "Always" always)
-		 (const :tag "Never" never)
-		 (const :tag "Ask" ask)))
+		         (const :tag "Never" never)
+		         (const :tag "Ask" ask)))
 
 (defcustom speed-type-statistic-filename (concat speed-type-gb-dir "/" "speed-type-statistic.el")
   "Name of file for general stats."
-  :group 'speed-type
   :type 'string)
 
 (defcustom speed-type-max-num-records 10000
   "Maximum number of saved records."
-  :group 'speed-type
   :type '(natnum :tag "None negative number." ))
 
 (defface speed-type-default
   '()
-  "Default face for `speed-type'."
-  :group 'speed-type)
+  "Default face for `speed-type'.")
 
 (defface speed-type-correct-face
   '((t :inherit success :weight normal))
-  "Face for correctly typed characters."
-  :group 'speed-type)
+  "Face for correctly typed characters.")
 
 (defface speed-type-consecutive-error-face
   '((t :inherit error :underline t))
-  "Face for incorrectly typed characters where the previous character is already an error."
-  :group 'speed-type)
+  "Face for incorrectly typed characters where the previous character is already an error.")
 
 (defface speed-type-error-face
   '((t :inherit error :underline t))
-  "Face for incorrectly typed characters."
-  :group 'speed-type)
+  "Face for incorrectly typed characters.")
 
 ;; internal variables
 
