@@ -164,6 +164,13 @@ they accumulate each other if both variables are set."
   "Maximum number of saved records."
   :type '(natnum :tag "None negative number." ))
 
+(defcustom speed-type-code-modes '(prog-mode yaml-mode xml-mode html-mode)
+  "Define which modes should be handled as code.
+
+These modes will have syntax highlighting and NO `fill-region' will be called."
+  :type '(repeat symbol)
+  :group 'speed-type)
+
 (defface speed-type-default
   '()
   "Default face for `speed-type'.")
@@ -696,6 +703,11 @@ Expects CURRENT-BUFFER to be buffer of speed-type session."
       (funcall fn)
       (kill-buffer cb))))
 
+(defun speed-type--code-buffer-p (buf)
+  "Check BUF if we should use code-with-highlighting or treat it as text."
+  (with-current-buffer buf
+    (cl-find-if #'derived-mode-p speed-type-code-modes)))
+
 (defun speed-type--fill-region ()
   "`fill-region' and sync speed-type local buffer variables.
 
@@ -899,7 +911,7 @@ CALLBACK is called when the setup process has been completed."
 	  (setq-local speed-type--extra-word-quote nil)))
       (when replay-fn (setq speed-type--replay-fn replay-fn))
       (insert text)
-      (unless (with-current-buffer speed-type--content-buffer (derived-mode-p 'prog-mode))
+      (unless (speed-type--code-buffer-p speed-type--content-buffer)
 	(speed-type--fill-region))
       (set-buffer-modified-p nil)
       (switch-to-buffer buf)
@@ -917,7 +929,7 @@ CALLBACK is called when the setup process has been completed."
     (with-current-buffer buf
       (add-hook 'kill-buffer-hook 'speed-type--kill-content-buffer-hook nil t)
       (insert-buffer-substring buffer start end)
-      (when (with-current-buffer buffer (derived-mode-p 'prog-mode))
+      (when (speed-type--code-buffer-p buffer)
 	(prog-mode)
 	(set-syntax-table (with-current-buffer buffer (syntax-table)))
 	(setq font-lock-defaults (with-current-buffer buffer font-lock-defaults))
@@ -986,7 +998,7 @@ to (point-min) and (point-max)"
       (setq continue (re-search-backward (sentence-end) (mark) t))
       (when continue (setq fwd t)))
     (when fwd (forward-char)))
-  (unless (derived-mode-p 'prog-mode) (speed-type--fill-region))
+  (unless (speed-type--code-buffer-p (current-buffer)) (speed-type--fill-region))
   (buffer-substring-no-properties (region-beginning) (region-end)))
 
 (defun speed-type--setup-code
@@ -1040,7 +1052,7 @@ been completed."
 (defun speed-type--get-replay-fn ()
   "Return a replay function which will use GO-NEXT-FN after completion."
   (remove-hook 'kill-buffer-hook 'speed-type--kill-buffer-hook t)
-  (if (with-current-buffer speed-type--content-buffer (derived-mode-p 'prog-mode))
+  (if (speed-type--code-buffer-p speed-type--content-buffer)
       (speed-type--code-with-highlighting
        speed-type--content-buffer
        speed-type--orig-text
@@ -1116,7 +1128,7 @@ LIMIT is supplied to the random-function."
       (when speed-type--extra-words-queue
 	(goto-char (point-max))
 	(insert (mapconcat 'identity speed-type--extra-words-queue ""))
-	(unless (with-current-buffer speed-type--content-buffer (derived-mode-p 'prog-mode))
+	(unless (speed-type--code-buffer-p speed-type--content-buffer)
 	  (speed-type--fill-region))
 	(setq speed-type--extra-words-queue nil)))))
 
@@ -1129,8 +1141,7 @@ LIMIT is supplied to the random-function."
 	  (let ((token (pop speed-type--extra-words-queue)))
 	    (goto-char (point-max))
 	    (insert token))
-	(unless (with-current-buffer speed-type--content-buffer (derived-mode-p 'prog-mode))
-	  (speed-type--fill-region))
+	(unless (speed-type--code-buffer-p speed-type--content-buffer) (speed-type--fill-region))
 	(cancel-timer speed-type--extra-words-animation-time)
 	(setq speed-type--extra-words-animation-time nil))
       (add-hook 'after-change-functions 'speed-type--change nil t))))
@@ -1206,7 +1217,7 @@ LIMIT is supplied to the random-function."
 			(when start (int-to-string start))
 			(when end (concat ":" (int-to-string end)))))
          (text (with-current-buffer buf (buffer-substring-no-properties (point-min) (point-max)))))
-    (if (with-current-buffer buf (derived-mode-p 'prog-mode))
+    (if (speed-type--code-buffer-p buf)
         (speed-type--code-with-highlighting buf
 				  text
 				  title
@@ -1232,8 +1243,7 @@ will be used.  Else some text will be picked randomly."
            (text (with-current-buffer buf (speed-type--pick-text-to-type)))
 	   (line-count (with-current-buffer buf (count-lines (point-min) (point-max))))
            (go-next-fn (lambda () (with-current-buffer buf (speed-type-buffer full)))))
-      (if (with-current-buffer buf
-	    (derived-mode-p 'prog-mode))
+      (if (speed-type--code-buffer-p buf)
           (speed-type--code-with-highlighting buf
 				    text
 				    (user-full-name)
