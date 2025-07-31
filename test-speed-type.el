@@ -5,6 +5,122 @@
 (require 'ert)
 (require 'speed-type)
 
+;; gutenberg
+;; azquotes
+;; :lang lang
+;; :n-words n
+;; :go-next-fn go-next-fn
+;; :add-extra-word-content-fn
+;; :replay-fn
+;; (speed-type--setup buf
+;; 	       (buffer-substring-no-properties start end)
+;; 	       :author (user-full-name)
+;; 	       :title title
+;; 	       :replay-fn #'speed-type--get-replay-fn))))
+
+(ert-deftest speed-type-test/feeling-better? ()
+  "Checks if it's a good day to program."
+  (should (= 1 1)))
+
+(ert-deftest speed-type-test/general-region ()
+  "Do a general test with `speed-type-region' with fundamental mode and a prog-mode, checking content, overlays, point and point-motion, buffer-variables and statistic file."
+  (let ((content "abcde")
+	(mode (nth (random 2) '(fundamental-mode emacs-lisp-mode))))
+    (with-temp-buffer
+      (insert content)
+      (funcall mode)
+      (let ((buf (speed-type-region (point-min) (point-max)))
+	    (content-buf speed-type--content-buffer))
+	(unwind-protect
+	    (with-current-buffer buf
+	      (insert "a")
+	      (insert "b")
+	      (insert "a")
+	      (insert "a")
+	      (funcall (keymap-lookup nil "DEL") 1)
+	      (funcall (keymap-lookup nil "DEL") 1)
+	      (insert "c")
+	      (insert "!")
+	      (insert "!")
+	      ;	(should (= speed-type--start-time 1753299414.2124302))
+	      (should (string= speed-type--orig-text content))
+	      (should (eq speed-type--buffer (current-buffer)))
+              ; (should (eq speed-type--content-buffer (get-buffer "*speed-type-content-buffer*")))
+	      (should (= speed-type--entries 5))
+	      (should (= speed-type--errors 4))
+	      (should (= speed-type--non-consecutive-errors 2))
+	      (should (= speed-type--remaining 0))
+	      (should (string= speed-type--mod-str "\1\1\1\2\2"))
+	      (should (= speed-type--corrections 1))
+              ; (should (string= speed-type--title (buffer-name)))
+	      (should (string= speed-type--author (user-full-name)))
+	      (should (eq speed-type--lang nil))
+	      (should (eq speed-type--n-words nil))
+	      (should (eq speed-type--add-extra-word-content-fn nil))
+	      (should (eq speed-type--extra-words-animation-time nil))
+	      (should (eq speed-type--extra-word-quote nil))
+	      (should (eq speed-type--go-next-fn nil))
+	      (should (eq speed-type--replay-fn 'speed-type--get-replay-fn))
+	      (should (eq speed-type--extra-word-quote nil))
+	      (dotimes (i 3)
+		(should (eq (overlay-get (car (overlays-at (1+ i))) 'face) 'speed-type-correct-face)))
+	      (should (eq (overlay-get (car (overlays-at 4)) 'face) 'speed-type-error-face))
+	      (should (eq (overlay-get (car (overlays-at 5)) 'face) 'speed-type-consecutive-error-face))
+	      )
+	  (kill-buffer buf)
+	  (should (eq (buffer-live-p content-buf) nil)))))))
+
+(ert-deftest speed-type-test/general-file-ref ()
+  "Do a general test with `speed-type-region' and different modes, checking content, overlays, point and point-motion, buffer-variables and statistic file."
+  (let ((content "abcde")
+	(mode (nth 0 '(hexl-mode))))
+    (with-temp-buffer
+      (insert content)
+      (write-file "test.bin")
+      (funcall mode)
+      (let ((buf (speed-type-region (point-min) (point-max))))
+	(unwind-protect
+	    (with-current-buffer buf
+	      (insert "0")
+	      (insert "0")
+	      (insert "a")
+	      (insert "b")
+	      (funcall (keymap-lookup nil "DEL") 1)
+	      (funcall (keymap-lookup nil "DEL") 1)
+	      (insert "0")
+	      (insert "!")
+	      (insert "!")
+	      ;	(should (= speed-type--start-time 1753299414.2124302))
+	      (should (string= speed-type--orig-text "00000000: 6162 6364 65                             abcde"))
+	      (should (eq speed-type--buffer (current-buffer)))
+              ; (should (eq speed-type--content-buffer (get-buffer "*speed-type-content-buffer*")))
+	      (should (= speed-type--entries 5))
+	      (should (= speed-type--errors 4))
+	      (should (= speed-type--non-consecutive-errors 2))
+	      (should (= speed-type--remaining 51))
+	      (should (string= speed-type--mod-str "\1\1\1\2\2\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"))
+	      (should (= speed-type--corrections 1))
+              ; (should (string= speed-type--title (buffer-name)))
+	      (should (string= speed-type--author (user-full-name)))
+	      (should (eq speed-type--lang nil))
+	      (should (eq speed-type--n-words nil))
+	      (should (eq speed-type--add-extra-word-content-fn nil))
+	      (should (eq speed-type--extra-words-animation-time nil))
+	      (should (eq speed-type--extra-word-quote nil))
+	      (should (eq speed-type--go-next-fn nil))
+	      (should (eq speed-type--replay-fn 'speed-type--get-replay-fn))
+	      (should (eq speed-type--extra-word-quote nil))
+	      (dotimes (i 3)
+		(should (eq (overlay-get (car (overlays-at (1+ i))) 'face) 'speed-type-correct-face)))
+	      (should (eq (overlay-get (car (overlays-at 4)) 'face) 'speed-type-error-face))
+	      (should (eq (overlay-get (car (overlays-at 5)) 'face) 'speed-type-consecutive-error-face))
+	      (let ((offset 5))
+		(dotimes (i (- 51 offset))
+		  (should (eq (car (overlays-at (+ (1+ offset) i))) nil))))
+	      (speed-type-complete))
+	  (kill-buffer buf))))))
+
+
 (ert-deftest speed-type--stats-test ()
   (should (= 3 (speed-type--seconds-to-minutes 180)))
   (should (= 30 (speed-type--gross-wpm 450 180)))

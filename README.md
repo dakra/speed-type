@@ -12,7 +12,7 @@ Install speed-type from [MELPA](melpa.org) with:
 M-x package-install RET speed-type
 ```
 
-Or via use-package and straight:
+Or via [use-package](https://github.com/jwiegley/use-package) and [straight](https://github.com/radian-software/straight.el):
 ```emacs-lisp
 (use-package speed-type
   :straight t)
