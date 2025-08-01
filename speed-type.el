@@ -168,8 +168,16 @@ they accumulate each other if both variables are set."
   "Define which modes should be handled as code.
 
 These modes will have syntax highlighting and NO `fill-region' will be called."
-  :type '(repeat symbol)
-  :group 'speed-type)
+  :type '(repeat symbol))
+
+(defcustom speed-type-ignore-whitespace-for-complete t
+  "Defines if whitespace should be ignored for speed-type-session to be complete.
+
+When non-nil, the completion of the speed-type-session is triggered even when there are
+characters left to type. All the remaining characters must be whitespace.
+
+If nil, the completion is only triggered if the counter speed-type-remaining hits 0."
+  :type 'boolean)
 
 (defface speed-type-default
   '()
@@ -715,11 +723,11 @@ Expects CURRENT-BUFFER to be buffer of speed-type session."
 To reflect the applied changes from `fill-region' we set `speed-type--orig-text'
 again and recalculate `speed-type--remaining'."
   (let ((orig-length (length speed-type--orig-text))
-	    (fill-regioned-text (progn (fill-region (point-min) (point-max) 'none t)
+	(fill-regioned-text (progn (fill-region (point-min) (point-max) 'none t)
 				                   (buffer-substring (point-min) (point-max)))))
     (setq speed-type--orig-text fill-regioned-text)
     (when (> orig-length (length fill-regioned-text))
-      (setq speed-type--remaining (- speed-type--remaining (- orig-length (length fill-regioned-text)))))))
+      (setq speed-type--remaining (- speed-type--remaining (- orig-length (length (speed-type--calc-length fill-regioned-text))))))))
 
 (defun speed-type-fill-paragraph ()
   "Override keybinding of FILL-PARAGRAPH with this to not destory session."
@@ -794,7 +802,8 @@ END is a point where the check stops to scan for diff."
 		 (speed-type-add-extra-words (+ (or speed-type-add-extra-words-on-error 0)
 				      (or (and non-consecutive-error-p speed-type-add-extra-words-on-non-consecutive-errors) 0)))))
         (cl-incf speed-type--entries)
-        (cl-decf speed-type--remaining)
+	(when (not (string-match-p "[[:space:]]" orig))
+          (cl-decf speed-type--remaining))
 	(let ((overlay (or (cl-find-if
 			    (lambda (ov) (member (overlay-get ov 'face) '(speed-type-correct-face speed-type-error-face speed-type-consecutive-error-face)))
 			    (overlays-at pos))
@@ -830,8 +839,7 @@ are color coded and stats are gathered about the typing performance."
 				                  (car (overlays-at end)))))
 	      (move-overlay overlay (1- (overlay-end overlay)) (overlay-end overlay)) (current-buffer))
 	    (speed-type--diff orig new-text start end)
-        (when (= speed-type--remaining 0)
-          (speed-type-complete))))))
+        (when (= speed-type--remaining 0) (speed-type-complete))))))
 
 (defun speed-type--first-change ()
   "Start the timer."
@@ -856,6 +864,12 @@ Replacements are found in `speed-type-replace-strings'."
       acc-text))
    speed-type-replace-strings
    :initial-value text))
+
+(defun speed-type--calc-length (text)
+  "Supply TEXT to length but consider ignoring whitespace."
+  (if speed-type-ignore-whitespace-for-complete
+      (length (replace-regexp-in-string "[[:space:]]" "" text))
+    (length text)))
 
 (cl-defun speed-type--setup
     (content-buffer text &key author title lang n-words add-extra-word-content-fn replay-fn go-next-fn callback)
@@ -889,7 +903,7 @@ CALLBACK is called when the setup process has been completed."
       (delete-trailing-whitespace)
       (setq text (speed-type--trim (buffer-string))))
     (let ((buf (generate-new-buffer speed-type-buffer-name))
-          (len (length text)))
+          (len (speed-type--calc-length text)))
       (set-buffer buf)
       (speed-type-mode)
       (buffer-face-set 'speed-type-default)
@@ -1114,7 +1128,7 @@ LIMIT is supplied to the random-function."
 	(setq speed-type--extra-words-queue (append speed-type--extra-words-queue (split-string words-as-string "" t))
 	      speed-type--orig-text (concat speed-type--orig-text words-as-string)
 	      speed-type--mod-str (concat speed-type--mod-str (make-string (+ 1 (length words-as-string)) 0))
-	      speed-type--remaining (+ (length words-as-string) speed-type--remaining))))
+	      speed-type--remaining (+ (speed-type--calc-length words-as-string) speed-type--remaining))))
     (when (not (timerp speed-type--extra-words-animation-time))
       (setq speed-type--extra-words-animation-time (run-at-time nil 0.01 'speed-type-animate-extra-word-inseration speed-type--buffer)))))
 
