@@ -670,9 +670,10 @@ speed-type files that were created using the speed-type functions."
            (q (aref speed-type--mod-str pos)))
       (cond ((= q 0) ())
             ((or (= q 1)
-		         (= q 2))
-	         (progn (cl-decf speed-type--entries)
-                    (cl-incf speed-type--remaining)))))))
+		 (= q 2))
+	     (progn (cl-decf speed-type--entries)
+		    (unless (and speed-type-ignore-whitespace-for-complete (string-match-p "[[:space:]]" (char-to-string (char-after))))
+                      (cl-incf speed-type--remaining))))))))
 
 (defun speed-type--display-statistic ()
   "Display median values from current and past entries."
@@ -724,10 +725,11 @@ To reflect the applied changes from `fill-region' we set `speed-type--orig-text'
 again and recalculate `speed-type--remaining'."
   (let ((orig-length (length speed-type--orig-text))
 	(fill-regioned-text (progn (fill-region (point-min) (point-max) 'none t)
-				                   (buffer-substring (point-min) (point-max)))))
-    (setq speed-type--orig-text fill-regioned-text)
+				   (buffer-substring (point-min) (point-max)))))
+
     (when (> orig-length (length fill-regioned-text))
-      (setq speed-type--remaining (- speed-type--remaining (- orig-length (length (speed-type--calc-length fill-regioned-text))))))))
+      (setq speed-type--remaining (- speed-type--remaining (- (speed-type--calc-length speed-type--orig-text) (speed-type--calc-length fill-regioned-text)))))
+    (setq speed-type--orig-text fill-regioned-text)))
 
 (defun speed-type-fill-paragraph ()
   "Override keybinding of FILL-PARAGRAPH with this to not destory session."
@@ -908,7 +910,7 @@ CALLBACK is called when the setup process has been completed."
       (speed-type-mode)
       (buffer-face-set 'speed-type-default)
       (setq speed-type--orig-text text
-	    speed-type--mod-str (make-string len 0)
+	    speed-type--mod-str (make-string (length text) 0)
 	    speed-type--remaining len
 	    speed-type--author author
 	    speed-type--title title
