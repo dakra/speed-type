@@ -672,7 +672,7 @@ speed-type files that were created using the speed-type functions."
             ((or (= q 1)
 		 (= q 2))
 	     (progn (cl-decf speed-type--entries)
-		    (unless (and speed-type-ignore-whitespace-for-complete (string-match-p "[[:blank:]\n]" (char-to-string (char-after))))
+		    (unless (and speed-type-ignore-whitespace-for-complete (not (string-blank-p (char-to-string (char-after)))))
                       (cl-incf speed-type--remaining))))))))
 
 (defun speed-type--display-statistic ()
@@ -792,7 +792,7 @@ END is a point where the check stops to scan for diff."
              (pos (+ start i))
 	     (non-consecutive-error-p (or (and (<= pos0 0) (= speed-type--non-consecutive-errors 0)) ;; first char is always a non-consecutive error if counter is 0
 					  (or (and (eq speed-type-point-motion-on-error 'point-stay) (not (= (aref speed-type--mod-str pos0) 2))) ;; staying, no movement, check current
-					      (and (> pos0 0) (eq speed-type-point-motion-on-error 'point-move) (= (aref speed-type--mod-str (1- pos0)) 1)))))) ;; moving, check previous
+					      (and (> pos0 0) (eq speed-type-point-motion-on-error 'point-move) (not (= (aref speed-type--mod-str (1- pos0)) 2))))))) ;; moving, check previous
         (if (speed-type--check-same i orig new)
             (progn (setq correct t)
 		   (when (= (aref speed-type--mod-str pos0) 2) (cl-incf speed-type--corrections))
@@ -804,7 +804,7 @@ END is a point where the check stops to scan for diff."
 		 (speed-type-add-extra-words (+ (or speed-type-add-extra-words-on-error 0)
 				      (or (and non-consecutive-error-p speed-type-add-extra-words-on-non-consecutive-errors) 0)))))
         (cl-incf speed-type--entries)
-	(when (not (string-match-p "[[:blank:]\n]" orig))
+	(when (not (string-blank-p (char-to-string (aref orig i))))
           (cl-decf speed-type--remaining))
 	(let ((overlay (or (cl-find-if
 			    (lambda (ov) (member (overlay-get ov 'face) '(speed-type-correct-face speed-type-error-face speed-type-consecutive-error-face)))
