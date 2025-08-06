@@ -672,7 +672,7 @@ speed-type files that were created using the speed-type functions."
             ((or (= q 1)
 		 (= q 2))
 	     (progn (cl-decf speed-type--entries)
-		    (unless (and speed-type-ignore-whitespace-for-complete (string-match-p "[[:space:]]" (char-to-string (char-after))))
+		    (unless (and speed-type-ignore-whitespace-for-complete (string-match-p "[[:blank:]\n]" (char-to-string (char-after))))
                       (cl-incf speed-type--remaining))))))))
 
 (defun speed-type--display-statistic ()
@@ -804,7 +804,7 @@ END is a point where the check stops to scan for diff."
 		 (speed-type-add-extra-words (+ (or speed-type-add-extra-words-on-error 0)
 				      (or (and non-consecutive-error-p speed-type-add-extra-words-on-non-consecutive-errors) 0)))))
         (cl-incf speed-type--entries)
-	(when (not (string-match-p "[[:space:]]" orig))
+	(when (not (string-match-p "[[:blank:]\n]" orig))
           (cl-decf speed-type--remaining))
 	(let ((overlay (or (cl-find-if
 			    (lambda (ov) (member (overlay-get ov 'face) '(speed-type-correct-face speed-type-error-face speed-type-consecutive-error-face)))
@@ -870,7 +870,7 @@ Replacements are found in `speed-type-replace-strings'."
 (defun speed-type--calc-length (text)
   "Supply TEXT to length but consider ignoring whitespace."
   (if speed-type-ignore-whitespace-for-complete
-      (length (replace-regexp-in-string "[[:space:]]" "" text))
+      (length (replace-regexp-in-string "[[:blank:]\n]" "" text))
     (length text)))
 
 (cl-defun speed-type--setup
