@@ -35,6 +35,7 @@
 ;; stats (WPM, CPM, accuracy) while you are typing.
 
 ;;; Code:
+(require 'generator)
 (require 'cl-lib)
 (require 'cl-seq)
 (require 'compat)
@@ -459,7 +460,7 @@ it can be passed along with FILE to `format'. At the end,
         (existing-buf             (get-file-buffer file))
         (emacs-lisp-mode-hook     nil) ; Avoid inserting automatic file header if existing empty file, so
         (lisp-mode-hook           nil) ; better chance `speed-type-maybe-upgrade-file-format' signals error.
-	    (speed-type-buffer (current-buffer))
+	(speed-type-buffer (current-buffer))
         start end)
     (when (file-directory-p file) (error "`%s' is a directory, not a file" file))
     (message msg (abbreviate-file-name file))
@@ -623,7 +624,7 @@ speed-type files that were created using the speed-type functions."
 ;; but it's defined in `url-http'.
 (defvar url-http-end-of-headers)
 
-(defun speed-type--retrieve (filename url)
+(defun speed-type--retrieve (filename top-filename url)
   "Return buffer FILENAME content in it or download from URL if file doesn't exist."
   (let ((fn (expand-file-name (format "%s.txt" filename) speed-type-gb-dir))
         (url-request-method "GET"))
@@ -642,12 +643,56 @@ speed-type files that were created using the speed-type functions."
             (with-temp-file fn
               (insert-file-contents fn)
               (delete-trailing-whitespace)
-              (decode-coding-region (point-min) (point-max) 'utf-8))
+              (decode-coding-region (point-min) (point-max) 'utf-8)
+	      (when (file-readable-p top-filename)
+		(speed-type-word-frequency-count-buffer top-filename)))
             fn))))))
+
+(iter-defun buffer-word-generator ()
+  "Yield downcased words one by one from the current buffer."
+  (goto-char (point-min))
+  (let ((word-start nil))
+    (while (not (eobp))
+      (let ((ch (char-after)))
+        (if (and ch (speed-type--char-word-syntax-p (downcase ch)))
+            (unless word-start
+              (setq word-start (point)))
+          (when word-start
+            (let ((word (downcase (string-trim (buffer-substring-no-properties word-start (point))))))
+              (iter-yield word))
+            (setq word-start nil))))
+      (forward-char 1))
+    ;; Final word at end of buffer
+    (when word-start
+      (let ((word (downcase (string-trim (buffer-substring-no-properties word-start (point))))))
+        (iter-yield word)))))
+
+(defun speed-type-word-frequency-count-buffer (top-filename)
+  "Count word frequencies in the buffer using generators and write it to file."
+  (let ((word-counts (make-hash-table :test 'equal)))
+    ;; Step 1: Count word frequencies using generator
+    (let ((word-iter (buffer-word-generator)))
+      (iter-do (word word-iter)
+        (puthash word (1+ (gethash word word-counts 0)) word-counts)))
+    ;; Step 2: Transfer hash map table to file
+    (let ((top-words '()))
+      (maphash (lambda (k v)
+		 ;; Step 2.1: Transfer hash map table to list
+		 (push (cons k v) top-words)
+		 (remhash k word-counts)) ;; free up memory
+	       word-counts)
+      (setq top-words (sort top-words (lambda (a b) (> (cdr a) (cdr b)))))
+      (with-temp-file top-filename
+        (dolist (pair top-words)
+          (insert (format "%s\n" (car pair))))))))
+
+(defun speed-type--char-word-syntax-p (ch)
+  "Return non-nil if CH is a word-constituent character."
+  (eq (char-syntax ch) ?w))
 
 (defun speed-type--gb-retrieve (book-num)
   "Return buffer with book number BOOK-NUM in it."
-  (speed-type--retrieve book-num  (speed-type--gb-url book-num)))
+  (speed-type--retrieve book-num (speed-type--gb-url book-num)))
 
 (defun speed-type--wordlist-retrieve (lang)
   "Return buffer with wordlist for language LANG in it."
