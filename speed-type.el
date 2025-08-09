@@ -107,13 +107,76 @@ E.g. if you always want lowercase words, set:
 (defcustom speed-type-default-lang nil
   "Default language for training wordlists.  Ask when NIL."
   :type '(choice (const :tag "None" nil)
-                 (const :tag "English" English)
-                 (const :tag "German" German)
-                 (const :tag "French" French)
-                 (const :tag "Dutch" Dutch))
+		 (const :tag "Afrikaans" af)
+		 (const :tag "Aleut" ale)
+		 (const :tag "Arabic" ar)
+		 (const :tag "Arapaho" arp)
+		 (const :tag "Bodo" brx)
+		 (const :tag "Breton" br)
+		 (const :tag "Bulgarian" bg)
+		 (const :tag "Caló" rmq)
+		 (const :tag "Catalan" ca)
+		 (const :tag "Cebuano" ceb)
+		 (const :tag "Chinese" zh)
+		 (const :tag "Czech" cs)
+		 (const :tag "Danish" da)
+		 (const :tag "Dutch" nl)
+		 (const :tag "English" en)
+		 (const :tag "Esperanto" eo)
+		 (const :tag "Estonian" et)
+		 (const :tag "Farsi" fa)
+		 (const :tag "Finnish" fi)
+		 (const :tag "French" fr)
+		 (const :tag "Frisian" fy)
+		 (const :tag "Friulian" fur)
+		 (const :tag "Gaelic Scottish" gla)
+		 (const :tag "Galician" gl)
+		 (const :tag "Gamilaraay" kld)
+		 (const :tag "German" de)
+		 (const :tag "Greek" el)
+		 (const :tag "Greek Ancient" grc)
+		 (const :tag "Hebrew" he)
+		 (const :tag "Hungarian" hu)
+		 (const :tag "Icelandic" is)
+		 (const :tag "Iloko" ilo)
+		 (const :tag "Interlingua" ia)
+		 (const :tag "Inuktitut" iu)
+		 (const :tag "Irish" ga)
+		 (const :tag "Italian" it)
+		 (const :tag "Japanese" ja)
+		 (const :tag "Kashubian" csb)
+		 (const :tag "Khasi" kha)
+		 (const :tag "Korean" ko)
+		 (const :tag "Latin" la)
+		 (const :tag "Lithuanian" lt)
+		 (const :tag "Maori" mi)
+		 (const :tag "Mayan Languages" myn)
+		 (const :tag "Middle English" enm)
+		 (const :tag "Nahuatl" nah)
+		 (const :tag "Napoletano-Calabrese" nap)
+		 (const :tag "Navajo" nav)
+		 (const :tag "North American Indian" nai)
+		 (const :tag "Norwegian" no)
+		 (const :tag "Occitan" oc)
+		 (const :tag "Ojibwa" oji)
+		 (const :tag "Old English" ang)
+		 (const :tag "Polish" pl)
+		 (const :tag "Portuguese" pt)
+		 (const :tag "Romanian" ro)
+		 (const :tag "Russian" ru)
+		 (const :tag "Sanskrit" sa)
+		 (const :tag "Serbian" sr)
+		 (const :tag "Slovenian" sl)
+		 (const :tag "Spanish" es)
+		 (const :tag "Swedish" sv)
+		 (const :tag "Tagabawa" bgs)
+		 (const :tag "Tagalog" tl)
+		 (const :tag "Telugu" te)
+		 (const :tag "Welsh" cy)
+		 (const :tag "Yiddish" yi))
   :group 'speed-type)
 
-(defcustom speed-type-replace-strings '(("“" . "\"") ("”" . "\"") ("‘" . "'") ("’" . "'"))
+(defcustom speed-type-replace-strings '(("“" . "\"") ("”" . "\"") ("‘" . "'") ("’" . "'") ("—" . "-") ("–" . "-") ("Æ" . "Ae") ("æ" . "ae"))
   "Alist of strings to replace and their replacement, in the form:
 `(bad-string . good-string)'
 To remove without replacement, use the form: `(bad-string . \"\")'"
@@ -468,9 +531,9 @@ it can be passed along with FILE to `format'. At the end,
       (goto-char (point-min))
       (if (file-exists-p file)
           (speed-type-maybe-upgrade-file-format)
-	    (delete-region (point-min) (point-max)) ; In case a find-file hook inserted a header, etc.
-	    (unless (boundp 'speed-type-coding-system)	; Emacs < 25.2.
-	      (speed-type-insert-file-format-version-stamp coding-system-for-write))
+	(delete-region (point-min) (point-max)) ; In case a find-file hook inserted a header, etc.
+	(unless (boundp 'speed-type-coding-system)	; Emacs < 25.2.
+	  (speed-type-insert-file-format-version-stamp coding-system-for-write))
         (insert "(\n)"))
       (setq start (and (file-exists-p file)
                        (or (save-excursion (goto-char (point-min))
@@ -485,18 +548,18 @@ it can be passed along with FILE to `format'. At the end,
           (goto-char 2)
         ;;  Existing file - delete old entry unless max is not reached. Rolling.
         (when (> (/ (count-lines start end) (length (or (speed-type-statistic-variables) '(1)))) speed-type-max-num-records)
-	      (save-excursion
-	        (goto-char start)
-	        (or (looking-at "(") (search-forward "(" nil t 1))
-	        (let ((bounds (bounds-of-thing-at-point 'sexp)))
-	          (kill-region (car bounds) (+ 1 (cdr bounds))))))
+	  (save-excursion
+	    (goto-char start)
+	    (or (looking-at "(") (search-forward "(" nil t 1))
+	    (let ((bounds (bounds-of-thing-at-point 'sexp)))
+	      (kill-region (car bounds) (+ 1 (cdr bounds))))))
         (goto-char (and start
                         (or (save-excursion (goto-char start) (and (looking-at ")") start))
                             (save-excursion (goto-char (point-max)) (re-search-backward "^)" nil t))
                             (error "Invalid %s" file)))))
       (pp (with-current-buffer speed-type-buffer (speed-type-statistic-variables)) (current-buffer))
       (speed-type--maybe-insert-newline)
-      (when (boundp 'speed-type-coding-system) ; Emacs 25.2+.  See bug #25365
+      (when (boundp 'speed-type-coding-system)	; Emacs 25.2+.  See bug #25365
         ;; Make sure specified encoding can encode the speed-type stats.  If not, suggest utf-8-emacs as default.
         (with-coding-priority '(utf-8-emacs)
           (setq coding-system-for-write (select-safe-coding-system (point-min) (point-max)
@@ -515,7 +578,7 @@ it can be passed along with FILE to `format'. At the end,
                             (display-warning 'speed-type msg)
                           (message msg)
                           (sit-for 4)))))
-        (when (boundp 'speed-type-coding-system) ; Emacs 25.2+
+        (when (boundp 'speed-type-coding-system)	; Emacs 25.2+
           (setq speed-type-coding-system  coding-system-for-write))
         (unless existing-buf (kill-buffer (current-buffer)))
         (unless errorp (message (concat msg "done") file))))))
@@ -624,12 +687,12 @@ speed-type files that were created using the speed-type functions."
 ;; but it's defined in `url-http'.
 (defvar url-http-end-of-headers)
 
-(defun speed-type--retrieve (filename top-filename url)
+(defun speed-type--retrieve (filename url &optional top-filename)
   "Return buffer FILENAME content in it or download from URL if file doesn't exist."
   (let ((fn (expand-file-name (format "%s.txt" filename) speed-type-gb-dir))
         (url-request-method "GET"))
     (if (file-readable-p fn)
-        fn
+	(find-file-noselect fn)
       (make-directory speed-type-gb-dir 'parents)
       (let ((buffer (url-retrieve-synchronously url nil nil 5)))
         (when (and buffer (= 200 (url-http-symbol-value-in-buffer
@@ -644,9 +707,9 @@ speed-type files that were created using the speed-type functions."
               (insert-file-contents fn)
               (delete-trailing-whitespace)
               (decode-coding-region (point-min) (point-max) 'utf-8)
-	      (when (file-readable-p top-filename)
-		(speed-type-word-frequency-count-buffer top-filename)))
-            fn))))))
+	      (when (and (not (null top-filename)) (file-readable-p top-filename))
+		(speed-type-word-frequency-count-buffer top-filename))))
+	  (find-file-noselect fn))))))
 
 (iter-defun buffer-word-generator ()
   "Yield downcased words one by one from the current buffer."
@@ -1321,10 +1384,16 @@ will be used.  Else some text will be picked randomly."
 (defun speed-type-text ()
   "Setup a new text sample to practice touch or speed typing."
   (interactive)
-  (let* ((book-num (nth (random (length speed-type-gb-book-list))
-                        speed-type-gb-book-list))
+  (let* ((book-num (if speed-type-default-lang
+		       (let ((lang-book-list (with-current-buffer (speed-type--retrieve (concat speed-type-default-lang ".html")
+									      (concat "https://www.gutenberg.org/ebooks/search/?query=l." speed-type-default-lang))
+					       (mapcar (lambda (h) (substring (dom-attr h 'href) 8))
+						       (mapcar (lambda (c) (dom-by-tag c 'a))
+							       (dom-by-class (libxml-parse-html-region (point-min) (point-max) nil) "booklink"))))))
+			 (string-to-number (nth (random (length lang-book-list)) lang-book-list)))
+		       (nth (random (length speed-type-gb-book-list)) speed-type-gb-book-list)))
          (fn (speed-type--gb-retrieve book-num))
-	 (buf (speed-type-prepare-content-buffer fn)))
+	 (buf (speed-type-prepare-content-buffer-from-buffer fn)))
      (with-current-buffer buf
        (let* ((title (save-excursion
 		      (when (re-search-forward "^Title: " nil t)
@@ -1358,7 +1427,7 @@ If `ARG' is given will prompt for a specific quote-URL."
   (let* ((quote-url (if (= arg 1)
 			(nth (random (length speed-type-quote-urls)) speed-type-quote-urls)
 		      (assoc (intern (completing-read "Choose a quote: " (mapcar 'car speed-type-quote-urls) 'symbolp t nil nil "johnVonNeumann")) speed-type-quote-urls)))
-	 (buf (speed-type-prepare-content-buffer (speed-type--retrieve (car quote-url) (cdr quote-url)))))
+	 (buf (speed-type-prepare-content-buffer-from-buffer (speed-type--retrieve (car quote-url) (cdr quote-url)))))
  (with-current-buffer buf
    (let ((title (save-excursion (search-forward-regexp "<title>\\(.*\\)</title>") (match-string 1)))
 	 (dom-quotes (dom-by-class (dom-by-class (libxml-parse-html-region (point-min) (point-max) nil) "list-quotes") "title"))
