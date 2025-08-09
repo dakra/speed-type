@@ -3,8 +3,9 @@
 ;; Copyright (C) 2015 Gunther Hagleitner
 
 ;; Author: Gunther Hagleitner
-;; Maintainer: Daniel Kraus <daniel@kraus.my>, lordnik22
-;; Version: 1.4
+;; Maintainer: Daniel Kraus <daniel@kraus.my>
+;;      lordnik22
+;; Version: 1.4.0
 ;; Keywords: games
 ;; URL: https://github.com/dakra/speed-type
 ;; Package-Requires: ((emacs "26.1") (compat "29.1.3"))
@@ -1489,7 +1490,7 @@ If `ARG' is given will prompt for a specific quote-URL."
 		      (assoc (intern (completing-read "Choose a quote: " (mapcar 'car speed-type-quote-urls) 'symbolp t nil nil "johnVonNeumann")) speed-type-quote-urls)))
 	 (buf (speed-type-prepare-content-buffer-from-buffer (speed-type--retrieve (car quote-url) (cdr quote-url)))))
  (with-current-buffer buf
-   (let ((title (save-excursion (search-forward-regexp "<title>\\(.*\\)</title>") (match-string 1)))
+   (let* ((title (save-excursion (search-forward-regexp "<title>\\(.*\\)</title>") (match-string 1)))
 	 (dom-quotes (dom-by-class (dom-by-class (libxml-parse-html-region (point-min) (point-max) nil) "list-quotes") "title"))
 	 (random-quote (nth (random (length dom-quotes)) dom-quotes))
 	 (author (dom-attr random-quote 'data-author))

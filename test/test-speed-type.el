@@ -1,5 +1,37 @@
 ;;; test-speed-type.el --- Tests for speed-type  -*- lexical-binding: t; -*-
 
+;; Copyright (C) 2015 Gunther Hagleitner
+
+;; Author: Gunther Hagleitner
+;; Maintainer: Daniel Kraus <daniel@kraus.my>
+;;      lordnik22
+;; Version: 1.4.0
+;; Keywords: games
+;; URL: https://github.com/dakra/speed-type
+;; Package-Requires: ((emacs "26.1") (compat "29.1.3"))
+;; SPDX-License-Identifier: GPL-3.0-or-later
+
+;; This file is NOT part of GNU Emacs.
+
+;;; License:
+
+;; This program is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation, either version 3 of the License, or
+;; (at your option) any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+;;; Commentary:
+;;
+;; This file contains all the tests that ensure the functionality of speed-type
+
 ;;; Code:
 
 (require 'ert)
@@ -160,7 +192,7 @@
       (remove-hook 'speed-type-mode-hook 'speed-type-mode-test-hook))))
 
 (defun speed-type--retrieve-non-existant-file-environment (filename-expected test)
-  (let ((speed-type-gb-dir "/tmp"))
+  (let ((speed-type-gb-dir (temporary-file-directory)))
     (unwind-protect
         (progn
           (delete-file filename-expected)
@@ -168,7 +200,7 @@
       (delete-file filename-expected))))
 
 (defun speed-type--retrieve-existant-file-environment (filename-expected test)
-  (let ((speed-type-gb-dir "/tmp"))
+  (let ((speed-type-gb-dir (temporary-file-directory)))
     (unwind-protect
         (progn
           (delete-file filename-expected)
@@ -211,3 +243,4 @@
          (should (null filename-response))
          (should (not (file-exists-p filename-expected)))
          (should (not (file-readable-p filename-expected))))))))
+;;; test-speed-type.el ends here
