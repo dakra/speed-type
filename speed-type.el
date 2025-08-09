@@ -709,11 +709,11 @@ speed-type files that were created using the speed-type functions."
               (decode-coding-region (point-min) (point-max) 'utf-8)))
 	  (find-file-noselect fn))))))
 
-(iter-defun buffer-word-generator ()
+(iter-defun buffer-word-generator (start end)
   "Yield downcased words one by one from the current buffer."
-  (goto-char (point-min))
+  (goto-char start)
   (let ((word-start nil))
-    (while (not (eobp))
+    (while (<= (point) end)
       (let ((ch (char-after)))
         (if (and ch (speed-type--char-word-syntax-p (downcase ch)))
             (unless word-start
@@ -730,10 +730,19 @@ speed-type files that were created using the speed-type functions."
 
 (defun speed-type-word-frequency-count-buffer (book-num)
   "Count word frequencies in the buffer using generators and write it to file."
+
   (let ((fn (speed-type--gb-top-filename book-num))
-	(word-counts (make-hash-table :test 'equal)))
+	(word-counts (make-hash-table :test 'equal))
+	(start (save-excursion (when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+				 (end-of-line 1)
+				 (forward-line 1)
+				 (point))))
+	(end (save-excursion (when (re-search-forward "***.END.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+			       (beginning-of-line 1)
+			       (forward-line -1)
+			       (point)))))
     ;; Step 1: Count word frequencies using generator
-    (let ((word-iter (buffer-word-generator)))
+    (let ((word-iter (buffer-word-generator start end)))
       (iter-do (word word-iter)
         (puthash word (1+ (gethash word word-counts 0)) word-counts)))
     ;; Step 2: Transfer hash map table to file
