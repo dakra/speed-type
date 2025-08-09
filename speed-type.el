@@ -687,7 +687,7 @@ speed-type files that were created using the speed-type functions."
 ;; but it's defined in `url-http'.
 (defvar url-http-end-of-headers)
 
-(defun speed-type--retrieve (filename url &optional top-filename)
+(defun speed-type--retrieve (filename url)
   "Return buffer FILENAME content in it or download from URL if file doesn't exist."
   (let ((fn (expand-file-name (format "%s.txt" filename) speed-type-gb-dir))
         (url-request-method "GET"))
@@ -706,9 +706,7 @@ speed-type files that were created using the speed-type functions."
             (with-temp-file fn
               (insert-file-contents fn)
               (delete-trailing-whitespace)
-              (decode-coding-region (point-min) (point-max) 'utf-8)
-	      (when (and (not (null top-filename)) (file-readable-p top-filename))
-		(speed-type-word-frequency-count-buffer top-filename))))
+              (decode-coding-region (point-min) (point-max) 'utf-8)))
 	  (find-file-noselect fn))))))
 
 (iter-defun buffer-word-generator ()
@@ -730,9 +728,10 @@ speed-type files that were created using the speed-type functions."
       (let ((word (downcase (string-trim (buffer-substring-no-properties word-start (point))))))
         (iter-yield word)))))
 
-(defun speed-type-word-frequency-count-buffer (top-filename)
+(defun speed-type-word-frequency-count-buffer (book-num)
   "Count word frequencies in the buffer using generators and write it to file."
-  (let ((word-counts (make-hash-table :test 'equal)))
+  (let ((fn (speed-type--gb-top-filename book-num))
+	(word-counts (make-hash-table :test 'equal)))
     ;; Step 1: Count word frequencies using generator
     (let ((word-iter (buffer-word-generator)))
       (iter-do (word word-iter)
@@ -745,9 +744,10 @@ speed-type files that were created using the speed-type functions."
 		 (remhash k word-counts)) ;; free up memory
 	       word-counts)
       (setq top-words (sort top-words (lambda (a b) (> (cdr a) (cdr b)))))
-      (with-temp-file top-filename
+      (with-temp-file fn
         (dolist (pair top-words)
-          (insert (format "%s\n" (car pair))))))))
+          (insert (format "%s\n" (car pair)))))
+      (find-file-noselect fn))))
 
 (defun speed-type--char-word-syntax-p (ch)
   "Return non-nil if CH is a word-constituent character."
@@ -757,9 +757,26 @@ speed-type files that were created using the speed-type functions."
   "Return buffer with book number BOOK-NUM in it."
   (speed-type--retrieve book-num (speed-type--gb-url book-num)))
 
+(defun speed-type--gb-top-filename (book-num)
+  (expand-file-name (concat (number-to-string book-num) "-top-x.txt") speed-type-gb-dir))
+
+(defun speed-type--gb-top-retrieve (lang)
+  "Return buffer containing a frequency list of a random book which has given LANG."
+  (let* ((book-num (speed-type--retrieve-random-book-num lang))
+	 (fn (speed-type--gb-top-filename book-num)))
+    (if (file-readable-p fn)
+	(find-file-noselect fn)
+      (with-current-buffer (speed-type--retrieve book-num (speed-type--gb-url book-num))
+	(speed-type-word-frequency-count-buffer book-num)))))
+
 (defun speed-type--wordlist-retrieve (lang)
   "Return buffer with wordlist for language LANG in it."
-  (speed-type--retrieve lang (cdr (assoc lang speed-type-wordlist-urls))))
+  (speed-type--retrieve
+   (cond ((string= "de" lang) "German")
+	 ((string= "en" lang) "English")
+	 ((string= "fr" lang) "French")
+	 ((string= "nl" lang) "Dutch"))
+   (cdr (assoc lang speed-type-wordlist-urls))))
 
 (defun speed-type--elapsed-time ()
   "Return float with the total time since start."
@@ -1279,19 +1296,48 @@ LIMIT is supplied to the random-function."
     (newline) (move-beginning-of-line nil) (speed-type--code-tab)))
 
 ;;;###autoload
+(defun speed-type-text-top-x (n)
+  "Speed type the N most common words."
+  (interactive "nTrain X most common words: ")
+  (let* ((lang (or speed-type-default-lang
+                   (intern (completing-read "Language: " (mapcar 'car speed-type-wordlist-urls)))))
+         (buffer (speed-type--gb-top-retrieve lang))
+         (char-length (+ speed-type-min-chars (random (- speed-type-max-chars speed-type-min-chars))))
+         (n (min n (with-current-buffer buffer (count-words (point-min) (point-max)))))
+	 (buf (speed-type-prepare-content-buffer-from-buffer buffer))
+         (title (format "Top %s %s words" n lang))
+	 (text (with-temp-buffer
+		 (while (< (buffer-size) char-length)
+		   (insert (speed-type--get-random-word buf n))
+                   (insert " "))
+		 (speed-type--fill-region)
+		 (if speed-type-wordlist-transform
+                     (funcall speed-type-wordlist-transform (buffer-string))
+                   (buffer-string))))
+	 (add-extra-word-content-fn (lambda () (speed-type--get-random-word buf n)))
+         (go-next-fn (lambda () (speed-type-text-top-x n))))
+    (speed-type--setup buf
+	     text
+             :title title
+	     :author "To be extracted from gb-book"
+             :lang lang
+             :n-words n
+	     :add-extra-word-content-fn add-extra-word-content-fn
+             :replay-fn #'speed-type--get-replay-fn
+             :go-next-fn go-next-fn)))
+
+
+;;;###autoload
 (defun speed-type-top-x (n)
   "Speed type the N most common words."
   (interactive "nTrain X most common words: ")
   (let* ((lang (or speed-type-default-lang
                    (intern (completing-read "Language: " (mapcar 'car speed-type-wordlist-urls)))))
-         (file-path (speed-type--wordlist-retrieve lang))
+         (buffer (speed-type--wordlist-retrieve lang))
          (char-length (+ speed-type-min-chars
                          (random (- speed-type-max-chars speed-type-min-chars))))
-         (words (with-temp-buffer
-                  (insert-file-contents file-path)
-                  (split-string (buffer-string) "\n" t)))
-         (n (min n (length words)))
-	 (buf (speed-type-prepare-content-buffer file-path))
+         (n (min n (with-current-buffer buffer (count-words (point-min) (point-max)))))
+	 (buf (speed-type-prepare-content-buffer-from-buffer buffer))
          (title (format "Top %s %s words" n lang))
 	 (text (with-temp-buffer
 		 (while (< (buffer-size) char-length)
@@ -1380,17 +1426,22 @@ will be used.  Else some text will be picked randomly."
 		 :go-next-fn go-next-fn
 		 :continue-fn continue-fn)))))
 
+(defun speed-type--retrieve-random-book-num (lang)
+  "Get a random book-num which has the given LANG."
+  (let ((lang-book-list (with-current-buffer (speed-type--retrieve (concat lang ".html")
+							 (concat "https://www.gutenberg.org/ebooks/search/?query=l." lang))
+			  (mapcar (lambda (h) (substring (dom-attr h 'href) 8))
+				  (mapcar (lambda (c) (dom-by-tag c 'a))
+					  (dom-by-class (libxml-parse-html-region (point-min) (point-max) nil) "booklink"))))))
+    (string-to-number (nth (random (length lang-book-list)) lang-book-list)))
+  )
+
 ;;;###autoload
 (defun speed-type-text ()
   "Setup a new text sample to practice touch or speed typing."
   (interactive)
   (let* ((book-num (if speed-type-default-lang
-		       (let ((lang-book-list (with-current-buffer (speed-type--retrieve (concat speed-type-default-lang ".html")
-									      (concat "https://www.gutenberg.org/ebooks/search/?query=l." speed-type-default-lang))
-					       (mapcar (lambda (h) (substring (dom-attr h 'href) 8))
-						       (mapcar (lambda (c) (dom-by-tag c 'a))
-							       (dom-by-class (libxml-parse-html-region (point-min) (point-max) nil) "booklink"))))))
-			 (string-to-number (nth (random (length lang-book-list)) lang-book-list)))
+		       (speed-type--retrieve-random-book-num speed-type-default-lang)
 		       (nth (random (length speed-type-gb-book-list)) speed-type-gb-book-list)))
          (fn (speed-type--gb-retrieve book-num))
 	 (buf (speed-type-prepare-content-buffer-from-buffer fn)))
