@@ -55,6 +55,14 @@ for the selected language.
 `speed-type-quote` by default will take a random quote from a random quote-url listed in `speed-type-quote-urls`. You can `C-u speed-type-quote` to specify the url.
 
 
+## Gutenberg Project Integration
+
+The gutenberg project provides many books in many different languages.
+We download the book-content when the commands `speed-type-text` or
+`speed-type-text-top-x` are called. These books will be stored in the
+`speed-type-gb-dir`. The provide the basis from which we pick the
+content to typ.
+
 ## Contribution
 
 This pacakge is certaintly not bug-free. This is because we don’t have
