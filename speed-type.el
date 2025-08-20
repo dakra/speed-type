@@ -87,6 +87,10 @@ a book url.  E.G, https://www.gutenberg.org/ebooks/14577."
   "Alist of language name as key and a URL where to download a wordlist for it."
   :type '(alist :key-type symbol :value-type string))
 
+(defcustom speed-type-stop-words '()
+  "List of stop words. Can be a list or a path to a file which contains words newline separated."
+  :type '(list string))
+
 (defcustom speed-type-quote-urls
   '((johnVonNeumann . "https://www.azquotes.com/author/10753-John_von_Neumann")
     (happiness . "https://www.azquotes.com/quotes/topics/happiness.html")
@@ -447,6 +451,14 @@ be coded in SPEED-TYPE-MAYBE-UPGRADE-FILE-FORMAT."
 	  (cons 'speed-type--continue-at-point speed-type--continue-at-point)
 	  (cons 'speed-type--file-name speed-type--file-name))))
 
+(defun speed-type--stop-word-p (word)
+  "WORD to check if it’s contained in the customised ‘speed-type-stop-words’."
+  (cond ((listp speed-type-stop-words) (car (member word speed-type-stop-words)))
+	((file-readable-p (expand-file-name speed-type-stop-words speed-type-gb-dir))
+	 (with-current-buffer (find-file-noselect (expand-file-name speed-type-stop-words speed-type-gb-dir))
+	   (when (save-excursion (re-search-forward (concat "^" word "$") nil t 1)) word)))
+	(t (user-error "Custom variable ‘speed-type-stop-words’ must be a list or a filename in ‘speed-type-gb-dir’"))))
+
 (defun speed-type-grok-file-format-version ()
   "Integer which indicates the file-format version of speed-type statistic file.
 Expects to be called from `point-min' in a speed-type statistic file."
@@ -519,7 +531,8 @@ CODING is the symbol of the coding-system in which the file is encoded."
   "Check the custom variable SPEED-TYPE-SAVE-STATISTIC-OPTION and save stats."
   (when (not (eq speed-type-save-statistic-option 'never))
     (when (if (eq speed-type-save-statistic-option 'ask) (y-or-n-p "Save statistic?") t)
-      (setq speed-type--continue-at-point (+ speed-type--continue-at-point speed-type--entries))
+      (unless (null speed-type--continue-at-point)
+	(setq speed-type--continue-at-point (+ (or speed-type--continue-at-point 0) speed-type--entries)))
       (speed-type-save-stats speed-type-statistic-filename))))
 
 (defun speed-type-save-stats (file &optional alt-msg)
@@ -727,12 +740,13 @@ speed-type files that were created using the speed-type functions."
 
 (iter-defun buffer-word-generator (start end)
   "Yield downcased words one by one from the current buffer."
+  (unless start (error "Given start is nil"))
+  (unless end (error "Given end is nil"))
   (goto-char start)
   (let ((word-start nil))
     (while (<= (point) end)
       (let ((ch (char-after)))
         (if (and ch (speed-type--char-word-syntax-p (downcase ch)))
-	    (forward-word )
             (unless word-start
               (setq word-start (point)))
           (when word-start
@@ -749,14 +763,16 @@ speed-type files that were created using the speed-type functions."
   "Count word frequencies in the buffer using generators and write it to file."
   (let ((fn (speed-type--gb-top-filename book-num))
 	(word-counts (make-hash-table :test 'equal))
-	(start (save-excursion (when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
-				 (end-of-line 1)
-				 (forward-line 1)
-				 (point))))
-	(end (save-excursion (when (re-search-forward "***.END.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
-			       (beginning-of-line 1)
-			       (forward-line -1)
-			       (point)))))
+	(start (save-excursion
+		 (goto-char (point-min))
+		 (when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+		   (end-of-line 1)
+		   (forward-line 1)
+		   (point))))
+	(end (save-excursion (goto-char (point-min)) (when (re-search-forward "***.END.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+				  (beginning-of-line 1)
+				  (forward-line -1)
+				  (point)))))
     ;; Step 1: Count word frequencies using generator
     (let ((word-iter (buffer-word-generator start end)))
       (iter-do (word word-iter)
@@ -1327,8 +1343,8 @@ LIMIT is supplied to the random-function."
          (title (format "Top %s %s words" n lang))
 	 (text (with-temp-buffer
 		 (while (< (buffer-size) char-length)
-		   (insert (speed-type--get-random-word buf n))
-                   (insert " "))
+		   (let ((random-word (speed-type--get-random-word buf n)))
+		     (unless (speed-type--stop-word-p random-word) (insert random-word " "))))
 		 (speed-type--fill-region)
 		 (if speed-type-wordlist-transform
                      (funcall speed-type-wordlist-transform (buffer-string))
