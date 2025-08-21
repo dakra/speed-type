@@ -75,7 +75,7 @@ Book numbers can be picked from https://www.gutenberg.org, when looking at
 a book url.  E.G, https://www.gutenberg.org/ebooks/14577."
   :type '(repeat integer))
 
-(defcustom speed-type-gb-dir (locate-user-emacs-file "speed-type")
+(defcustom speed-type-directory (locate-user-emacs-file "speed-type")
   "Directory in which the gutenberg books will be saved."
   :type 'directory)
 
@@ -90,6 +90,19 @@ a book url.  E.G, https://www.gutenberg.org/ebooks/14577."
 (defcustom speed-type-stop-words '()
   "List of stop words. Can be a list or a path to a file which contains words newline separated."
   :type '(list string))
+
+(defcustom speed-type-randomize t
+  "Toggle randomizing of words."
+  :type 'boolean)
+
+(defun speed-type-toggle-randomize ()
+  "Toggle ‘speed-type-randomize’ for certain speed-type-commands."
+  (interactive)
+  (setq speed-type-randomize (not speed-type-randomize)))
+
+(defcustom speed-type-downcase t
+  "Toggle downcasing of mistyped words."
+  :type 'boolean)
 
 (defcustom speed-type-quote-urls
   '((johnVonNeumann . "https://www.azquotes.com/author/10753-John_von_Neumann")
@@ -225,7 +238,7 @@ they accumulate each other if both variables are set."
 		         (const :tag "Never" never)
 		         (const :tag "Ask" ask)))
 
-(defcustom speed-type-statistic-filename (concat speed-type-gb-dir "/" "speed-type-statistic.el")
+(defcustom speed-type-statistic-filename (concat speed-type-directory "/" "speed-type-statistic.el")
   "Name of file for general stats."
   :type 'string)
 
@@ -326,6 +339,8 @@ Median Remaining:              %d")
 
 ;; buffer local internal variables
 
+(defvar-local speed-type--hard-transitions '())
+(defvar-local speed-type--mistyped-words '())
 (defvar-local speed-type--start-time nil)
 (defvar-local speed-type--orig-text nil)
 (defvar-local speed-type--buffer nil)
@@ -349,6 +364,16 @@ Median Remaining:              %d")
 (defvar-local speed-type--extra-word-quote nil)
 (defvar-local speed-type--continue-at-point nil)
 (defvar-local speed-type--file-name nil)
+
+(defun monkeytype--process-input-timer-init ()
+  "Start the idle timer (to wait 5 seconds before pausing).
+
+See: `monkeytype--utils-idle-timer'"
+  (unless monkeytype--start-time
+    (setq monkeytype--current-run-start-datetime
+          (format-time-string "%a-%d-%b-%Y %H:%M:%S"))
+    (setq monkeytype--start-time (float-time))
+    (monkeytype--utils-idle-timer 5 'monkeytype-pause)))
 
 (defun speed-type--/ (number divisor)
   "Divide NUMBER by DIVISOR when DIVISOR is not null.
@@ -454,10 +479,10 @@ be coded in SPEED-TYPE-MAYBE-UPGRADE-FILE-FORMAT."
 (defun speed-type--stop-word-p (word)
   "WORD to check if it’s contained in the customised ‘speed-type-stop-words’."
   (cond ((listp speed-type-stop-words) (car (member word speed-type-stop-words)))
-	((file-readable-p (expand-file-name speed-type-stop-words speed-type-gb-dir))
-	 (with-current-buffer (find-file-noselect (expand-file-name speed-type-stop-words speed-type-gb-dir))
+	((file-readable-p (expand-file-name speed-type-stop-words speed-type-directory))
+	 (with-current-buffer (find-file-noselect (expand-file-name speed-type-stop-words speed-type-directory))
 	   (when (save-excursion (re-search-forward (concat "^" word "$") nil t 1)) word)))
-	(t (user-error "Custom variable ‘speed-type-stop-words’ must be a list or a filename in ‘speed-type-gb-dir’"))))
+	(t (user-error "Custom variable ‘speed-type-stop-words’ must be a list or a filename in ‘speed-type-directory’"))))
 
 (defun speed-type-grok-file-format-version ()
   "Integer which indicates the file-format version of speed-type statistic file.
@@ -718,11 +743,11 @@ speed-type files that were created using the speed-type functions."
 
 (defun speed-type--retrieve (filename url)
   "Return buffer FILENAME content in it or download from URL if file doesn't exist."
-  (let ((fn (expand-file-name (format "%s.txt" filename) speed-type-gb-dir))
+  (let ((fn (expand-file-name (format "%s.txt" filename) speed-type-directory))
         (url-request-method "GET"))
     (if (file-readable-p fn)
 	(find-file-noselect fn)
-      (make-directory speed-type-gb-dir 'parents)
+      (make-directory speed-type-directory 'parents)
       (let ((buffer (url-retrieve-synchronously url nil nil 5)))
         (when (and buffer (= 200 (url-http-symbol-value-in-buffer
                                   'url-http-response-status
@@ -800,7 +825,7 @@ speed-type files that were created using the speed-type functions."
   (speed-type--retrieve book-num (speed-type--gb-url book-num)))
 
 (defun speed-type--gb-top-filename (book-num)
-  (expand-file-name (concat (number-to-string book-num) "-top-x.txt") speed-type-gb-dir))
+  (expand-file-name (concat (number-to-string book-num) "-top-x.txt") speed-type-directory))
 
 (defun speed-type--gb-top-retrieve (lang)
   "Return buffer containing a frequency list of a random book which has given LANG."
@@ -1330,6 +1355,32 @@ LIMIT is supplied to the random-function."
   (when (= (point) (line-end-position))
     (newline) (move-beginning-of-line nil) (speed-type--code-tab)))
 
+(defun speed-type-save-text-from-url (url file-name)
+  "Download URL to `monketype-directory', naming it FILE-NAME.
+
+This function shells out to pandoc(1) which character-encodes in UTF-8
+so some characters might not be desirable for monkeytyping, so the custom
+`monkeytype-asciify' option has be given to optionally allow for
+further character encoding to ASCII (using iconv(1))."
+  (interactive "sURL: \nsName for the text-file:")
+
+  (monkeytype--utils-check-for-pandoc)
+  (let* ((path (concat monkeytype-directory "text/" file-name))
+         (cmd "pandoc")
+         (url-opts (format " -s -r html %s" url))
+         (text-opts " -t plain")
+         (asciify (if (monkeytype--utils-check-for-iconv)
+                      (format
+                       " | iconv -c --to-code=ASCII//TRANSLIT > %s"
+                       path)
+                    (format " -o %s" path))))
+
+    (when (file-exists-p path)
+      (error "Monkeytype Error: File %s already exists" path))
+
+    (shell-command (concat cmd url-opts text-opts asciify))
+    (find-file path)))
+
 ;;;###autoload
 (defun speed-type-text-top-x (n)
   "Speed type the N most common words."
@@ -1581,6 +1632,128 @@ If `ARG' is given will prompt for a specific quote-URL."
 		 :add-extra-word-content-fn add-extra-word-content-fn
 		 :replay-fn #'speed-type--get-replay-fn
 		 :go-next-fn go-next-fn)))))
+
+
+(defun monkeytype--typed-text-add-to-mistyped-list (char)
+  "Find associated word for CHAR and add it to mistyped list."
+  (let* ((index (gethash 'source-index char))
+         (word (cdr (assoc index monkeytype--chars-to-words))))
+    (when word
+      (cl-pushnew
+       (replace-regexp-in-string monkeytype-excluded-chars-regexp "" word)
+       monkeytype--mistyped-words))))
+
+(defun monkeytype--typed-text-collect-errors (settled)
+  "Add SETTLED char's associated word/transition to their respective list.
+This is unless the char doesn't belong to any word as defined by the
+`monkeytype-excluded-chars-regexp'."
+  (unless (= (gethash 'state settled) 1)
+    (unless (string-match
+             monkeytype-excluded-chars-regexp
+             (gethash 'source-entry settled))
+      (let* ((index (gethash 'source-index settled))
+             (transition-p (> index 2))
+             (transition  (when transition-p
+                            (substring
+                             monkeytype--source-text
+                             (- index 2)
+                             index)))
+             (transition-p (and
+                            transition-p
+                            (string-match "[^ \n\t]" transition))))
+
+        (when transition-p
+          (cl-pushnew transition monkeytype--hard-transitions))
+        (monkeytype--typed-text-add-to-mistyped-list settled)))))
+
+(defun monkeytype--typed-text-add-to-mistyped-list (char)
+  "Find associated word for CHAR and add it to mistyped list."
+  (let* ((index (gethash 'source-index char))
+         (word (cdr (assoc index monkeytype--chars-to-words))))
+    (when word
+      (cl-pushnew
+       (replace-regexp-in-string monkeytype-excluded-chars-regexp "" word)
+       monkeytype--mistyped-words))))
+
+(defun monkeytype--typed-text-concat-corrections (corrections entry settled)
+  "Concat propertized CORRECTIONS to SETTLED char.
+Also add corrections in ENTRY to `monkeytype--mistyped-word-list'."
+  (monkeytype--typed-text-add-to-mistyped-list entry)
+
+  (format
+   "%s%s"
+   settled
+   (mapconcat
+    (lambda (correction)
+      (let* ((correction-char (gethash 'typed-entry correction))
+             (state (gethash 'state correction))
+             (correction-face
+              (monkeytype--typed-text-entry-face (= state 1) t)))
+        (propertize (format "%s" correction-char) 'face correction-face)))
+    corrections
+    "")))
+
+(defun monkeytype--typed-text-entry-face (correctp &optional correctionp)
+  "Return the face for the CORRECTP and/or CORRECTIONP entry."
+  (if correctionp
+      (if correctp 'monkeytype-correction-correct 'monkeytype-correction-error)
+    (if correctp 'monkeytype-correct 'monkeytype-error)))
+
+(defun monkeytype--typed-text-skipped (settled)
+  "Handle skipped text before the typed char at SETTLED."
+  (let* ((start (car (car monkeytype--chars)))
+         (skipped-length (when start (- settled start))))
+    (if skipped-length
+        (progn (pop monkeytype--chars) "")
+      (cl-loop repeat (1+ skipped-length) do
+               (pop monkeytype--chars))
+      (substring monkeytype--source-text (1- start) (1- settled)))))
+
+(defun monkeytype--typed-text-whitespace (source typed)
+  "Whitespace substitutions depending on SOURCE and TYPED char."
+  (if (and (string= " " typed) (not (string= typed source))) "·" typed))
+
+(defun monkeytype--typed-text-newline (source typed)
+  "Newline substitutions depending on SOURCE and TYPED char."
+  (if (string= "\n" source)
+      (if (or (string= " " typed) (string= source typed))
+          "↵\n"
+        (concat typed "↵\n"))
+    typed))
+
+(defun monkeytype--typed-text-to-string (entries)
+  "Format typed ENTRIES and return a string."
+  (mapconcat
+   (lambda (entries-for-source)
+     (let* ((tries (cdr entries-for-source))
+            (correctionsp (> (length tries) 1))
+            (settled (if correctionsp (car (last tries)) (car tries)))
+            (source-entry (gethash 'source-entry settled))
+            (typed-entry (monkeytype--typed-text-newline
+                          source-entry
+                          (gethash 'typed-entry settled)))
+            (typed-entry (monkeytype--typed-text-whitespace
+                          source-entry
+                          typed-entry))
+            (settled-correctp (= (gethash 'state settled) 1))
+            (settled-index (gethash 'source-index settled))
+            (skipped-text  (monkeytype--typed-text-skipped settled-index))
+            (prop-settled (propertize
+                           (format "%s" typed-entry)
+                           'face
+                           (monkeytype--typed-text-entry-face
+                            settled-correctp)))
+            (prop-settled (concat skipped-text prop-settled))
+            (corrections (when correctionsp (butlast tries))))
+       (if correctionsp
+           (monkeytype--typed-text-concat-corrections
+            corrections
+            settled
+            prop-settled)
+         (monkeytype--typed-text-collect-errors settled)
+         (format "%s" prop-settled))))
+   entries
+   ""))
 
 (provide 'speed-type)
 ;;; speed-type.el ends here

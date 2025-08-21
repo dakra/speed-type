@@ -55,13 +55,57 @@ for the selected language.
 `speed-type-quote` by default will take a random quote from a random quote-url listed in `speed-type-quote-urls`. You can `C-u speed-type-quote` to specify the url.
 
 
-## Gutenberg Project Integration
+## Typing content and integration
 
-The gutenberg project provides many books in many different languages.
-We download the book-content when the commands `speed-type-text` or
-`speed-type-text-top-x` are called. These books will be stored in the
-`speed-type-gb-dir`. The provide the basis from which we pick the
-content to typ.
+This package integrates different sources to start a typing-session
+with somewhat meaningfull content. The following chapters explain what
+the benefits and how to gain the most out of it.
+
+### Gutenberg Project Integration
+
+The gutenberg project provides many books in many different languages. The books have a free-to-use license.
+
+It’s used for the commands `speed-type-text` and `speed-type-text-top-x`.
+
+Requesting the book from the server is quite expensive hence the we store the book at ‘speed-type-gb-dir’ and used is as a cache.
+
+The ‘speed-tpye-text-top-x’ calculates a frequency list from a book
+and stores the words sorted decending in saparate file alongside the
+book-file. Calculating the frequency of words can be quite expensive
+hence this file is also used as a cache.
+
+### AzQuotes
+
+The AzQuotes Website provides many quotes from many popular scientist,
+engineer or philosopher. The quotes are in english. The quotes are
+free-to-use.
+
+### Leibzig Top Words
+
+This is accesed via webarchive. It’s a list once provided by the leibzig university. It provides a global frequency lists for the year 2012 for the languages: german, english, dutch, french.
+
+It’s used by the ‘speed-type-top-x’ (notice no "text" prefix).
+
+It’s kind of an outdated command and it’s recommanded to use the
+‘speed-type-buffer-top-x’ or ‘speed-type-text-top-x’ commands.
+
+The source isn’t maintained, hence the webarchive list. Also there
+isn’t any hint of other languages provided.
+
+### Pandoc
+
+This relies on the external programm [pandoc](https://pandoc.org/).
+It’s a conversation tool, which allows converting any text-format to
+any other text-format. e.g. xml -> json. We provide a command
+‘speed-type-save-text-from-url’ which simplifies the creation of
+typing-content by downloading the given url and running it through
+pandoc. Giving us nice text-file from which we can start the
+typing-session. Same with the gutenberg we store the file to
+‘speed-type-directory’ to use it as a cache making the expensive
+server request only once.
+
+Beaware that this is a best effort solution, and doesn’t lead to
+perfect results with every website on the web.
 
 ## Contribution
 
@@ -76,6 +120,18 @@ create an issue, we will fix them (with no regression :P).
 If you rather like to fix them by your own you can just fork this repo
 and implement the fix by yourself. We really like pressing that
 merge-button.
+
+### Monkeytype Integration
+
+We copyed many features from [emacs-monkeytype](https://github.com/jpablobr/emacs-monkeytype). It ported [monkeytype](https://monkeytype.com/) to emacs. It improved core of speed-type and inspirired the project for many new state-variables. Following feature from emacs-monkeytype were ported to speed-type:
+
+- idle-timer: pause the timer after 5 seconds
+- hard-transitions: store hard-transitions to a separate file
+- mistyped-words: the top mistyped words across any typing-session
+- pandoc: provide tools to create own typing content more easily
+- randomize: useful custom variable which allows the user to defines general default behaivior across all commands
+- downcase: useful custom variable which allows the user to defines general default behaivior across all commands
+- preview typed characters after finish: cool feature which displays the actual typed characters which allows the user to better reflect on there results.
 
 ## Customization
 
@@ -98,7 +154,7 @@ can customize the `speed-type-point-motion-on-error` to
 Speed-type differenciate between errors and consecutive-errors.
 
 An error is a mistyped character. A consectuive-error is a mistyped
-character where previous character was already an error.
+Character where previous character was already an error.
 
 You can make consecutive errors yellow/orange (warning-color) by customizing the face as follows:
 ```emacs-lisp
