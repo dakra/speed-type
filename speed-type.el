@@ -66,6 +66,10 @@
   "The maximum number of chars to type required when the text is picked randomly."
   :type 'integer)
 
+(defcustom speed-type-pause-dealy-seconds 5
+  "Define after which idle delay it should pause the timer."
+  :type 'integer)
+
 (defcustom speed-type-gb-book-list
   '(1342 11 1952 1661 74 1232 23 135 5200 2591 844 84 98 2701 1400 16328 174
          46 4300 345 1080 2500 829 1260 6130 1184 768 32032 521 1399 55)
@@ -329,6 +333,7 @@ Median Remaining:              %d")
 (defvar speed-type-mode-map
   (let ((keymap (make-sparse-keymap)))
     (define-key keymap (kbd "C-c C-k")  #'speed-type-complete)
+    (define-key keymap (kbd "C-c C-p")  #'speed-type-pause)
     (define-key keymap (kbd "M-q") #'speed-type-fill-paragraph)
     keymap)
   "Keymap for `speed-type-mode'.")
@@ -364,16 +369,22 @@ Median Remaining:              %d")
 (defvar-local speed-type--extra-word-quote nil)
 (defvar-local speed-type--continue-at-point nil)
 (defvar-local speed-type--file-name nil)
+(defvar-local speed-type--idle-pause-timer nil)
 
-(defun monkeytype--process-input-timer-init ()
-  "Start the idle timer (to wait 5 seconds before pausing).
+(defun speed-type--resume ()
+  "Resume the current typing session. Adding the idle timer again, and pushing the newest time to stack."
+  (setq speed-type--idle-pause-timer (run-with-idle-timer 5 nil #'speed-type-pause)
+	speed-type--start-time (append speed-type--start-time (list (float-time)))))
 
-See: `monkeytype--utils-idle-timer'"
-  (unless monkeytype--start-time
-    (setq monkeytype--current-run-start-datetime
-          (format-time-string "%a-%d-%b-%Y %H:%M:%S"))
-    (setq monkeytype--start-time (float-time))
-    (monkeytype--utils-idle-timer 5 'monkeytype-pause)))
+(defun speed-type-pause ()
+  "Pushes the current time to the start-time variable.
+
+The list of times is used to calculate the overall active typing time."
+  (interactive)
+  (message "Speed-type session is paused. Resume will be triggered on buffer-change.")
+  (when speed-type--idle-pause-timer
+    (setq speed-type--idle-pause-timer nil
+	  speed-type--start-time (append speed-type--start-time (list (float-time))))))
 
 (defun speed-type--/ (number divisor)
   "Divide NUMBER by DIVISOR when DIVISOR is not null.
@@ -576,7 +587,7 @@ it can be passed along with FILE to `format'. At the end,
         (emacs-lisp-mode-hook     nil) ; Avoid inserting automatic file header if existing empty file, so
         (lisp-mode-hook           nil) ; better chance `speed-type-maybe-upgrade-file-format' signals error.
 	(speed-type-buffer (current-buffer))
-        start end)
+        end)
     (when (file-directory-p file) (error "`%s' is a directory, not a file" file))
     (message msg (abbreviate-file-name file))
     (with-current-buffer (let ((enable-local-variables ())) (find-file-noselect file))
@@ -845,11 +856,21 @@ speed-type files that were created using the speed-type functions."
 	 ((string= "nl" lang) "Dutch"))
    (cdr (assoc lang speed-type-wordlist-urls))))
 
+(defun list-to-alist-safe (lst)
+  "Convert flat list LST into an alist.
+If the list length is odd, the last element is kept as (key . nil)."
+  (cond
+   ((null lst) nil)
+   ((null (cdr lst)) (list (cons (car lst) nil)))
+   (t (cons (cons (car lst) (cadr lst))
+            (list-to-alist-safe (cddr lst))))))
+
 (defun speed-type--elapsed-time ()
   "Return float with the total time since start."
-  (let ((end-time (float-time)))
-    (if (not speed-type--start-time)
-        0 (- end-time speed-type--start-time))))
+  (if (not speed-type--start-time)
+      0
+    (apply #'+ (mapcar (lambda (time-pair) (- (or (cdr time-pair) (float-time)) (or (car time-pair) (float-time))))
+		       (list-to-alist-safe speed-type--start-time)))))
 
 (defun speed-type--check-same (pos a b)
   "Return non-nil if both A[POS] B[POS] are white space or if they are the same."
@@ -1031,6 +1052,7 @@ END is a point where the check stops to scan for diff."
 LENGTH is ignored. Used for hook AFTER-CHANGE-FUNCTIONS.
 Make sure that the contents don't actually change, but rather the contents
 are color coded and stats are gathered about the typing performance."
+  (unless speed-type--idle-pause-timer (speed-type--resume))
   (let ((len (length speed-type--orig-text)))
     (when (<= start len)
       (let* ((end (if (> end (1+ len)) len end))
@@ -1052,7 +1074,8 @@ are color coded and stats are gathered about the typing performance."
 (defun speed-type--first-change ()
   "Start the timer."
   (when (not speed-type--start-time)
-    (setq speed-type--start-time (float-time))))
+    (setq speed-type--idle-pause-timer (run-with-idle-timer speed-type-pause-dealy-seconds nil #'speed-type-pause)
+	  speed-type--start-time (append speed-type--start-time (list (float-time))))))
 
 (defun speed-type--trim (str)
   "Trim leading and tailing whitespace from STR."
@@ -1675,7 +1698,7 @@ This is unless the char doesn't belong to any word as defined by the
        (replace-regexp-in-string monkeytype-excluded-chars-regexp "" word)
        monkeytype--mistyped-words))))
 
-(defun monkeytype--typed-text-concat-corrections (corrections entry settled)
+(defun monkeytype-y-typed-text-concat-corrections (corrections entry settled)
   "Concat propertized CORRECTIONS to SETTLED char.
 Also add corrections in ENTRY to `monkeytype--mistyped-word-list'."
   (monkeytype--typed-text-add-to-mistyped-list entry)
