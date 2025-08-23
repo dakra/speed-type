@@ -58,6 +58,10 @@
   "Name of buffer consisting of the content-source for the speed-type buffer."
   :type 'string)
 
+(defcustom speed-type-preview-buffer-name "*speed-type-preview-buffer*"
+  "Name of buffer consisting of the preview for the speed-type buffer."
+  :type 'string)
+
 (defcustom speed-type-min-chars 200
   "The minimum number of chars to type required when the text is picked randomly."
   :type 'integer)
@@ -246,6 +250,10 @@ they accumulate each other if both variables are set."
   "Name of file for general stats."
   :type 'string)
 
+(defcustom speed-type-provide-preview t
+  "If a separate buffer should display the actual typed characters."
+  :type 'boolean)
+
 (defcustom speed-type-max-num-records 10000
   "Maximum number of saved records."
   :type '(natnum :tag "None negative number." ))
@@ -344,6 +352,7 @@ Median Remaining:              %d")
 
 ;; buffer local internal variables
 
+(defvar-local speed-type--preview-buffer nil)
 (defvar-local speed-type--hard-transitions '())
 (defvar-local speed-type--mistyped-words '())
 (defvar-local speed-type--start-time nil)
@@ -1063,6 +1072,9 @@ are color coded and stats are gathered about the typing performance."
              (old-text (substring speed-type--orig-text
                                   start0 (+ start0 length)))
              (orig (substring speed-type--orig-text start0 end0)))
+	(when speed-type-provide-preview
+	  (with-current-buffer speed-type--preview-buffer
+	    (insert new-text)))
         (speed-type--handle-del start end)
 	    (insert old-text)
 	    (when-let* ((overlay (and (equal new-text "")
@@ -1157,6 +1169,19 @@ CALLBACK is called when the setup process has been completed."
 	(setq-local speed-type--buffer buf)
 	(when (null (boundp 'speed-type--extra-word-quote))
 	  (setq-local speed-type--extra-word-quote nil)))
+
+      ;; interconnect buffers, so they can be killed group-vise
+      (let ((pbuf (when speed-type-provide-preview
+		    (setq speed-type--preview-buffer (generate-new-buffer speed-type-preview-buffer-name))
+		    (with-current-buffer speed-type--preview-buffer
+		      (setq-local speed-type--buffer buf)
+		      (add-hook 'kill-buffer-hook 'speed-type--kill-preview-buffer-hook nil t))))
+	    (cbuf speed-type--content-buffer))
+	(with-current-buffer speed-type--content-buffer
+	  (setq-local speed-type--preview-buffer pbuf))
+	(when speed-type--preview-buffer
+	  (with-current-buffer speed-type--preview-buffer
+	    (setq-local speed-type--content-buffer cbuf))))
       (when replay-fn (setq speed-type--replay-fn replay-fn))
       (insert text)
       (unless (speed-type--code-buffer-p speed-type--content-buffer)
@@ -1193,14 +1218,33 @@ CALLBACK is called when the setup process has been completed."
   (when speed-type--content-buffer
     (let ((buf speed-type--content-buffer))
       (setq speed-type--content-buffer nil)
-      (kill-buffer buf))))
+      (kill-buffer buf)))
+  (when speed-type--preview-buffer
+    (let ((pbuf speed-type--preview-buffer))
+      (setq speed-type--preview-buffer nil)
+      (kill-buffer pbuf))))
 
 (defun speed-type--kill-content-buffer-hook ()
   "Hook when content buffer is killed."
   (when speed-type--buffer
     (let ((buf speed-type--buffer))
       (setq speed-type--buffer nil)
-      (kill-buffer buf))))
+      (kill-buffer buf)))
+  (when speed-type--preview-buffer
+    (let ((pbuf speed-type--preview-buffer))
+      (setq speed-type--preview-buffer nil)
+      (kill-buffer pbuf))))
+
+(defun speed-type--kill-preview-buffer-hook ()
+  "Hook when preview buffer is killed."
+  (when speed-type--buffer
+    (let ((buf speed-type--buffer))
+      (setq speed-type--buffer nil)
+      (kill-buffer buf)))
+  (when speed-type--content-buffer
+    (let ((cbuf speed-type--content-buffer))
+      (setq speed-type--content-buffer nil)
+      (kill-buffer cbuf))))
 
 (defun speed-type--pick-random-text-to-type (&optional start end)
   "Return a random section of the buffer usable for playing.
