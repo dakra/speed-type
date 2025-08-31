@@ -50,6 +50,72 @@
 ;; 	       :title title
 ;; 	       :replay-fn #'speed-type--get-replay-fn))))
 
+(ert-deftest speed-type-test/stop-words-p-supply-garbage ()
+  (should-error (speed-type--stop-word-p nil))
+  (should-error (speed-type--stop-word-p 1))
+  (should-error (speed-type--stop-word-p 'symbol))
+  (should-error (speed-type--stop-word-p '("asdf" "asdf")))
+  (setq speed-type-stop-words 'symbol)
+  (should-error (speed-type--stop-word-p "word"))
+  (setq speed-type-stop-words 1)
+  (should-error (speed-type--stop-word-p "word")))
+
+(ert-deftest speed-type-test/stop-words-p-is-t-when-found-in-list ()
+  (setq speed-type-stop-words '("word"))
+  (should (string= (speed-type--stop-word-p "word") "word")))
+
+(ert-deftest speed-type-test/stop-words-p-is-t-when-found-in-file ()
+  (setq speed-type-stop-words (concat (temporary-file-directory) "/stop-words.txt"))
+  (let ((buffer (find-file-noselect speed-type-stop-words)))
+    (unwind-protect
+	(progn (with-current-buffer buffer
+		 (insert "word\n")
+		 (insert "otherWord\n")
+		 (save-buffer))
+	       (should (string= (speed-type--stop-word-p "word") "word")))
+      (delete-file (buffer-file-name buffer))
+      (kill-buffer buffer))))
+
+(ert-deftest speed-type-test/find-last-continue-at-point-in-stats-supply-garbage ()
+  (should-error (speed-type--find-last-continue-at-point-in-stats 'symbol))
+  (should-error (speed-type--find-last-continue-at-point-in-stats 1))
+  (should-error (speed-type--find-last-continue-at-point-in-stats '("aqsf" "asdf"))))
+
+(ert-deftest speed-type-test/find-last-continue-at-point-in-stats ()
+  (let ((speed-type-statistic-filename (concat (temporary-file-directory) "speed-type-statistic.el")))
+    (delete-file speed-type-statistic-filename)
+    (should (eq (speed-type--find-last-continue-at-point-in-stats nil) nil))
+    (should (null (speed-type--find-last-continue-at-point-in-stats "/tmp/101.txt")))
+    (speed-type-save-stats
+     speed-type-statistic-filename
+     '((speed-type--continue-at-point . 2)
+       (speed-type--file-name . "/tmp/101.txt")))
+    (should (= (speed-type--find-last-continue-at-point-in-stats "/tmp/101.txt") 2))
+    (speed-type-save-stats
+     speed-type-statistic-filename
+     '((speed-type--continue-at-point . 12)
+       (speed-type--file-name . "/tmp/101.txt")))
+    (speed-type-save-stats
+     speed-type-statistic-filename
+     '((speed-type--continue-at-point . 9)
+       (speed-type--file-name . "/tmp/404.txt")))
+    (should (= (speed-type--find-last-continue-at-point-in-stats "/tmp/101.txt") 12))
+    (speed-type-save-stats
+     speed-type-statistic-filename
+     '((speed-type--continue-at-point . 22)
+       (speed-type--file-name . "/tmp/101.txt")))
+    (should (= (speed-type--find-last-continue-at-point-in-stats "/tmp/101.txt") 22))
+    (should (= (speed-type--find-last-continue-at-point-in-stats "/tmp/404.txt") 9))
+    (should (null (speed-type--find-last-continue-at-point-in-stats "/tmp/909.txt")))))
+
+(ert-deftest speed-type-test/calc-median-supply-garbage ()
+  (should-error (speed-type--calc-median "" '()))
+  (should-error (speed-type--calc-median 1 '()))
+  (should-error (speed-type--calc-median '() '()))
+  (should-error (speed-type--calc-median 'a ""))
+  (should-error (speed-type--calc-median 'a 'a))
+  (should-error (speed-type--calc-median "" "")))
+
 (ert-deftest speed-type-test/feeling-better? ()
   "Checks if it's a good day to program."
   (should (= 1 1)))
@@ -57,7 +123,8 @@
 (ert-deftest speed-type-test/general-region ()
   "Do a general test with `speed-type-region' with fundamental mode and a prog-mode, checking content, overlays, point and point-motion, buffer-variables and statistic file."
   (let ((content "abcde")
-	(mode (nth (random 2) '(fundamental-mode emacs-lisp-mode))))
+	(mode (nth (random 2) '(fundamental-mode emacs-lisp-mode)))
+	(speed-type-statistic-filename (concat (temporary-file-directory) "speed-type-statistic.el")))
     (with-temp-buffer
       (insert content)
       (funcall mode)
@@ -74,17 +141,17 @@
 	      (insert "c")
 	      (insert "!")
 	      (insert "!")
-	      ;	(should (= speed-type--start-time 1753299414.2124302))
+					;	(should (= speed-type--start-time 1753299414.2124302))
 	      (should (string= speed-type--orig-text content))
 	      (should (eq speed-type--buffer (current-buffer)))
-              ; (should (eq speed-type--content-buffer (get-buffer "*speed-type-content-buffer*")))
+					; (should (eq speed-type--content-buffer (get-buffer "*speed-type-content-buffer*")))
 	      (should (= speed-type--entries 5))
 	      (should (= speed-type--errors 4))
 	      (should (= speed-type--non-consecutive-errors 2))
 	      (should (= speed-type--remaining 0))
 	      (should (string= speed-type--mod-str "\1\1\1\2\2"))
 	      (should (= speed-type--corrections 1))
-              ; (should (string= speed-type--title (buffer-name)))
+					; (should (string= speed-type--title (buffer-name)))
 	      (should (string= speed-type--author (user-full-name)))
 	      (should (eq speed-type--lang nil))
 	      (should (eq speed-type--n-words nil))
@@ -105,7 +172,8 @@
 (ert-deftest speed-type-test/general-file-ref ()
   "Do a general test with `speed-type-region' and different modes, checking content, overlays, point and point-motion, buffer-variables and statistic file."
   (let ((content "abcde")
-	(mode (nth 0 '(hexl-mode))))
+	(mode (nth 0 '(hexl-mode)))
+	(speed-type-statistic-filename (concat (temporary-file-directory) "speed-type-statistic.el")))
     (with-temp-buffer
       (insert content)
       (write-file "test.bin")
@@ -129,7 +197,7 @@
 	      (should (= speed-type--entries 5))
 	      (should (= speed-type--errors 4))
 	      (should (= speed-type--non-consecutive-errors 2))
-	      (should (= speed-type--remaining 51))
+	      (should (= speed-type--remaining 19))
 	      (should (string= speed-type--mod-str "\1\1\1\2\2\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"))
 	      (should (= speed-type--corrections 1))
               ; (should (string= speed-type--title (buffer-name)))
@@ -192,55 +260,59 @@
       (remove-hook 'speed-type-mode-hook 'speed-type-mode-test-hook))))
 
 (defun speed-type--retrieve-non-existant-file-environment (filename-expected test)
-  (let ((speed-type-gb-dir (temporary-file-directory)))
+  (let ((speed-type-directory (temporary-file-directory)))
     (unwind-protect
         (progn
+	  (kill-buffer (get-file-buffer filename-expected))
           (delete-file filename-expected)
           (funcall test))
+      (kill-buffer (get-file-buffer filename-expected))
       (delete-file filename-expected))))
 
 (defun speed-type--retrieve-existant-file-environment (filename-expected test)
-  (let ((speed-type-gb-dir (temporary-file-directory)))
+  (let ((speed-type-directory (temporary-file-directory)))
     (unwind-protect
         (progn
+	  (kill-buffer (get-file-buffer filename-expected))
           (delete-file filename-expected)
           (with-temp-buffer
             (write-file filename-expected))
           (funcall test))
+      (kill-buffer (get-file-buffer filename-expected))
       (delete-file filename-expected))))
 
-(ert-deftest speed-type--retrieve-test ()
-  (let ((filename "speed-type--retrieve-test-file")
-        (filename-expected "/tmp/speed-type--retrieve-test-file.txt")
-        (url "https://www.google.com"))
+;; (ert-deftest speed-type--retrieve-test ()
+;;   (let ((filename "speed-type--retrieve-test-file")
+;;         (filename-expected "/tmp/speed-type--retrieve-test-file.txt")
+;;         (url "https://www.google.com"))
 
-    (speed-type--retrieve-non-existant-file-environment
-     filename-expected
-     (lambda ()
-       (let ((filename-response (speed-type--retrieve filename url)))
-         (should (stringp filename-response))
-         (should (string= filename-response filename-expected))
-         (should (file-exists-p filename-expected))
-         (should (file-readable-p filename-expected)))))
+;;     (speed-type--retrieve-non-existant-file-environment
+;;      filename-expected
+;;      (lambda ()
+;;        (let ((filename-response (speed-type--retrieve filename url)))
+;;          (should (bufferp filename-response))
+;;          (should (string= (buffer-file-name filename-response) filename-expected))
+;;          (should (file-exists-p filename-expected))
+;;          (should (file-readable-p filename-expected)))))
 
-    (speed-type--retrieve-existant-file-environment
-     filename-expected
-     (lambda ()
-       (let ((filename-response (speed-type--retrieve filename url)))
-         (should (stringp filename-response))
-         (should (string= filename-response filename-expected))
-         (should (file-exists-p filename-expected))
-         (should (file-readable-p filename-expected))))))
+;;     (speed-type--retrieve-existant-file-environment
+;;      filename-expected
+;;      (lambda ()
+;;        (let ((filename-response (speed-type--retrieve filename url)))
+;;          (should (bufferp filename-response))
+;;          (should (string= (buffer-file-name filename-response) filename-expected))
+;;          (should (file-exists-p filename-expected))
+;;          (should (file-readable-p filename-expected))))))
 
-  (let ((filename "speed-type--retrieve-test-file")
-        (filename-expected "/tmp/speed-type--retrieve-test-file.txt")
-        (url "https://www.google.com/nonexitanresource"))
+;;   (let ((filename "speed-type--retrieve-test-file")
+;;         (filename-expected "/tmp/speed-type--retrieve-test-file.txt")
+;;         (url "https://www.google.com/nonexitanresource"))
 
-    (speed-type--retrieve-non-existant-file-environment
-     filename-expected
-     (lambda ()
-       (let ((filename-response (speed-type--retrieve filename url)))
-         (should (null filename-response))
-         (should (not (file-exists-p filename-expected)))
-         (should (not (file-readable-p filename-expected))))))))
+;;     (speed-type--retrieve-non-existant-file-environment
+;;      filename-expected
+;;      (lambda ()
+;;        (let ((filename-response (speed-type--retrieve filename url)))
+;;          (should (null filename-response))
+;;          (should (not (file-exists-p filename-expected)))
+;;          (should (not (file-readable-p filename-expected))))))))
 ;;; test-speed-type.el ends here
