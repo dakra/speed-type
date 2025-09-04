@@ -369,6 +369,7 @@ Median Remaining:              %d")
 (defvar-local speed-type--corrections 0)
 (defvar-local speed-type--title nil)
 (defvar-local speed-type--author nil)
+(defvar-local speed-type--randomize nil)
 (defvar-local speed-type--lang nil)
 (defvar-local speed-type--n-words nil)
 (defvar-local speed-type--add-extra-word-content-fn nil)
@@ -497,7 +498,7 @@ be coded in SPEED-TYPE-MAYBE-UPGRADE-FILE-FORMAT."
 	  (cons 'speed-type--net-wpm (speed-type--net-wpm entries errors seconds))
 	  (cons 'speed-type--net-cpm (speed-type--net-cpm entries errors seconds))
 	  (cons 'speed-type--accuracy (speed-type--accuracy entries (- entries errors) corrections))
-	  (cons 'speed-type--continue-at-point (if speed-type-randomize nil speed-type--continue-at-point))
+	  (cons 'speed-type--continue-at-point (if speed-type--randomize nil speed-type--continue-at-point))
 	  (cons 'speed-type--file-name speed-type--file-name))))
 
 (defun speed-type--stop-word-p (word)
@@ -1167,7 +1168,7 @@ Replacements are found in `speed-type-replace-strings'."
     (length text)))
 
 (cl-defun speed-type--setup
-    (content-buffer text &key author title lang file-name start n-words continue-fn add-extra-word-content-fn replay-fn go-next-fn callback)
+    (content-buffer text &key author title lang randomize file-name start n-words continue-fn add-extra-word-content-fn replay-fn go-next-fn callback)
   "Set up a new buffer for the typing exercise on TEXT.
 
 AUTHOR and TITLE can be given, this happen when the text to type comes
@@ -1206,6 +1207,7 @@ CALLBACK is called when the setup process has been completed."
 	    speed-type--mod-str (make-string (length text) 0)
 	    speed-type--remaining len
 	    speed-type--author author
+	    speed-type--randomize randomize
 	    speed-type--title title
 	    speed-type--file-name file-name
 	    speed-type--continue-at-point start
@@ -1677,6 +1679,7 @@ further character encoding to ASCII (using iconv(1))."
 	     text
 	     :file-name (buffer-file-name buffer)
              :title title
+	     :randomize speed-type-randomize
              :n-words n
 	     :add-extra-word-content-fn add-extra-word-content-fn
              :replay-fn #'speed-type--get-replay-fn
@@ -1709,6 +1712,7 @@ will be used.  Else some text will be picked randomly."
         (speed-type--setup buf
 		 text
 		 :author (user-full-name)
+		 :randomize speed-type-randomize
 		 :title (buffer-name)
 		 :file-name (if current-file-name
 				current-file-name
@@ -1729,7 +1733,42 @@ If FILE-NAME is not found, will throw a user-error.
 
 If FILE-NAME is nil, will use file-name of CURRENT-BUFFER."
   (interactive "P")
-  (buffer-file-name (current-buffer)))
+  (let* ((buffer (cond ((eq '(4) file-name)
+			(find-file-noselect (read-file-name "Pick your file:" speed-type-directory)))
+		       ((and (stringp file-name) (file-readable-p file-name)) (find-file-noselect file-name))
+		       (t (current-buffer))))
+	 (buf (speed-type-prepare-content-buffer-from-buffer buffer)))
+    (with-current-buffer buf
+      (let* ((title (save-excursion
+		      (or (when (re-search-forward "^Title: " nil t)
+			    (buffer-substring (point) (line-end-position)))
+			  (buffer-name buffer))))
+	     (author (save-excursion
+		       (when (re-search-forward "^Author: " nil t)
+			 (buffer-substring (point) (line-end-position)))))
+	     (start (or (speed-type--find-last-continue-at-point-in-stats (buffer-file-name buffer))
+			(when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+			  (end-of-line 1)
+			  (forward-line 1)
+			  (point))
+			(point-min)))
+	     (end (or (when (re-search-forward "***.END.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+			(beginning-of-line 1)
+			(forward-line -1)
+			(point))
+		      (point-max)))
+	     (text (speed-type--pick-continue-text-to-type start end)))
+	(speed-type--setup buf
+		 text
+		 :file-name (buffer-file-name buffer)
+		 :start start
+		 :author author
+		 :title title
+		 :randomize nil
+		 :add-extra-word-content-fn (lambda () (speed-type--get-next-word buf))
+		 :replay-fn #'speed-type--get-replay-fn
+		 :continue-fn (lambda () (speed-type--get-continue-fn end))
+		 :go-next-fn #'speed-type-text)))))
 
 ;;;###autoload
 (defun speed-type-text ()
@@ -1765,6 +1804,7 @@ If FILE-NAME is nil, will use file-name of CURRENT-BUFFER."
 		 :file-name (buffer-file-name buffer)
 		 :start start
 		 :author author
+		 :randomize speed-type-randomize
 		 :title title
 		 :add-extra-word-content-fn (lambda () (speed-type--get-next-word buf))
 		 :replay-fn #'speed-type--get-replay-fn
@@ -1804,6 +1844,7 @@ If `ARG' is given will prompt for a specific quote-URL."
 		 text
 		 :title title
 		 :author author
+		 :randomize speed-type-randomize
 		 :file-name (buffer-file-name buffer)
 		 :add-extra-word-content-fn add-extra-word-content-fn
 		 :replay-fn #'speed-type--get-replay-fn
