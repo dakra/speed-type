@@ -913,21 +913,21 @@ Only the words which are in the boundaries START and END are considered."
 	 ((string= "nl" lang) "Dutch"))
    (cdr (assoc lang speed-type-wordlist-urls))))
 
-(defun list-to-alist-safe (lst)
+(defun speed-type--list-to-alist-safe (lst)
   "Convert flat list LST into an alist.
 If the list length is odd, the last element is kept as (key . nil)."
   (cond
    ((null lst) nil)
    ((null (cdr lst)) (list (cons (car lst) nil)))
    (t (cons (cons (car lst) (cadr lst))
-            (list-to-alist-safe (cddr lst))))))
+            (speed-type--list-to-alist-safe (cddr lst))))))
 
 (defun speed-type--elapsed-time ()
   "Return float with the total time since start."
   (if (not speed-type--start-time)
       0
     (apply #'+ (mapcar (lambda (time-pair) (- (or (cdr time-pair) (float-time)) (or (car time-pair) (float-time))))
-		       (list-to-alist-safe speed-type--start-time)))))
+		       (speed-type--list-to-alist-safe speed-type--start-time)))))
 
 (defun speed-type--check-same (pos a b)
   "Return non-nil if both A[POS] B[POS] are white space or if they are the same."
