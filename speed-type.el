@@ -1046,7 +1046,8 @@ ENTRIES ERRORS NON-CONSECUTIVE-ERRORS CORRECTIONS SECONDS."
     (setq speed-type--continue-at-point
 	  (-
 	   (with-current-buffer speed-type--content-buffer (point))
-	   (with-current-buffer speed-type--buffer (- (point-max) (point))))))
+	   (with-current-buffer speed-type--buffer (- (point-max) (point)))
+	   1)))
   (goto-char (point-max))
   (with-current-buffer speed-type--buffer
     (when speed-type--title
