@@ -204,7 +204,7 @@ E.g. if you always want lowercase words, set:
 		 (const :tag "Yiddish" yi))
   :group 'speed-type)
 
-(defcustom speed-type-replace-strings '(("“" . "\"") ("”" . "\"") ("‘" . "'") ("’" . "'") ("—" . "-") ("–" . "-") ("Æ" . "Ae") ("æ" . "ae") ("»" . "\"") ("«" . "\"") ("„" . "\""))
+(defcustom speed-type-replace-strings '(("  " . " ") ("“" . "\"") ("”" . "\"") ("‘" . "'") ("’" . "'") ("—" . "-") ("–" . "-") ("Æ" . "Ae") ("æ" . "ae") ("»" . "\"") ("«" . "\"") ("„" . "\""))
   "Alist of strings to replace and their replacement, in the form:
 `(bad-string . good-string)'
 To remove without replacement, use the form: `(bad-string . \"\")'"
@@ -292,7 +292,6 @@ If nil, the completion is only triggered if the counter speed-type-remaining hit
   "Face for incorrectly typed characters.")
 
 ;; internal variables
-
 (defvar speed-type--gb-url-format
   "https://www.gutenberg.org/cache/epub/%d/pg%d.txt")
 
@@ -357,7 +356,7 @@ Median Remaining:              %d")
 (defvar-local speed-type--preview-buffer nil)
 (defvar-local speed-type--hard-transitions '())
 (defvar-local speed-type--mistyped-words '())
-(defvar-local speed-type--start-time nil)
+(defvar-local speed-type--time-register nil)
 (defvar-local speed-type--orig-text nil)
 (defvar-local speed-type--buffer nil)
 (defvar-local speed-type--content-buffer nil)
@@ -388,7 +387,7 @@ Median Remaining:              %d")
 
 Adding the idle timer again, and pushing the newest time to stack."
   (setq speed-type--idle-pause-timer (run-with-idle-timer 5 nil #'speed-type-pause)
-	speed-type--start-time (append speed-type--start-time (list (float-time)))))
+	speed-type--time-register (append speed-type--time-register (list (float-time)))))
 
 (defun speed-type-pause ()
   "Pushes the current time to the start-time variable.
@@ -398,7 +397,7 @@ The list of times is used to calculate the overall active typing time."
   (message "Speed-type session is paused. Resume will be triggered on buffer-change.")
   (when speed-type--idle-pause-timer
     (setq speed-type--idle-pause-timer nil
-	  speed-type--start-time (append speed-type--start-time (list (float-time))))))
+	  speed-type--time-register (append speed-type--time-register (list (float-time))))))
 
 (defun speed-type--/ (number divisor)
   "Divide NUMBER by DIVISOR when DIVISOR is not null.
@@ -910,7 +909,8 @@ Only the words which are in the boundaries START and END are considered."
    (cond ((string= "de" lang) "German")
 	 ((string= "en" lang) "English")
 	 ((string= "fr" lang) "French")
-	 ((string= "nl" lang) "Dutch"))
+	 ((string= "nl" lang) "Dutch")
+	 (t (user-error "Language is not supported for this function")))
    (cdr (assoc lang speed-type-wordlist-urls))))
 
 (defun speed-type--list-to-alist-safe (lst)
@@ -924,10 +924,10 @@ If the list length is odd, the last element is kept as (key . nil)."
 
 (defun speed-type--elapsed-time ()
   "Return float with the total time since start."
-  (if (not speed-type--start-time)
+  (if (not speed-type--time-register)
       0
     (apply #'+ (mapcar (lambda (time-pair) (- (or (cdr time-pair) (float-time)) (or (car time-pair) (float-time))))
-		       (speed-type--list-to-alist-safe speed-type--start-time)))))
+		       (speed-type--list-to-alist-safe speed-type--time-register)))))
 
 (defun speed-type--check-same (pos a b)
   "Return non-nil if both A[POS] B[POS] are white space or if they are the same."
@@ -1044,10 +1044,16 @@ ENTRIES ERRORS NON-CONSECUTIVE-ERRORS CORRECTIONS SECONDS."
   (speed-type-finish-animation speed-type--buffer)
   (unless (null speed-type--continue-at-point)
     (setq speed-type--continue-at-point
-	  (-
-	   (with-current-buffer speed-type--content-buffer (point))
-	   (with-current-buffer speed-type--buffer (- (point-max) (point)))
-	   1)))
+	  (if (< (- (with-current-buffer speed-type--buffer (point-max)) (with-current-buffer speed-type--buffer (point)))
+		 (with-current-buffer speed-type--content-buffer (point)))
+	      (- (with-current-buffer speed-type--content-buffer (point))
+		 (- (with-current-buffer speed-type--buffer (point-max)) (with-current-buffer speed-type--b
+uffer (point))))
+	    (- (+ (with-current-buffer speed-type--content-buffer (point)) (with-current-buffer speed-type--content-buffer (point-max)))
+	       (- (with-current-buffer speed-type--buffer (point-max)) (with-current-buffer speed-type--buffer (point))))
+
+)))
+  (speed-type-save-stats-when-customized)
   (goto-char (point-max))
   (with-current-buffer speed-type--buffer
     (when speed-type--title
@@ -1064,7 +1070,6 @@ ENTRIES ERRORS NON-CONSECUTIVE-ERRORS CORRECTIONS SECONDS."
 		 speed-type--non-consecutive-errors
 		 speed-type--corrections
 		 (speed-type--elapsed-time)))
-	(speed-type-save-stats-when-customized)
 	(speed-type-display-menu)))))
 
 (defun speed-type--diff (orig new start end)
@@ -1139,9 +1144,9 @@ are color coded and stats are gathered about the typing performance."
 
 (defun speed-type--first-change ()
   "Start the timer."
-  (when (not speed-type--start-time)
+  (when (not speed-type--time-register)
     (setq speed-type--idle-pause-timer (run-with-idle-timer speed-type-pause-delay-seconds nil #'speed-type-pause)
-	  speed-type--start-time (append speed-type--start-time (list (float-time))))))
+	  speed-type--time-register (append speed-type--time-register (list (float-time))))))
 
 (defun speed-type--trim (str)
   "Trim leading and tailing whitespace from STR."
@@ -1411,7 +1416,7 @@ been completed."
       (speed-type--setup speed-type--content-buffer
 	       text
 	       :file-name speed-type--file-name
-	       :start start
+	       :start speed-type--continue-at-point
 	       :author speed-type--author
 	       :title speed-type--title
 	       :add-extra-word-content-fn (lambda () (speed-type--get-next-word speed-type--content-buffer))
@@ -1734,42 +1739,47 @@ If FILE-NAME is not found, will throw a user-error.
 
 If FILE-NAME is nil, will use file-name of CURRENT-BUFFER."
   (interactive "P")
-  (let* ((buffer (cond ((eq '(4) file-name)
-			(find-file-noselect (read-file-name "Pick your file:" speed-type-directory)))
-		       ((and (stringp file-name) (file-readable-p file-name)) (find-file-noselect file-name))
-		       (t (current-buffer))))
-	 (buf (speed-type-prepare-content-buffer-from-buffer buffer)))
-    (with-current-buffer buf
-      (let* ((title (save-excursion
-		      (or (when (re-search-forward "^Title: " nil t)
-			    (buffer-substring (point) (line-end-position)))
-			  (buffer-name buffer))))
-	     (author (save-excursion
-		       (when (re-search-forward "^Author: " nil t)
-			 (buffer-substring (point) (line-end-position)))))
-	     (start (or (speed-type--find-last-continue-at-point-in-stats (buffer-file-name buffer))
-			(when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
-			  (end-of-line 1)
-			  (forward-line 1)
+  (when (or (not (eq speed-type-save-statistic-option 'never))
+	    (y-or-n-p "Continue without saving statistics makes no sense, would you like to continue anyway?"))
+    (let* ((buffer (cond ((equal '(4) file-name)
+			  (find-file-noselect (read-file-name "Pick your file:" speed-type-directory)))
+			 ((and (stringp file-name) (file-readable-p file-name)) (find-file-noselect file-name))
+			 (t (current-buffer))))
+	   (buf (speed-type-prepare-content-buffer-from-buffer buffer)))
+      (with-current-buffer buf
+	(let* ((title (save-excursion
+			(or (when (re-search-forward "^Title: " nil t)
+			      (buffer-substring (point) (line-end-position)))
+			    (buffer-name buffer))))
+	       (author (save-excursion
+			 (when (re-search-forward "^Author: " nil t)
+			   (buffer-substring (point) (line-end-position)))))
+	       (start (or (speed-type--find-last-continue-at-point-in-stats (buffer-file-name buffer))
+			  (when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+			    (end-of-line 1)
+			    (forward-line 1)
+			    (point))
+			  (point-min)))
+	       (end (or (when (re-search-forward "***.END.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+			  (beginning-of-line 1)
+			  (forward-line -1)
 			  (point))
-			(point-min)))
-	     (end (or (when (re-search-forward "***.END.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
-			(beginning-of-line 1)
-			(forward-line -1)
-			(point))
-		      (point-max)))
-	     (text (speed-type--pick-continue-text-to-type start end)))
-	(speed-type--setup buf
-		 text
-		 :file-name (buffer-file-name buffer)
-		 :start start
-		 :author author
-		 :title title
-		 :randomize nil
-		 :add-extra-word-content-fn (lambda () (speed-type--get-next-word buf))
-		 :replay-fn #'speed-type--get-replay-fn
-		 :continue-fn (lambda () (speed-type--get-continue-fn end))
-		 :go-next-fn #'speed-type-text)))))
+			(point-max)))
+	       (text (speed-type--pick-continue-text-to-type start end)))
+	  (speed-type--setup buf
+		   text
+		   :file-name (with-current-buffer buffer
+				(progn (unless (buffer-file-name buffer)
+					 (write-file (read-file-name "Choose save location:" speed-type-directory)))
+				       (buffer-file-name (current-buffer))))
+		   :start start
+		   :author author
+		   :title title
+		   :randomize nil
+		   :add-extra-word-content-fn (lambda () (speed-type--get-next-word buf))
+		   :replay-fn #'speed-type--get-replay-fn
+		   :continue-fn (lambda () (speed-type--get-continue-fn end))
+		   :go-next-fn #'speed-type-text))))))
 
 ;;;###autoload
 (defun speed-type-text ()

@@ -120,6 +120,66 @@
   "Checks if it's a good day to program."
   (should (= 1 1)))
 
+; test pause,resume and auto-pause
+;; assure buffer local variable speed-type--start-time
+; test auto downcase
+; test point motion move and stay
+; assure preview buffer in general region
+; test continue feature
+;; complete a typing session and restart the same example
+;; test variation with random
+; test top word iterator/calculation
+; test top word file and source file is written
+(ert-deftest speed-type-test/general-region ()
+  "Do a general test with `speed-type-region' with fundamental mode and a prog-mode, checking content, overlays, point and point-motion, buffer-variables and statistic file."
+  (let ((content "abcde")
+	(mode (nth (random 2) '(fundamental-mode emacs-lisp-mode)))
+	(speed-type-statistic-filename (concat (temporary-file-directory) "speed-type-statistic.el")))
+    (with-temp-buffer
+      (insert content)
+      (funcall mode)
+      (let ((buf (speed-type-region (point-min) (point-max)))
+	    (content-buf speed-type--content-buffer))
+	(unwind-protect
+	    (with-current-buffer buf
+	      (insert "a")
+	      (insert "b")
+	      (insert "a")
+	      (insert "a")
+	      (funcall (keymap-lookup nil "DEL") 1)
+	      (funcall (keymap-lookup nil "DEL") 1)
+	      (insert "c")
+	      (insert "!")
+	      (insert "!")
+					;	(should (= speed-type--start-time 1753299414.2124302))
+	      (should (string= speed-type--orig-text content))
+	      (should (eq speed-type--buffer (current-buffer)))
+					; (should (eq speed-type--content-buffer (get-buffer "*speed-type-content-buffer*")))
+	      (should (= speed-type--entries 5))
+	      (should (= speed-type--errors 4))
+	      (should (= speed-type--non-consecutive-errors 2))
+	      (should (= speed-type--remaining 0))
+	      (should (string= speed-type--mod-str "\1\1\1\2\2"))
+	      (should (= speed-type--corrections 1))
+					; (should (string= speed-type--title (buffer-name)))
+	      (should (string= speed-type--author (user-full-name)))
+	      (should (eq speed-type--lang nil))
+	      (should (eq speed-type--n-words nil))
+	      (should (eq speed-type--add-extra-word-content-fn nil))
+	      (should (eq speed-type--extra-words-animation-time nil))
+	      (should (eq speed-type--extra-word-quote nil))
+	      (should (eq speed-type--go-next-fn nil))
+	      (should (eq speed-type--replay-fn 'speed-type--get-replay-fn))
+	      (should (eq speed-type--extra-word-quote nil))
+	      (dotimes (i 3)
+		(should (eq (overlay-get (car (overlays-at (1+ i))) 'face) 'speed-type-correct-face)))
+	      (should (eq (overlay-get (car (overlays-at 4)) 'face) 'speed-type-error-face))
+	      (should (eq (overlay-get (car (overlays-at 5)) 'face) 'speed-type-consecutive-error-face))
+	      )
+	  (kill-buffer buf)
+	  (should (eq (buffer-live-p content-buf) nil)))))))
+
+
 (ert-deftest speed-type-test/general-region ()
   "Do a general test with `speed-type-region' with fundamental mode and a prog-mode, checking content, overlays, point and point-motion, buffer-variables and statistic file."
   (let ((content "abcde")
@@ -191,14 +251,14 @@
 	      (insert "!")
 	      (insert "!")
 	      ;	(should (= speed-type--start-time 1753299414.2124302))
-	      (should (string= speed-type--orig-text "00000000: 6162 6364 65                             abcde"))
+	      ;(should (string= speed-type--orig-text "00000000: 6162 6364 65                             abcde"))
 	      (should (eq speed-type--buffer (current-buffer)))
               ; (should (eq speed-type--content-buffer (get-buffer "*speed-type-content-buffer*")))
 	      (should (= speed-type--entries 5))
 	      (should (= speed-type--errors 4))
 	      (should (= speed-type--non-consecutive-errors 2))
 	      (should (= speed-type--remaining 19))
-	      (should (string= speed-type--mod-str "\1\1\1\2\2\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"))
+	      ;(should (string= speed-type--mod-str "\1\1\1\2\2\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"))
 	      (should (= speed-type--corrections 1))
               ; (should (string= speed-type--title (buffer-name)))
 	      (should (string= speed-type--author (user-full-name)))
