@@ -258,9 +258,11 @@ they accumulate each other if both variables are set."
   "Name of file for general stats."
   :type 'string)
 
-(defcustom speed-type-provide-preview t
+(defcustom speed-type-provide-preview-option 'hidden
   "If a separate buffer should display the actual typed characters."
-  :type 'boolean)
+  :type '(choice (const :tag "Yes" t)
+		 (const :tag "Hidden" hidden)
+		 (const :tag "No" nil)))
 
 (defcustom speed-type-max-num-records 10000
   "Maximum number of saved records."
@@ -295,6 +297,10 @@ If nil, the completion is only triggered if the counter speed-type-remaining hit
 
 (defface speed-type-error-face
   '((t :inherit error :underline t))
+  "Face for incorrectly typed characters.")
+
+(defface speed-type-info-face
+  '((t :inherit font-lock-comment-face :underline t))
   "Face for incorrectly typed characters.")
 
 ;; internal variables
@@ -360,6 +366,7 @@ Median Remaining:              %d")
 ;; buffer local internal variables
 
 (defvar-local speed-type--preview-buffer nil)
+(defvar-local speed-type--last-position 0)
 (defvar-local speed-type--hard-transitions '())
 (defvar-local speed-type--mistyped-words '())
 (defvar-local speed-type--time-register nil)
@@ -1135,7 +1142,8 @@ END is a point where the check stops to scan for diff."
         (goto-char end)
       (goto-char (- end 1))
       (beep)
-      (message "Wrong key"))))
+      (message "Wrong key"))
+    (not any-error)))
 
 (defun speed-type--change (start end length)
   "Handle buffer change between START and END.
@@ -1153,14 +1161,30 @@ are color coded and stats are gathered about the typing performance."
              (old-text (substring speed-type--orig-text
                                   start0 (+ start0 length)))
              (orig (substring speed-type--orig-text start0 end0)))
-	(when speed-type-provide-preview
-	  (with-current-buffer speed-type--preview-buffer
-	    (insert new-text)))
 	(speed-type--handle-del start end)
 	(insert old-text)
 	(when-let* ((overlay (and (equal new-text "")
 				  (car (overlays-at end)))))
 	  (move-overlay overlay (1- (overlay-end overlay)) (overlay-end overlay)) (current-buffer))
+	(let ((new-last-pos (point)))
+	  (when speed-type--preview-buffer
+	    (with-current-buffer speed-type--preview-buffer
+	      (unwind-protect
+		  (save-excursion
+		    (read-only-mode -1)
+		    (goto-char (point-max))
+		    (when (and (not (= speed-type--last-position 0))
+			       (> (abs (- new-last-pos speed-type--last-position)) 2))
+		      (let ((point-movement-str (concat "[ " (symbol-name last-command) "(" (number-to-string speed-type--last-position) ") → (" (number-to-string (1- new-last-pos)) ") ]")))
+			(insert point-movement-str)
+			(let ((overlay (make-overlay (- (point) (length point-movement-str)) (point))))
+			  (overlay-put overlay 'priority 1)
+			  (overlay-put overlay 'face 'speed-type-info-face))))
+		    (if (= start end)
+			(insert (if (< speed-type--last-position new-last-pos) "⌫" "⌦"))
+		      (insert (string-replace " " "·" (string-replace "\n" "⏎" new-text))))
+		    (setq-local speed-type--last-position new-last-pos))
+		(read-only-mode)))))
 	(speed-type--diff orig new-text start end)
         (when (= speed-type--remaining 0) (speed-type-complete))))))
 
@@ -1255,12 +1279,14 @@ CALLBACK is called when the setup process has been completed."
 	  (setq-local speed-type--extra-word-quote nil)))
 
       ;; interconnect buffers, so they can be killed group-vise
-      (let ((pbuf (when speed-type-provide-preview
+      (let ((pbuf (when speed-type-provide-preview-option
 		    (setq speed-type--preview-buffer (generate-new-buffer speed-type-preview-buffer-name))
 		    (with-current-buffer speed-type--preview-buffer
 		      (setq-local speed-type--buffer buf)
+		      (setq-local speed-type--last-position 0)
 		      (speed-type-mode)
-		      (add-hook 'kill-buffer-hook 'speed-type--kill-preview-buffer-hook nil t))
+		      (add-hook 'kill-buffer-hook 'speed-type--kill-preview-buffer-hook nil t)
+		      (read-only-mode))
 		    speed-type--preview-buffer))
 	    (cbuf speed-type--content-buffer))
 	(with-current-buffer speed-type--content-buffer
@@ -1274,6 +1300,12 @@ CALLBACK is called when the setup process has been completed."
 	(speed-type--fill-region))
       (set-buffer-modified-p nil)
       (switch-to-buffer buf)
+      (when (eq speed-type-provide-preview-option t)
+	(let ((sw (selected-window))
+	      (pw (split-window nil 3 'above)))
+	  (set-window-buffer sw speed-type--preview-buffer)
+	  (set-window-buffer pw buf)
+	  (select-window pw)))
       (goto-char 0)
       (add-hook 'after-change-functions 'speed-type--change nil t)
       (add-hook 'first-change-hook 'speed-type--first-change nil t)
@@ -1325,6 +1357,8 @@ START and END are supplied to INSERT-BUFFER-SUBSTRING."
 
 (defun speed-type--kill-preview-buffer-hook ()
   "Hook when preview buffer is killed."
+  (when (get-buffer-window speed-type--preview-buffer)
+    (delete-window (get-buffer-window speed-type--preview-buffer)))
   (when speed-type--buffer
     (let ((buf speed-type--buffer))
       (setq speed-type--buffer nil)
