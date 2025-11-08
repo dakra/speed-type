@@ -298,12 +298,19 @@ Also assure when that added words are downcased too."
 	    speed-type-add-extra-words-on-error b-speed-type-add-extra-words-on-error
 	    speed-type-add-extra-words-on-non-consecutive-errors b-speed-type-add-extra-words-on-non-consecutive-errors))))
 
-					; assure preview buffer in general region
-					; test continue feature
-;; complete a typing session and restart the same example
-;; test variation with random
-					; test top word iterator/calculation
-					; test top word file and source file is written
+;; assure preview buffer in general region
+;; test continue feature
+;;; user calls speed-type-continue on a *scratch* buffer
+;;; user calls speed-type-continue on a book
+;;; user types the whole buffer, he is prompted if wants to restart
+;;; user completes with cursor at (point-max)
+;;; user completes with cursor at (point-min)
+;;; user completes with cursor at mid
+;;; test with 3 consecutive continues and same length
+;;; test with 3 continue and one random text sample on the same file
+;; test top word iterator/calculation
+;; test top word file and source file is written
+
 (ert-deftest speed-type-test/general-region ()
   "Do a general test with `speed-type-region' with fundamental mode and a prog-mode, checking content, overlays, point and point-motion, buffer-variables and statistic file."
   (let ((content "abcde")
