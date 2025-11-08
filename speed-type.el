@@ -110,7 +110,7 @@ Can be a list or a path to a file which contains words newline separated."
   (interactive)
   (setq speed-type-randomize (not speed-type-randomize)))
 
-(defcustom speed-type-downcase t
+(defcustom speed-type-downcase nil
   "Toggle downcasing of mistyped words."
   :type 'boolean)
 
@@ -241,6 +241,12 @@ something between 1 and 7.
 Similar to `speed-type-add-extra-words-on-error',
 they accumulate each other if both variables are set."
   :type 'integer)
+
+(defcustom speed-type-save-buffer-option 'ask
+  "Save buffers without file ref to speed-type-directory or not."
+  :type '(choice (const :tag "Always" always)
+		         (const :tag "Never" never)
+		         (const :tag "Ask" ask)))
 
 (defcustom speed-type-save-statistic-option 'always
   "Save the stats for the play or not."
@@ -493,7 +499,6 @@ be coded in SPEED-TYPE-MAYBE-UPGRADE-FILE-FORMAT."
 	  (cons 'speed-type--non-consecutive-errors speed-type--non-consecutive-errors)
 	  (cons 'speed-type--corrections corrections)
 	  (cons 'speed-type--elapsed-time seconds)
-	  (cons 'speed-type--time-register speed-type--time-register)
 	  (cons 'speed-type--gross-wpm (speed-type--gross-wpm entries seconds))
 	  (cons 'speed-type--gross-cpm (speed-type--gross-cpm entries seconds))
 	  (cons 'speed-type--net-wpm (speed-type--net-wpm entries errors seconds))
@@ -1175,14 +1180,16 @@ are color coded and stats are gathered about the typing performance."
 (defun speed-type--clean-text (text)
   "Return TEXT with unwanted strings replaced.
 Replacements are found in `speed-type-replace-strings'."
-  (cl-reduce
-   (lambda (acc-text string-pair)
-     (string-replace
-      (car string-pair)
-      (cdr string-pair)
-      acc-text))
-   speed-type-replace-strings
-   :initial-value text))
+  (apply (if speed-type-downcase 'downcase 'identity)
+	 (list
+	  (cl-reduce
+	   (lambda (acc-text string-pair)
+	     (string-replace
+	      (car string-pair)
+	      (cdr string-pair)
+	      acc-text))
+	   speed-type-replace-strings
+	   :initial-value text))))
 
 (defun speed-type--calc-length (text)
   "Supply TEXT to length but consider ignoring whitespace."
@@ -1500,7 +1507,9 @@ LIMIT is supplied to the random-function."
 	  (if (string-empty-p word)
 	      (message "You got lucky! Extra word function resulted in empty string.")
 	    (push word words))))
-      (let ((words-as-string (concat " " (string-trim (mapconcat 'identity (nreverse words) " ")))))
+      (let ((words-as-string
+	     (apply (if speed-type-downcase 'downcase 'identity)
+		    (list (concat " " (string-trim (mapconcat 'identity (nreverse words) " ")))))))
 	(setq speed-type--extra-words-queue (append speed-type--extra-words-queue (split-string words-as-string "" t))
 	      speed-type--orig-text (concat speed-type--orig-text words-as-string)
 	      speed-type--mod-str (concat speed-type--mod-str (make-string (+ 1 (length words-as-string)) 0))
@@ -1739,8 +1748,9 @@ will be used.  Else some text will be picked randomly."
 		 :title (buffer-name)
 		 :file-name (if current-file-name
 				current-file-name
-			      (when (y-or-n-p "Buffer no file ref. Save buffer to 'speed-type-directory’?")
-				(write-file (concat speed-type-directory "/" (buffer-name)) t)))
+			      (unless (eq speed-type-save-buffer-option 'never)
+				(when (or (eq speed-type-save-buffer-option 'always) (y-or-n-p "Buffer no file ref. Save buffer to 'speed-type-directory’?"))
+				  (write-file (concat speed-type-directory "/" (buffer-name)) t))))
 		 :add-extra-word-content-fn (lambda () (speed-type--get-separated-thing-at-random-line buf line-count " "))
 		 :replay-fn #'speed-type--get-replay-fn
 		 :go-next-fn go-next-fn

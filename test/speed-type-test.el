@@ -120,6 +120,24 @@
   "Checks if it's a good day to program."
   (should (= 1 1)))
 
+(defun speed-type-test-buffer (text test-in-buf)
+  "Setup a speed-type-region for testing.
+
+TEST-IN-BUF is a lambda which is executed within the speed-type-buffer."
+  (let ((content text)
+	(b-speed-type-save-buffer-option speed-type-save-buffer-option)
+	(speed-type-statistic-filename (concat (temporary-file-directory) "speed-type-statistic.el")))
+    (with-temp-buffer
+      (insert content)
+      (funcall 'fundamental-mode)
+      (setq speed-type-save-buffer-option 'never)
+      (let ((buf (speed-type-buffer nil)))
+	(unwind-protect
+	    (with-current-buffer buf
+	      (funcall test-in-buf))
+	  (setq speed-type-save-buffer-option b-speed-type-save-buffer-option)
+	  (kill-buffer buf))))))
+
 (defun speed-type-test-region (test-in-buf)
   "Setup a speed-type-region for testing.
 
@@ -130,12 +148,11 @@ TEST-IN-BUF is a lambda which is executed within the speed-type-buffer."
     (with-temp-buffer
       (insert content)
       (funcall mode)
-      (let ((buf (speed-type-region (point-min) (point-max)))
-	    (start-ts (float-time)))
+      (let ((buf (speed-type-region (point-min) (point-max))))
 	(unwind-protect
 	    (with-current-buffer buf
-	      (funcall test-in-buf)
-	      (kill-buffer buf)))))))
+	      (funcall test-in-buf))
+	  (kill-buffer buf))))))
 
 (ert-deftest speed-type-test/times-is-empty-when-no-input ()
   "Test the time-register-variable is empty for flow: session-start -> complete."
@@ -253,11 +270,34 @@ TEST-IN-BUF is a lambda which is executed within the speed-type-buffer."
 	     (should (= speed-type--corrections 1))
 	     (should (= speed-type--non-consecutive-errors 1))
 	     (should (= (point) 3))
-	     (should (= speed-type--remaining (1+ (- (length (buffer-string)) (point)))))
-	     )))
+	     (should (= speed-type--remaining (1+ (- (length (buffer-string)) (point))))))))
       (setq speed-type-point-motion-on-error b-speed-type-point-motion-on-error))))
 
-					; test auto downcase
+
+(ert-deftest speed-type-test/test-chars-downcased ()
+  "Test if text is downcased when speed-type-downcase is t.
+
+Also assure when that added words are downcased too."
+  (let ((b-speed-type-downcase speed-type-downcase)
+	(b-speed-type-add-extra-words-on-error speed-type-add-extra-words-on-error)
+	(b-speed-type-add-extra-words-on-non-consecutive-errors speed-type-add-extra-words-on-non-consecutive-errors))
+    (setq speed-type-downcase t
+	  speed-type-add-extra-words-on-error 1
+	  speed-type-add-extra-words-on-non-consecutive-errors 0)
+    (unwind-protect
+	(speed-type-test-buffer
+	 "ASDF"
+	 (lambda ()
+	   (should (string= "asdf" (buffer-string)))
+	   (insert "b")
+	   (sleep-for 1)
+	   (should (string= "asdf asdf" (buffer-string)))
+	   (with-current-buffer speed-type--content-buffer
+	     (should (string= "ASDF" (buffer-string))))))
+      (setq speed-type-downcase b-speed-type-downcase
+	    speed-type-add-extra-words-on-error b-speed-type-add-extra-words-on-error
+	    speed-type-add-extra-words-on-non-consecutive-errors b-speed-type-add-extra-words-on-non-consecutive-errors))))
+
 					; assure preview buffer in general region
 					; test continue feature
 ;; complete a typing session and restart the same example
