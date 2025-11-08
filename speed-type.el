@@ -386,8 +386,9 @@ Median Remaining:              %d")
   "Resume the current typing session.
 
 Adding the idle timer again, and pushing the newest time to stack."
-  (setq speed-type--idle-pause-timer (run-with-idle-timer 5 nil #'speed-type-pause)
-	speed-type--time-register (append speed-type--time-register (list (float-time)))))
+  (unless speed-type--idle-pause-timer
+    (setq speed-type--idle-pause-timer (run-with-idle-timer 5 nil #'speed-type-pause)
+	  speed-type--time-register (append speed-type--time-register (list (float-time))))))
 
 (defun speed-type-pause ()
   "Pushes the current time to the start-time variable.
@@ -481,7 +482,7 @@ be coded in SPEED-TYPE-MAYBE-UPGRADE-FILE-FORMAT."
 	(errors speed-type--errors)
 	(corrections speed-type--corrections)
 	(remaining speed-type--remaining)
-	(seconds (speed-type--elapsed-time)))
+	(seconds (speed-type--elapsed-time speed-type--time-register)))
     (list (cons 'speed-type--title speed-type--title)
 	  (cons 'speed-type--remaining remaining)
 	  (cons 'speed-type--author speed-type--author)
@@ -492,6 +493,7 @@ be coded in SPEED-TYPE-MAYBE-UPGRADE-FILE-FORMAT."
 	  (cons 'speed-type--non-consecutive-errors speed-type--non-consecutive-errors)
 	  (cons 'speed-type--corrections corrections)
 	  (cons 'speed-type--elapsed-time seconds)
+	  (cons 'speed-type--time-register speed-type--time-register)
 	  (cons 'speed-type--gross-wpm (speed-type--gross-wpm entries seconds))
 	  (cons 'speed-type--gross-cpm (speed-type--gross-cpm entries seconds))
 	  (cons 'speed-type--net-wpm (speed-type--net-wpm entries errors seconds))
@@ -922,12 +924,20 @@ If the list length is odd, the last element is kept as (key . nil)."
    (t (cons (cons (car lst) (cadr lst))
             (speed-type--list-to-alist-safe (cddr lst))))))
 
-(defun speed-type--elapsed-time ()
-  "Return float with the total time since start."
-  (if (not speed-type--time-register)
-      0
-    (apply #'+ (mapcar (lambda (time-pair) (- (or (cdr time-pair) (float-time)) (or (car time-pair) (float-time))))
-		       (speed-type--list-to-alist-safe speed-type--time-register)))))
+(defun speed-type--elapsed-time (time-register)
+  "Return float with the total time since start.
+
+TIME-REGISTER is a list of time-floats. Must be of length 0 or a even number. The elements are paired, between the pairs the difference calculated and summed.
+
+If the length is 0 will return 0.
+
+If the length is uneven will return symbol 'uneven."
+  (if (= (% (length time-register) 2) 0)
+      (if time-register
+	  (apply #'+ (mapcar (lambda (time-pair) (- (cdr time-pair) (car time-pair)))
+			   (speed-type--list-to-alist-safe time-register)))
+	0)
+      'uneven))
 
 (defun speed-type--check-same (pos a b)
   "Return non-nil if both A[POS] B[POS] are white space or if they are the same."
@@ -1039,8 +1049,8 @@ ENTRIES ERRORS NON-CONSECUTIVE-ERRORS CORRECTIONS SECONDS."
 (defun speed-type-complete ()
   "Remove typing hooks from the buffer and print statistics."
   (interactive)
-  (remove-hook 'after-change-functions 'speed-type--change)
-  (remove-hook 'first-change-hook 'speed-type--first-change)
+  (remove-hook 'after-change-functions #'speed-type--change t)
+  (remove-hook 'first-change-hook #'speed-type--first-change t)
   (speed-type-finish-animation speed-type--buffer)
   (unless (null speed-type--continue-at-point)
     (setq speed-type--continue-at-point
@@ -1053,6 +1063,8 @@ uffer (point))))
 	       (- (with-current-buffer speed-type--buffer (point-max)) (with-current-buffer speed-type--buffer (point))))
 
 )))
+  (if speed-type--idle-pause-timer ;if session is started
+      (setq speed-type--time-register (append speed-type--time-register (list (float-time)))))
   (speed-type-save-stats-when-customized)
   (goto-char (point-max))
   (with-current-buffer speed-type--buffer
@@ -1069,7 +1081,7 @@ uffer (point))))
 		 speed-type--errors
 		 speed-type--non-consecutive-errors
 		 speed-type--corrections
-		 (speed-type--elapsed-time)))
+		 (speed-type--elapsed-time speed-type--time-register)))
 	(speed-type-display-menu)))))
 
 (defun speed-type--diff (orig new start end)

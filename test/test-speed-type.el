@@ -120,16 +120,89 @@
   "Checks if it's a good day to program."
   (should (= 1 1)))
 
-; test pause,resume and auto-pause
 ;; assure buffer local variable speed-type--start-time
-; test auto downcase
+
+(defun speed-type-test-region (test-in-buf)
+  "Setup a speed-type-region for testing.
+
+TEST-IN-BUF is a lambda which is executed within the speed-type-buffer."
+  (let ((content "abcde")
+	(mode (nth (random 2) '(fundamental-mode emacs-lisp-mode)))
+	(speed-type-statistic-filename (concat (temporary-file-directory) "speed-type-statistic.el")))
+    (with-temp-buffer
+      (insert content)
+      (funcall mode)
+      (let ((buf (speed-type-region (point-min) (point-max)))
+	    (start-ts (float-time)))
+	(unwind-protect
+	    (with-current-buffer buf
+	      (funcall test-in-buf)
+	  (kill-buffer buf))))))
+
+(ert-deftest speed-type-test/times-is-empty-when-no-input ()
+  "Test the time-register-variable is empty for flow: session-start -> complete."
+  (speed-type-test-region
+   (lambda ()
+     (should (length= speed-type--time-register 0))
+     (speed-type-complete)
+     (should (length= speed-type--time-register 0))))))
+
+(ert-deftest speed-type-test/times-stay-length-if-duplicate-call ()
+  "Test the time-register-variable is empty for flow: session-start -> complete."
+  (speed-type-test-region
+   (lambda ()
+     (should (length= speed-type--time-register 0))
+     (insert "a")
+     (dotimes (i 3)
+       (speed-type--resume)
+       (should (length= speed-type--time-register 1)))))
+  (speed-type-test-region
+   (lambda ()
+     (should (length= speed-type--time-register 0))
+     (insert "a")
+     (dotimes (i 3)
+       (speed-type-pause)
+       (should (length= speed-type--time-register 2))))))
+
+(ert-deftest speed-type-test/times-are-pushed-correctly-standard-flow ()
+  "Test the time-register-variable in a standard flow: session-start -> first-input -> pause -> resume -> complete. After each state change there should be a new time pushed to the register."
+  (speed-type-test-region
+   (lambda ()
+     (should (length= speed-type--time-register 0))
+     (insert "a")
+     (should (length= speed-type--time-register 1))
+     (speed-type-pause)
+     (should (length= speed-type--time-register 2))
+     (insert "b")
+     (should (length= speed-type--time-register 3))
+     (speed-type-complete)
+     (should (length= speed-type--time-register 4)))))
+
+(ert-deftest speed-type-test/calculate-elasped-time ()
+  "Test if calculation of duration of the typing-session."
+  (should (speed-type--elapsed-time '()) 0)
+  (should (speed-type--elapsed-time '(1)) 'uneven)
+  (should (speed-type--elapsed-time '(1 2)) 1)
+  (should (speed-type--elapsed-time '(2 1)) -1)
+  (should (speed-type--elapsed-time '(1 2 3)) 'uneven)
+  (should (speed-type--elapsed-time '(1 2 6 7)) 2))
+
 ; test point motion move and stay
-; assure preview buffer in general region
-; test continue feature
+
+;speed-type-point-motion-on-error
+
+;'point-move
+;'point-stay
+; handling of consecutive errors
+
+					; test auto downcase
+					; test point motion move and stay
+					; assure preview buffer in general region
+					; test continue feature
 ;; complete a typing session and restart the same example
 ;; test variation with random
-; test top word iterator/calculation
-; test top word file and source file is written
+					; test top word iterator/calculation
+					; test top word file and source file is written
 (ert-deftest speed-type-test/general-region ()
   "Do a general test with `speed-type-region' with fundamental mode and a prog-mode, checking content, overlays, point and point-motion, buffer-variables and statistic file."
   (let ((content "abcde")
