@@ -120,8 +120,6 @@
   "Checks if it's a good day to program."
   (should (= 1 1)))
 
-;; assure buffer local variable speed-type--start-time
-
 (defun speed-type-test-region (test-in-buf)
   "Setup a speed-type-region for testing.
 
@@ -137,7 +135,7 @@ TEST-IN-BUF is a lambda which is executed within the speed-type-buffer."
 	(unwind-protect
 	    (with-current-buffer buf
 	      (funcall test-in-buf)
-	  (kill-buffer buf))))))
+	      (kill-buffer buf)))))))
 
 (ert-deftest speed-type-test/times-is-empty-when-no-input ()
   "Test the time-register-variable is empty for flow: session-start -> complete."
@@ -145,7 +143,7 @@ TEST-IN-BUF is a lambda which is executed within the speed-type-buffer."
    (lambda ()
      (should (length= speed-type--time-register 0))
      (speed-type-complete)
-     (should (length= speed-type--time-register 0))))))
+     (should (length= speed-type--time-register 0)))))
 
 (ert-deftest speed-type-test/times-stay-length-if-duplicate-call ()
   "Test the time-register-variable is empty for flow: session-start -> complete."
@@ -180,23 +178,86 @@ TEST-IN-BUF is a lambda which is executed within the speed-type-buffer."
 
 (ert-deftest speed-type-test/calculate-elasped-time ()
   "Test if calculation of duration of the typing-session."
-  (should (speed-type--elapsed-time '()) 0)
-  (should (speed-type--elapsed-time '(1)) 'uneven)
-  (should (speed-type--elapsed-time '(1 2)) 1)
-  (should (speed-type--elapsed-time '(2 1)) -1)
-  (should (speed-type--elapsed-time '(1 2 3)) 'uneven)
-  (should (speed-type--elapsed-time '(1 2 6 7)) 2))
+  (should (= (speed-type--elapsed-time '()) 0))
+  (should (eq (speed-type--elapsed-time '(1)) 'uneven))
+  (should (= (speed-type--elapsed-time '(1 2)) 1))
+  (should (= (speed-type--elapsed-time '(2 1)) -1))
+  (should (eq (speed-type--elapsed-time '(1 2 3)) 'uneven))
+  (should (= (speed-type--elapsed-time '(1 2 6 7)) 2))
+  (should (=  (speed-type--elapsed-time '(1 2 7 6 8 9)) 1)))
 
-; test point motion move and stay
+(ert-deftest speed-type-test/point-motion-stay ()
+  "Test if points stays and error are counted correctly."
+  (let ((b-speed-type-point-motion-on-error speed-type-point-motion-on-error))
+    (unwind-protect
+	(progn
+	  (setq speed-type-point-motion-on-error 'point-stay)
+	  (speed-type-test-region
+	   (lambda ()
+	     (should (= (point) 1))
+	     (should (= speed-type--errors 0))
+	     (should (= speed-type--non-consecutive-errors 0))
+	     (insert "b")
+	     (should (= speed-type--errors 1))
+	     (should (= speed-type--non-consecutive-errors 1))
+	     (should (= (point) 1))
+	     (should (= speed-type--remaining (1+ (- (length (buffer-string)) (point)))))
+	     (insert "c")
+	     (should (= speed-type--errors 2))
+	     (should (= speed-type--non-consecutive-errors 1))
+	     (should (= (point) 1))
+	     (should (= speed-type--remaining (1+ (- (length (buffer-string)) (point)))))
+	     (insert "a")
+	     (should (= speed-type--errors 2))
+	     (should (= speed-type--non-consecutive-errors 1))
+	     (should (= (point) 2))
+	     (should (= speed-type--remaining (1+ (- (length (buffer-string)) (point)))))
+	     (funcall (keymap-lookup nil "DEL") 1)
+	     (should (= (point) 1))
+	     (should (= speed-type--remaining (1+ (- (length (buffer-string)) (point)))))
+	     (insert "a")
+	     (should (= speed-type--errors 2))
+	     (should (= speed-type--corrections 1))
+	     (should (= speed-type--non-consecutive-errors 1))
+	     (should (= (point) 2))
+	     (should (= speed-type--remaining (1+ (- (length (buffer-string)) (point))))))))
+      (setq speed-type-point-motion-on-error b-speed-type-point-motion-on-error))))
 
-;speed-type-point-motion-on-error
-
-;'point-move
-;'point-stay
-; handling of consecutive errors
+(ert-deftest speed-type-test/point-motion-move ()
+  "Test if points move and error are counted correctly."
+  (let ((b-speed-type-point-motion-on-error speed-type-point-motion-on-error))
+    (unwind-protect
+	(progn
+	  (setq speed-type-point-motion-on-error 'point-move)
+	  (speed-type-test-region
+	   (lambda ()
+	     (should (= (point) 1))
+	     (should (= speed-type--remaining (length (buffer-string))))
+	     (should (= speed-type--errors 0))
+	     (should (= speed-type--non-consecutive-errors 0))
+	     (insert "b")
+	     (should (= speed-type--errors 1))
+	     (should (= speed-type--non-consecutive-errors 1))
+	     (should (= (point) 2))
+	     (should (= speed-type--remaining (1+ (- (length (buffer-string)) (point)))))
+	     (insert "c")
+	     (should (= speed-type--errors 2))
+	     (should (= speed-type--non-consecutive-errors 1))
+	     (should (= (point) 3))
+	     (should (= speed-type--remaining (1+ (- (length (buffer-string)) (point)))))
+	     (funcall (keymap-lookup nil "DEL") 1)
+	     (should (= (point) 2))
+	     (should (= speed-type--remaining (1+ (- (length (buffer-string)) (point)))))
+	     (insert "b")
+	     (should (= speed-type--errors 2))
+	     (should (= speed-type--corrections 1))
+	     (should (= speed-type--non-consecutive-errors 1))
+	     (should (= (point) 3))
+	     (should (= speed-type--remaining (1+ (- (length (buffer-string)) (point)))))
+	     )))
+      (setq speed-type-point-motion-on-error b-speed-type-point-motion-on-error))))
 
 					; test auto downcase
-					; test point motion move and stay
 					; assure preview buffer in general region
 					; test continue feature
 ;; complete a typing session and restart the same example
@@ -323,17 +384,17 @@ TEST-IN-BUF is a lambda which is executed within the speed-type-buffer."
 	      (insert "0")
 	      (insert "!")
 	      (insert "!")
-	      ;	(should (= speed-type--start-time 1753299414.2124302))
-	      ;(should (string= speed-type--orig-text "00000000: 6162 6364 65                             abcde"))
+					;	(should (= speed-type--start-time 1753299414.2124302))
+					;(should (string= speed-type--orig-text "00000000: 6162 6364 65                             abcde"))
 	      (should (eq speed-type--buffer (current-buffer)))
-              ; (should (eq speed-type--content-buffer (get-buffer "*speed-type-content-buffer*")))
+					; (should (eq speed-type--content-buffer (get-buffer "*speed-type-content-buffer*")))
 	      (should (= speed-type--entries 5))
 	      (should (= speed-type--errors 4))
 	      (should (= speed-type--non-consecutive-errors 2))
 	      (should (= speed-type--remaining 19))
-	      ;(should (string= speed-type--mod-str "\1\1\1\2\2\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"))
+					;(should (string= speed-type--mod-str "\1\1\1\2\2\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0"))
 	      (should (= speed-type--corrections 1))
-              ; (should (string= speed-type--title (buffer-name)))
+					; (should (string= speed-type--title (buffer-name)))
 	      (should (string= speed-type--author (user-full-name)))
 	      (should (eq speed-type--lang nil))
 	      (should (eq speed-type--n-words nil))
