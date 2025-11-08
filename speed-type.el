@@ -1010,8 +1010,7 @@ Expects CURRENT-BUFFER to be buffer of speed-type session."
   (when speed-type--continue
     (let ((fn speed-type--continue)
 	  (cb (current-buffer)))
-      (funcall fn)
-      (kill-buffer cb))))
+      (funcall fn))))
 
 (defun speed-type--play-next ()
   "Play a new speed-type session with random content, based on the current one."
@@ -1069,18 +1068,15 @@ ENTRIES ERRORS NON-CONSECUTIVE-ERRORS CORRECTIONS SECONDS."
   (remove-hook 'after-change-functions #'speed-type--change t)
   (remove-hook 'first-change-hook #'speed-type--first-change t)
   (speed-type-finish-animation speed-type--buffer)
-  (unless (null speed-type--continue-at-point)
-    (setq speed-type--continue-at-point
-	  (if (< (- (with-current-buffer speed-type--buffer (point-max)) (with-current-buffer speed-type--buffer (point)))
-		 (with-current-buffer speed-type--content-buffer (point)))
-	      (- (with-current-buffer speed-type--content-buffer (point))
-		 (- (with-current-buffer speed-type--buffer (point-max)) (with-current-buffer speed-type--b
-uffer (point))))
-	    (- (+ (with-current-buffer speed-type--content-buffer (point)) (with-current-buffer speed-type--content-buffer (point-max)))
-	       (- (with-current-buffer speed-type--buffer (point-max)) (with-current-buffer speed-type--buffer (point))))
-
-)))
-  (if speed-type--idle-pause-timer ;if session is started
+  (unless (null speed-type--continue-at-point) (setq speed-type--continue-at-point
+					   (let* ((sb-point (with-current-buffer speed-type--buffer (point)))
+						  (cb-point-max (with-current-buffer speed-type--content-buffer (point-max)))
+						  (cb-point-start speed-type--continue-at-point)
+						  (calc-continue-at (if (or (<= (+ cb-point-start sb-point) cb-point-max))
+									(+ cb-point-start (1- sb-point))
+								      (- (+ cb-point-start (1- sb-point)) cb-point-max))))
+					     calc-continue-at)))
+  (if speed-type--idle-pause-timer ;; if session is started
       (setq speed-type--time-register (append speed-type--time-register (list (float-time)))))
   (speed-type-save-stats-when-customized)
   (goto-char (point-max))
@@ -1374,6 +1370,7 @@ START and END are supplied to INSERT-BUFFER-SUBSTRING."
 If END is reached, will ignore speed-type-min.
 
 Expects to be in the content-buffer."
+  (when (> start end) (error "Start(%d) must be lower than end(%d)" start end))
   (goto-char start)
   (while (and (< (point) end)
 	      (< (- (point) start) speed-type-min-chars))
@@ -1456,31 +1453,36 @@ been completed."
 	     :continue-fn continue-fn
              :callback #'callback)))
 
-(defun speed-type--get-continue-fn (end)
+(defun speed-type--get-continue-fn (initial-start end)
   "Return a replay function which will use GO-NEXT-FN after completion."
   (remove-hook 'kill-buffer-hook 'speed-type--kill-buffer-hook t)
-  (let* ((start (with-current-buffer speed-type--buffer speed-type--continue-at-point))
-	 (text (with-current-buffer speed-type--content-buffer
-		 (speed-type--pick-continue-text-to-type start end))))
-    (if (speed-type--code-buffer-p speed-type--content-buffer)
-	(speed-type--code-with-highlighting
-	 speed-type--content-buffer
-	 speed-type--orig-text
-	 speed-type--title
-	 speed-type--author
-	 (with-current-buffer speed-type--content-buffer (syntax-table))
-	 (with-current-buffer speed-type--content-buffer font-lock-defaults)
-	 speed-type--go-next-fn)
-      (speed-type--setup speed-type--content-buffer
-	       text
-	       :file-name speed-type--file-name
-	       :start speed-type--continue-at-point
-	       :author speed-type--author
-	       :title speed-type--title
-	       :add-extra-word-content-fn (lambda () (speed-type--get-next-word speed-type--content-buffer))
-	       :replay-fn #'speed-type--get-replay-fn
-	       :continue-fn (lambda () (speed-type--get-continue-fn end))
-	       :go-next-fn #'speed-type-text))))
+  (if (and (>= (with-current-buffer speed-type--buffer speed-type--continue-at-point) end)
+	   (not (y-or-n-p "Congrats! You reached the end! Would you like to restart?")))
+      (speed-type-display-menu)
+    (let ((start (if (>= (with-current-buffer speed-type--buffer speed-type--continue-at-point) end) initial-start (with-current-buffer speed-type--buffer speed-type--continue-at-point))))
+      (let* ((cb (current-buffer))
+	     (text (with-current-buffer speed-type--content-buffer
+		     (speed-type--pick-continue-text-to-type start end))))
+	(if (speed-type--code-buffer-p speed-type--content-buffer)
+	    (speed-type--code-with-highlighting
+	     speed-type--content-buffer
+	     speed-type--orig-text
+	     speed-type--title
+	     speed-type--author
+	     (with-current-buffer speed-type--content-buffer (syntax-table))
+	     (with-current-buffer speed-type--content-buffer font-lock-defaults)
+	     speed-type--go-next-fn)
+	  (speed-type--setup speed-type--content-buffer
+		   text
+		   :file-name speed-type--file-name
+		   :start speed-type--continue-at-point
+		   :author speed-type--author
+		   :title speed-type--title
+		   :add-extra-word-content-fn (lambda () (speed-type--get-next-word speed-type--content-buffer))
+		   :replay-fn #'speed-type--get-replay-fn
+		   :continue-fn (lambda () (speed-type--get-continue-fn initial-start end))
+		   :go-next-fn #'speed-type-text))
+	(kill-buffer cb)))))
 
 (defun speed-type--get-replay-fn ()
   "Return a replay function which will use GO-NEXT-FN after completion."
@@ -1839,7 +1841,15 @@ If FILE-NAME is nil, will use file-name of CURRENT-BUFFER."
 		   :randomize nil
 		   :add-extra-word-content-fn (lambda () (speed-type--get-next-word buf))
 		   :replay-fn #'speed-type--get-replay-fn
-		   :continue-fn (lambda () (speed-type--get-continue-fn end))
+		   :continue-fn (lambda () (speed-type--get-continue-fn
+					    (save-excursion
+					      (goto-char (point-min))
+					      (or (when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+						    (end-of-line 1)
+						    (forward-line 1)
+						    (point))
+						  (point-min)))
+					    end))
 		   :go-next-fn #'speed-type-text))))))
 
 ;;;###autoload
@@ -1880,7 +1890,15 @@ If FILE-NAME is nil, will use file-name of CURRENT-BUFFER."
 		 :title title
 		 :add-extra-word-content-fn (lambda () (speed-type--get-next-word buf))
 		 :replay-fn #'speed-type--get-replay-fn
-		 :continue-fn (lambda () (speed-type--get-continue-fn end))
+		 :continue-fn (lambda () (speed-type--get-continue-fn
+					  (save-excursion
+					    (goto-char (point-min))
+					    (or (when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+						  (end-of-line 1)
+						  (forward-line 1)
+						  (point))
+						(point-min)))
+					  end))
 		 :go-next-fn #'speed-type-text)))
     (kill-buffer buffer) ;; buffer is retrieved, remove it again to not clutter the buffer-list
     ))
