@@ -365,8 +365,12 @@ Median Remaining:              %d")
 
 ;; buffer local internal variables
 
+;;; speed-type-preview-buffer
 (defvar-local speed-type--preview-buffer nil)
 (defvar-local speed-type--last-position 0)
+;;; speed-type-content-buffer
+(defvar-local speed-type--extra-word-quote nil)
+;;; speed-type-buffer
 (defvar-local speed-type--hard-transitions '())
 (defvar-local speed-type--mistyped-words '())
 (defvar-local speed-type--time-register nil)
@@ -389,7 +393,6 @@ Median Remaining:              %d")
 (defvar-local speed-type--go-next-fn nil)
 (defvar-local speed-type--continue nil)
 (defvar-local speed-type--replay-fn #'speed-type--setup)
-(defvar-local speed-type--extra-word-quote nil)
 (defvar-local speed-type--continue-at-point nil)
 (defvar-local speed-type--file-name nil)
 (defvar-local speed-type--idle-pause-timer nil)
@@ -1027,15 +1030,12 @@ Expects CURRENT-BUFFER to be buffer of speed-type session."
   "`fill-region' and sync speed-type local buffer variables.
 
 `fill-region' replaces double spaces with one and breaks lines with newlines.
-To reflect the applied changes from `fill-region' we set `speed-type--orig-text'
-again and recalculate `speed-type--remaining'."
-  (let ((orig-length (length speed-type--orig-text))
-	(fill-regioned-text (progn (fill-region (point-min) (point-max) 'none t)
-				   (buffer-substring (point-min) (point-max)))))
-
-    (when (> orig-length (length fill-regioned-text))
-      (setq speed-type--remaining (- speed-type--remaining (- (speed-type--calc-length speed-type--orig-text) (speed-type--calc-length fill-regioned-text)))))
-    (setq speed-type--orig-text fill-regioned-text)))
+To reflect the applied changes from `fill-region' recalculate `speed-type--remaining'."
+  (let ((orig-length (speed-type--length)))
+    (fill-region (point-min) (point-max) 'none t)
+    (let ((new-length (speed-type--length)))
+      (when (> orig-length new-length)
+	(setq speed-type--remaining (- speed-type--remaining (- orig-length new-length)))))))
 
 (defun speed-type-fill-paragraph ()
   "Override keybinding of FILL-PARAGRAPH with this to not destory session."
@@ -1138,6 +1138,19 @@ END is a point where the check stops to scan for diff."
       (message "Wrong key"))
     (not any-error)))
 
+(defun speed-type--calc-length (text)
+  "Supply TEXT to length but consider ignoring whitespace."
+  (if speed-type-ignore-whitespace-for-complete
+      (length (replace-regexp-in-string "[[:blank:]\n]" "" text))
+    (length text)))
+
+(defun speed-type--length ()
+  "Count the length of the current speed-type-buffer."
+  (with-current-buffer speed-type--buffer
+    (if speed-type-ignore-whitespace-for-complete
+	(count-matches "[^ \t\n\r]" (point-min) (point-max))
+      (point-max))))
+
 (defun speed-type--change (start end length)
   "Handle buffer change between START and END.
 LENGTH is ignored. Used for hook AFTER-CHANGE-FUNCTIONS.
@@ -1207,12 +1220,6 @@ Replacements are found in `speed-type-replace-strings'."
 	      acc-text))
 	   speed-type-replace-strings
 	   :initial-value text))))
-
-(defun speed-type--calc-length (text)
-  "Supply TEXT to length but consider ignoring whitespace."
-  (if speed-type-ignore-whitespace-for-complete
-      (length (replace-regexp-in-string "[[:blank:]\n]" "" text))
-    (length text)))
 
 (cl-defun speed-type--setup
     (content-buffer text &key author title lang randomize file-name start n-words continue-fn add-extra-word-content-fn replay-fn go-next-fn callback)
@@ -1418,7 +1425,7 @@ to (point-min) and (point-max)"
       (setq continue (re-search-backward (sentence-end) (mark) t))
       (when continue (setq fwd t)))
     (when fwd (forward-char)))
-  (unless (speed-type--code-buffer-p (current-buffer)) (speed-type--fill-region))
+  (unless (speed-type--code-buffer-p (current-buffer)) (fill-region (point-min) (point-max) 'none t))
   (buffer-substring-no-properties (region-beginning) (region-end)))
 
 (defun speed-type--code-with-highlighting (content-buffer text title author &optional syntax-table font-lock-df go-next-fn continue-fn)
