@@ -380,7 +380,6 @@ Median Remaining:              %d")
 (defvar-local speed-type--entries 0)
 (defvar-local speed-type--errors 0)
 (defvar-local speed-type--non-consecutive-errors 0)
-(defvar-local speed-type--remaining 0)
 (defvar-local speed-type--corrections 0)
 (defvar-local speed-type--title nil)
 (defvar-local speed-type--author nil)
@@ -496,10 +495,8 @@ be coded in SPEED-TYPE-MAYBE-UPGRADE-FILE-FORMAT."
   (let ((entries speed-type--entries)
 	(errors speed-type--errors)
 	(corrections speed-type--corrections)
-	(remaining speed-type--remaining)
 	(seconds (speed-type--elapsed-time speed-type--time-register)))
     (list (cons 'speed-type--title speed-type--title)
-	  (cons 'speed-type--remaining remaining)
 	  (cons 'speed-type--author speed-type--author)
 	  (cons 'speed-type--lang speed-type--lang)
 	  (cons 'speed-type--n-words speed-type--n-words)
@@ -744,8 +741,7 @@ Additional provide length and skill-value."
      (speed-type--calc-median 'speed-type--entries stats)
      (speed-type--calc-median 'speed-type--corrections stats)
      (speed-type--calc-median 'speed-type--errors stats)
-     (speed-type--calc-median 'speed-type--non-consecutive-errors stats)
-     (speed-type--calc-median 'speed-type--remaining stats))))
+     (speed-type--calc-median 'speed-type--non-consecutive-errors stats))))
 
 (defun speed-type-display-menu ()
   "Display and set controls the user can make in this speed-type session.
@@ -964,18 +960,14 @@ If the length is uneven will return symbol 'uneven."
 (defun speed-type--handle-del (start end)
   "Keep track of the statistics when a deletion occurs between START and END."
   (delete-region start end)
-  (let* ((pos (+ (1- start)))
-	 (q (get-text-property (1+ pos) 'speed-type-char-status))
-	 (diff (- end start)))
-    (if (= diff 0)
-	(progn (unless q (cl-incf speed-type--remaining)))
-      (dotimes (i diff)
-	(let* ((pos (+ (1- start) i))
-	       (q (get-text-property (1+ pos) 'speed-type-char-status)))
-	  (cond ((not q) ())
-		((or (eq q 'correct)
-		     (eq q 'error))
-		 (cl-decf speed-type--entries))))))))
+  (let* ((diff (- end start)))
+    (dotimes (i diff)
+      (let* ((pos (+ (1- start) i))
+	     (q (get-text-property (1+ pos) 'speed-type-char-status)))
+	(cond ((not q) ())
+	      ((or (eq q 'correct)
+		   (eq q 'error))
+	       (cl-decf speed-type--entries)))))))
 
 (defun speed-type--display-statistic ()
   "Display median values from current and past entries."
@@ -1031,11 +1023,7 @@ Expects CURRENT-BUFFER to be buffer of speed-type session."
 
 `fill-region' replaces double spaces with one and breaks lines with newlines.
 To reflect the applied changes from `fill-region' recalculate `speed-type--remaining'."
-  (let ((orig-length (speed-type--length)))
-    (fill-region (point-min) (point-max) 'none t)
-    (let ((new-length (speed-type--length)))
-      (when (> orig-length new-length)
-	(setq speed-type--remaining (- speed-type--remaining (- orig-length new-length)))))))
+  (fill-region (point-min) (point-max) 'none t))
 
 (defun speed-type-fill-paragraph ()
   "Override keybinding of FILL-PARAGRAPH with this to not destory session."
@@ -1112,17 +1100,14 @@ END is a point where the check stops to scan for diff."
         (if (speed-type--check-same i orig new)
             (progn (setq correct t)
 		   (when (eq (get-text-property (1+ pos0) 'speed-type-char-status) 'error) (cl-incf speed-type--corrections))
-		   (add-text-properties (point) (1+ (point)) '(speed-type-char-status correct)))
+		   (add-text-properties pos (1+ pos) '(speed-type-char-status correct)))
           (progn (cl-incf speed-type--errors)
 		 (unless any-error (setq any-error t))
 		 (when non-consecutive-error-p (cl-incf speed-type--non-consecutive-errors))
-		 (add-text-properties (point) (1+ (point)) '(speed-type-char-status error))
+		 (add-text-properties pos (1+ pos) '(speed-type-char-status error))
 		 (speed-type-add-extra-words (+ (or speed-type-add-extra-words-on-error 0)
 				      (or (and non-consecutive-error-p speed-type-add-extra-words-on-non-consecutive-errors) 0)))))
         (cl-incf speed-type--entries)
-	(when (and (not (string-blank-p (char-to-string (aref orig i))))
-		   (or (eq speed-type-point-motion-on-error 'point-move) correct))
-          (cl-decf speed-type--remaining))
 	(let ((overlay (or (cl-find-if
 			    (lambda (ov) (member (overlay-get ov 'face) '(speed-type-correct-face speed-type-error-face speed-type-consecutive-error-face)))
 			    (overlays-at pos))
@@ -1137,19 +1122,6 @@ END is a point where the check stops to scan for diff."
       (beep)
       (message "Wrong key"))
     (not any-error)))
-
-(defun speed-type--calc-length (text)
-  "Supply TEXT to length but consider ignoring whitespace."
-  (if speed-type-ignore-whitespace-for-complete
-      (length (replace-regexp-in-string "[[:blank:]\n]" "" text))
-    (length text)))
-
-(defun speed-type--length ()
-  "Count the length of the current speed-type-buffer."
-  (with-current-buffer speed-type--buffer
-    (if speed-type-ignore-whitespace-for-complete
-	(count-matches "[^ \t\n\r]" (point-min) (point-max))
-      (point-max))))
 
 (defun speed-type--change (start end length)
   "Handle buffer change between START and END.
@@ -1169,6 +1141,10 @@ are color coded and stats are gathered about the typing performance."
              (orig (substring speed-type--orig-text start0 end0)))
 	(speed-type--handle-del start end)
 	(insert old-text)
+	(when speed-type-ignore-whitespace-for-complete ;; add the ignore status again to deleted blank-chars
+	  (goto-char start)
+	  (while (search-forward-regexp "[[:blank:]\n]+" (+ end length) t 1)
+	    (add-text-properties (match-beginning 0) (match-end 0) '(speed-type-char-status ignore))))
 	(when-let* ((overlay (and (equal new-text "")
 				  (car (overlays-at end)))))
 	  (move-overlay overlay (1- (overlay-end overlay)) (overlay-end overlay)) (current-buffer))
@@ -1192,7 +1168,9 @@ are color coded and stats are gathered about the typing performance."
 		    (setq-local speed-type--last-position new-last-pos))
 		(read-only-mode)))))
 	(speed-type--diff orig new-text start end)
-        (when (= speed-type--remaining 0) (speed-type-complete))))))
+        (when (and (not (save-excursion (text-property-search-forward 'speed-type-char-status 'nil t)))
+		   (not (save-excursion (text-property-search-backward 'speed-type-char-status 'nil t))))
+	  (speed-type-complete))))))
 
 (defun speed-type--first-change ()
   "Start the timer."
@@ -1252,13 +1230,11 @@ CALLBACK is called when the setup process has been completed."
       (insert text)
       (delete-trailing-whitespace)
       (setq text (speed-type--trim (buffer-string))))
-    (let ((buf (generate-new-buffer speed-type-buffer-name))
-          (len (speed-type--calc-length text)))
+    (let ((buf (generate-new-buffer speed-type-buffer-name)))
       (set-buffer buf)
       (speed-type-mode)
       (buffer-face-set 'speed-type-default)
       (setq speed-type--orig-text text
-	    speed-type--remaining len
 	    speed-type--author author
 	    speed-type--randomize randomize
 	    speed-type--title title
@@ -1297,6 +1273,11 @@ CALLBACK is called when the setup process has been completed."
       (insert text)
       (unless (speed-type--code-buffer-p speed-type--content-buffer)
 	(speed-type--fill-region))
+      (when speed-type-ignore-whitespace-for-complete
+	(save-excursion
+	  (goto-char (point-min))
+	  (while (search-forward-regexp "[[:blank:]\n]+" nil t 1)
+	    (add-text-properties (match-beginning 0) (match-end 0) '(speed-type-char-status ignore)))))
       (set-buffer-modified-p nil)
       (switch-to-buffer buf)
       (when (eq speed-type-provide-preview-option t)
@@ -1548,10 +1529,10 @@ LIMIT is supplied to the random-function."
 	    (push word words))))
       (let ((words-as-string
 	     (apply (if speed-type-downcase 'downcase 'identity)
-		    (list (concat " " (string-trim (mapconcat 'identity (nreverse words) " ")))))))
+		    (list (concat (propertize " " 'speed-type-char-status (when speed-type-ignore-whitespace-for-complete 'ignore))
+				  (string-trim (mapconcat 'identity (nreverse words) (propertize " " 'speed-type-char-status (when speed-type-ignore-whitespace-for-complete 'ignore)))))))))
 	(setq speed-type--extra-words-queue (append speed-type--extra-words-queue (split-string words-as-string "" t))
-	      speed-type--orig-text (concat speed-type--orig-text words-as-string)
-	      speed-type--remaining (+ (speed-type--calc-length words-as-string) speed-type--remaining))))
+	      speed-type--orig-text (concat speed-type--orig-text words-as-string))))
     (when (not (timerp speed-type--extra-words-animation-time))
       (setq speed-type--extra-words-animation-time (run-at-time nil 0.01 'speed-type-animate-extra-word-inseration speed-type--buffer)))))
 
