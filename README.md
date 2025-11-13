@@ -54,6 +54,20 @@ for the selected language.
 
 `speed-type-quote` by default will take a random quote from a random quote-url listed in `speed-type-quote-urls`. You can `C-u speed-type-quote` to specify the url.
 
+
+## Contribution
+
+This package is certainly not bug-free. Since we can’t test every
+variant of Emacs setups out there, it’s inevitable that some issues
+slip through.
+
+If you encounter anything odd while using this package, please open an
+issue. We’ll do our best to fix it without regression.
+
+If you’d prefer to fix the problem yourself, feel free to fork the
+repository and open a pull request with your improvement. We love
+pressing that merge button.
+
 ## Customization
 
 See all custom variables of speed-type pressing:
