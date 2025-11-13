@@ -264,7 +264,6 @@ Median Remaining:              %d")
 (defvar-local speed-type--errors 0)
 (defvar-local speed-type--non-consecutive-errors 0)
 (defvar-local speed-type--remaining 0)
-(defvar-local speed-type--mod-str nil)
 (defvar-local speed-type--corrections 0)
 (defvar-local speed-type--title nil)
 (defvar-local speed-type--author nil)
@@ -665,15 +664,18 @@ speed-type files that were created using the speed-type functions."
 (defun speed-type--handle-del (start end)
   "Keep track of the statistics when a deletion occurs between START and END."
   (delete-region start end)
-  (dotimes (i (- end start))
-    (let* ((pos (+ (1- start) i))
-           (q (aref speed-type--mod-str pos)))
-      (cond ((= q 0) ())
-            ((or (= q 1)
-		 (= q 2))
-	     (progn (cl-decf speed-type--entries)
-		    (unless (and speed-type-ignore-whitespace-for-complete (string-blank-p (char-to-string (char-after))))
-                      (cl-incf speed-type--remaining))))))))
+  (let* ((pos (+ (1- start)))
+	 (q (get-text-property (1+ pos) 'speed-type-char-status))
+	 (diff (- end start)))
+    (if (= diff 0)
+	(progn (unless q (cl-incf speed-type--remaining)))
+      (dotimes (i diff)
+	(let* ((pos (+ (1- start) i))
+	       (q (get-text-property (1+ pos) 'speed-type-char-status)))
+	  (cond ((not q) ())
+		((or (eq q 'correct)
+		     (eq q 'error))
+		 (cl-decf speed-type--entries))))))))
 
 (defun speed-type--display-statistic ()
   "Display median values from current and past entries."
@@ -791,16 +793,16 @@ END is a point where the check stops to scan for diff."
 	     (pos0 (+ start0 i))
              (pos (+ start i))
 	     (non-consecutive-error-p (or (and (<= pos0 0) (= speed-type--non-consecutive-errors 0)) ;; first char is always a non-consecutive error if counter is 0
-					  (or (and (eq speed-type-point-motion-on-error 'point-stay) (not (= (aref speed-type--mod-str pos0) 2))) ;; staying, no movement, check current
-					      (and (> pos0 0) (eq speed-type-point-motion-on-error 'point-move) (not (= (aref speed-type--mod-str (1- pos0)) 2))))))) ;; moving, check previous
+					  (or (and (eq speed-type-point-motion-on-error 'point-stay) (not (eq (get-text-property (1+ pos0) 'speed-type-char-status) 'error))) ;; staying, no movement, check current
+					      (and (> pos0 0) (eq speed-type-point-motion-on-error 'point-move) (not (eq (get-text-property pos0 'speed-type-char-status) 'error))))))) ;; moving, check previous
         (if (speed-type--check-same i orig new)
             (progn (setq correct t)
-		   (when (= (aref speed-type--mod-str pos0) 2) (cl-incf speed-type--corrections))
-                   (store-substring speed-type--mod-str pos0 1))
+		   (when (eq (get-text-property (1+ pos0) 'speed-type-char-status) 'error) (cl-incf speed-type--corrections))
+		   (add-text-properties (point) (1+ (point)) '(speed-type-char-status correct)))
           (progn (cl-incf speed-type--errors)
 		 (unless any-error (setq any-error t))
 		 (when non-consecutive-error-p (cl-incf speed-type--non-consecutive-errors))
-                 (store-substring speed-type--mod-str pos0 2)
+		 (add-text-properties (point) (1+ (point)) '(speed-type-char-status error))
 		 (speed-type-add-extra-words (+ (or speed-type-add-extra-words-on-error 0)
 				      (or (and non-consecutive-error-p speed-type-add-extra-words-on-non-consecutive-errors) 0)))))
         (cl-incf speed-type--entries)
@@ -911,7 +913,6 @@ CALLBACK is called when the setup process has been completed."
       (speed-type-mode)
       (buffer-face-set 'speed-type-default)
       (setq speed-type--orig-text text
-	    speed-type--mod-str (make-string (length text) 0)
 	    speed-type--remaining len
 	    speed-type--author author
 	    speed-type--title title
@@ -1130,7 +1131,6 @@ LIMIT is supplied to the random-function."
       (let ((words-as-string (concat " " (string-trim (mapconcat 'identity (nreverse words) " ")))))
 	(setq speed-type--extra-words-queue (append speed-type--extra-words-queue (split-string words-as-string "" t))
 	      speed-type--orig-text (concat speed-type--orig-text words-as-string)
-	      speed-type--mod-str (concat speed-type--mod-str (make-string (+ 1 (length words-as-string)) 0))
 	      speed-type--remaining (+ (speed-type--calc-length words-as-string) speed-type--remaining))))
     (when (not (timerp speed-type--extra-words-animation-time))
       (setq speed-type--extra-words-animation-time (run-at-time nil 0.01 'speed-type-animate-extra-word-inseration speed-type--buffer)))))
