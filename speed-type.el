@@ -280,7 +280,7 @@ These modes will have syntax highlighting and NO `fill-region' will be called."
 When non-nil, the completion of the speed-type-session is triggered even when there are
 characters left to type. All the remaining characters must be whitespace.
 
-If nil, the completion is only triggered if the counter speed-type-remaining hits 0."
+If nil, the completion is only triggered if all characters are typed."
   :type 'boolean)
 
 (defface speed-type-default
@@ -339,8 +339,7 @@ Median Total time:             %d
 Median Total chars:            %d
 Median Corrections:            %d
 Median Total errors:           %d
-Median Non-consecutive errors: %d
-Median Remaining:              %d")
+Median Non-consecutive errors: %d")
 
 (defvar speed-type--completed-keymap
   (let ((map (make-sparse-keymap)))
@@ -604,7 +603,7 @@ If no entries are found with FILE-NAME, will return nil."
 
 (defun speed-type-save-stats-when-customized ()
   "Save stats when configured by SPEED-TYPE-SAVE-STATISTIC-OPTION."
-  (when (not (eq speed-type-save-statistic-option 'never))
+  (when (and (not (= 0 speed-type--entries)) (not (eq speed-type-save-statistic-option 'never)))
     (when (if (eq speed-type-save-statistic-option 'ask) (y-or-n-p "Save statistic?") t)
       (speed-type-save-stats speed-type-statistic-filename (with-current-buffer speed-type--buffer (speed-type-statistic-variables))))))
 
@@ -612,7 +611,7 @@ If no entries are found with FILE-NAME, will return nil."
   "Write given SESSION-STATS to FILE.
 
 SESSIONS-STATS is a alist containing the local-variables of the typing-session:
-- `((speed-type--remaining . 2) ...)
+- `((speed-type--gross-wpm . 2) ...)
 
 See detailed alist SPEED-TYPE-STATISTIC-VARIABLES.
 
