@@ -232,8 +232,7 @@ Median Total time:             %d
 Median Total chars:            %d
 Median Corrections:            %d
 Median Total errors:           %d
-Median Non-consecutive errors: %d
-Median Remaining:              %d")
+Median Non-consecutive errors: %d")
 
 (defvar speed-type--completed-keymap
   (let ((map (make-sparse-keymap)))
@@ -711,10 +710,6 @@ Expects CURRENT-BUFFER to be buffer of speed-type session."
     (cl-find-if #'derived-mode-p speed-type-code-modes)))
 
 (defun speed-type--fill-region ()
-  "`fill-region' and sync speed-type local buffer variables.
-
-`fill-region' replaces double spaces with one and breaks lines with newlines.
-To reflect the applied changes from `fill-region' recalculate `speed-type--remaining'."
   (fill-region (point-min) (point-max) 'none t))
 
 (defun speed-type-fill-paragraph ()
