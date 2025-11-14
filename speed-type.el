@@ -173,10 +173,10 @@ These modes will have syntax highlighting and NO `fill-region' will be called."
 (defcustom speed-type-ignore-whitespace-for-complete t
   "Defines if whitespace should be ignored for speed-type-session to be complete.
 
-When non-nil, the completion of the speed-type-session is triggered even when there are
-characters left to type. All the remaining characters must be whitespace.
+When non-nil, the completion of the speed-type-session is triggered even when
+there are untyped blank-characters.
 
-If nil, the completion is only triggered if the counter speed-type-remaining hits 0."
+If nil, the completion is only triggered if all characters are typed."
   :type 'boolean)
 
 (defface speed-type-default
@@ -433,7 +433,7 @@ CODING is the symbol of the coding-system in which the file is encoded."
 
 (defun speed-type-save-stats-when-customized ()
   "Check the custom variable SPEED-TYPE-SAVE-STATISTIC-OPTION and save stats."
-  (when (not (eq speed-type-save-statistic-option 'never))
+  (when (and (not (= 0 speed-type--entries)) (not (eq speed-type-save-statistic-option 'never)))
     (when (if (eq speed-type-save-statistic-option 'ask) (y-or-n-p "Save statistic?") t)
       (speed-type-save-stats speed-type-statistic-filename))))
 
@@ -854,12 +854,6 @@ Replacements are found in `speed-type-replace-strings'."
       acc-text))
    speed-type-replace-strings
    :initial-value text))
-
-(defun speed-type--calc-length (text)
-  "Supply TEXT to length but consider ignoring whitespace."
-  (if speed-type-ignore-whitespace-for-complete
-      (length (replace-regexp-in-string "[[:blank:]\n]" "" text))
-    (length text)))
 
 (cl-defun speed-type--setup
     (content-buffer text &key author title lang n-words add-extra-word-content-fn replay-fn go-next-fn callback)
