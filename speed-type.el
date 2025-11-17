@@ -255,8 +255,9 @@ Median Non-consecutive errors: %d")
 
 ;; buffer local internal variables
 
+(defvar-local speed-type--max-point-on-complete nil)
 (defvar-local speed-type--start-time nil)
-(defvar-local speed-type--orig-text nil)
+(defvar-local speed-type--last-changed-text nil)
 (defvar-local speed-type--buffer nil)
 (defvar-local speed-type--content-buffer nil)
 (defvar-local speed-type--entries 0)
@@ -709,6 +710,10 @@ Expects CURRENT-BUFFER to be buffer of speed-type session."
   (with-current-buffer buf
     (cl-find-if #'derived-mode-p speed-type-code-modes)))
 
+(defun speed-type--before-change (start end)
+  "Store the region between START and END which is going to be modified."
+  (setq speed-type--last-changed-text (buffer-substring start end)))
+
 (defun speed-type--fill-region ()
   (fill-region (point-min) (point-max) 'none t))
 
@@ -737,11 +742,13 @@ ENTRIES ERRORS CORRECTIONS SECONDS."
 (defun speed-type-complete ()
   "Remove typing hooks from the buffer and print statistics."
   (interactive)
-  (remove-hook 'after-change-functions 'speed-type--change)
-  (remove-hook 'first-change-hook 'speed-type--first-change)
+  (remove-hook 'before-change-functions #'speed-type--before-change t)
+  (remove-hook 'after-change-functions #'speed-type--change t)
+  (remove-hook 'first-change-hook #'speed-type--first-change t)
   (speed-type-finish-animation speed-type--buffer)
   (goto-char (point-max))
   (with-current-buffer speed-type--buffer
+    (setq speed-type--max-point-on-complete (point-max))
     (when speed-type--title
       (insert "\n\n")
       (save-excursion
@@ -805,31 +812,28 @@ END is a point where the check stops to scan for diff."
 LENGTH is ignored. Used for hook AFTER-CHANGE-FUNCTIONS.
 Make sure that the contents don't actually change, but rather the contents
 are color coded and stats are gathered about the typing performance."
-  (let ((len (length speed-type--orig-text)))
-    (when (<= start len)
-      (let* ((end (if (> end (1+ len)) len end))
-             (length (if (> (+ start length) len) (1+ (- len start)) length))
-             (start0 (1- start))
-             (end0 (1- end))
-             (new-text (buffer-substring start end))
-             (old-text (substring speed-type--orig-text
-                                  start0 (+ start0 length)))
-             (orig (substring speed-type--orig-text start0 end0)))
-        (speed-type--handle-del start end)
-	(insert old-text)
-	(when speed-type-ignore-whitespace-for-complete ;; add the ignore status again to deleted blank-chars
-	  (save-excursion
-	    (goto-char start)
-	    (while (search-forward-regexp "[[:blank:]\n]+" (+ end length) t 1)
-	      (add-text-properties (match-beginning 0) (match-end 0) '(speed-type-char-status ignore)))))
-	(when-let* ((overlay (and (equal new-text "")
-				  (car (overlays-at end)))))
-	  (move-overlay overlay (1- (overlay-end overlay)) (overlay-end overlay)) (current-buffer))
-	(speed-type--diff orig new-text start end)
-	(when (and (not (save-excursion (text-property-search-forward 'speed-type-char-status 'nil t)))
-		   (not (save-excursion (text-property-search-backward 'speed-type-char-status 'nil t)))
-		   (not (text-property-any (point-min) (point-max) 'speed-type-char-status 'nil)))
-	  (speed-type-complete))))))
+  (let ((new-text (buffer-substring start end))
+	(old-text speed-type--last-changed-text))
+    (speed-type--handle-del start end)
+    (insert old-text)
+    (if (< start (point-max))
+	(let* ((end (if (> end (point-max)) (point-max) end))
+	       (orig (buffer-substring start end)))
+	  (when speed-type-ignore-whitespace-for-complete ;; add the ignore status again to deleted blank-chars
+	    (save-excursion
+	      (goto-char start)
+	      (while (search-forward-regexp "[[:blank:]\n]+" (+ end length) t 1)
+		(add-text-properties (match-beginning 0) (match-end 0) '(speed-type-char-status ignore)))))
+	  (when-let* ((overlay (and (equal new-text "")
+				    (car (overlays-at end)))))
+	    (move-overlay overlay (1- (overlay-end overlay)) (overlay-end overlay)) (current-buffer))
+	  (speed-type--diff orig new-text start end)
+	  (when (and (not (save-excursion (text-property-search-forward 'speed-type-char-status 'nil t)))
+		     (not (save-excursion (text-property-search-backward 'speed-type-char-status 'nil t)))
+		     (not (text-property-any (point-min) (point-max) 'speed-type-char-status 'nil)))
+	    (speed-type-complete)))
+      (beep)
+      (message "End of buffer"))))
 
 (defun speed-type--first-change ()
   "Start the timer."
@@ -890,8 +894,7 @@ CALLBACK is called when the setup process has been completed."
       (set-buffer buf)
       (speed-type-mode)
       (buffer-face-set 'speed-type-default)
-      (setq speed-type--orig-text text
-	    speed-type--author author
+      (setq speed-type--author author
 	    speed-type--title title
 	    speed-type--lang lang
 	    speed-type--n-words n-words
@@ -916,6 +919,7 @@ CALLBACK is called when the setup process has been completed."
       (set-buffer-modified-p nil)
       (switch-to-buffer buf)
       (goto-char 0)
+      (add-hook 'before-change-functions #'speed-type--before-change nil t)
       (add-hook 'after-change-functions 'speed-type--change nil t)
       (add-hook 'first-change-hook 'speed-type--first-change nil t)
       (add-hook 'kill-buffer-hook 'speed-type--kill-buffer-hook nil t)
@@ -1055,14 +1059,14 @@ been completed."
   (if (speed-type--code-buffer-p speed-type--content-buffer)
       (speed-type--code-with-highlighting
        speed-type--content-buffer
-       speed-type--orig-text
+       (buffer-substring-no-properties (point-min) speed-type--max-point-on-complete)
        speed-type--title
        speed-type--author
        (with-current-buffer speed-type--content-buffer (syntax-table))
        (with-current-buffer speed-type--content-buffer font-lock-defaults)
        speed-type--go-next-fn)
     (speed-type--setup speed-type--content-buffer
-	     speed-type--orig-text
+	     (buffer-substring-no-properties (point-min) speed-type--max-point-on-complete)
 	     :lang speed-type--lang
 	     :author speed-type--author
 	     :title speed-type--title
@@ -1114,10 +1118,9 @@ LIMIT is supplied to the random-function."
 	     (concat (propertize " " 'speed-type-char-status (when speed-type-ignore-whitespace-for-complete 'ignore))
 		     (string-trim (mapconcat 'identity (nreverse words)
 					     (propertize " " 'speed-type-char-status (when speed-type-ignore-whitespace-for-complete 'ignore)))))))
-	(setq speed-type--extra-words-queue (append speed-type--extra-words-queue (split-string words-as-string "" t))
-	      speed-type--orig-text (concat speed-type--orig-text words-as-string))))
+	(setq speed-type--extra-words-queue (append speed-type--extra-words-queue (split-string words-as-string "" t))))
     (when (not (timerp speed-type--extra-words-animation-time))
-      (setq speed-type--extra-words-animation-time (run-at-time nil 0.01 'speed-type-animate-extra-word-inseration speed-type--buffer)))))
+      (setq speed-type--extra-words-animation-time (run-at-time nil 0.01 'speed-type-animate-extra-word-inseration speed-type--buffer))))))
 
 (defun speed-type-finish-animation (buf)
   "Insert all remaining characters in ‘speed-type--extra-words-queue’ to BUF."
@@ -1137,6 +1140,7 @@ LIMIT is supplied to the random-function."
   "Add words of punishment-lines in animated fashion to ‘BUF’."
   (save-excursion
     (with-current-buffer buf
+      (remove-hook 'before-change-functions #'speed-type--before-change t)
       (remove-hook 'after-change-functions 'speed-type--change t)
       (if (and speed-type--extra-words-queue)
 	  (let ((token (pop speed-type--extra-words-queue)))
@@ -1145,6 +1149,7 @@ LIMIT is supplied to the random-function."
 	(unless (speed-type--code-buffer-p speed-type--content-buffer) (speed-type--fill-region))
 	(cancel-timer speed-type--extra-words-animation-time)
 	(setq speed-type--extra-words-animation-time nil))
+      (add-hook 'before-change-functions #'speed-type--before-change nil t)
       (add-hook 'after-change-functions 'speed-type--change nil t))))
 
 (defun speed-type--code-tab ()
