@@ -660,6 +660,8 @@ speed-type files that were created using the speed-type functions."
 (defun speed-type--handle-del (start end)
   "Keep track of the statistics when a deletion occurs between START and END."
   (delete-region start end)
+  (setq start (if (<= (point-max) start) (point-max) start))
+  (setq end (if (<= (point-max) end) (point-max) end))
   (dotimes (i (- end start))
     (let* ((pos (+ (1- start) i))
 	   (q (get-text-property (1+ pos) 'speed-type-char-status)))
