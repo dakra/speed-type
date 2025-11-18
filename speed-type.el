@@ -257,6 +257,8 @@ Median Remaining:              %d")
 
 ;; buffer local internal variables
 
+(defvar-local speed-type--continue-at-point nil)
+(defvar-local speed-type--file-name nil)
 (defvar-local speed-type--start-time nil)
 (defvar-local speed-type--orig-text nil)
 (defvar-local speed-type--buffer nil)
@@ -377,7 +379,9 @@ SPEED-TYPE-MAYBE-UPGRADE-FILE-FORMAT."
 	  (cons 'speed-type--gross-cpm (speed-type--gross-cpm entries seconds))
 	  (cons 'speed-type--net-wpm (speed-type--net-wpm entries errors seconds))
 	  (cons 'speed-type--net-cpm (speed-type--net-cpm entries errors seconds))
-	  (cons 'speed-type--accuracy (speed-type--accuracy entries (- entries errors) corrections)))))
+	  (cons 'speed-type--accuracy (speed-type--accuracy entries (- entries errors) corrections))
+	  (cons 'speed-type--continue-at-point speed-type--continue-at-point)
+	  (cons 'speed-type--file-name speed-type--file-name))))
 
 (defun speed-type-grok-file-format-version ()
   "Integer which indicates the file-format version of speed-type statistic file.
@@ -532,6 +536,15 @@ Point is irrelevant and unaffected."
                    ;; Else we're dealing with format version 0
 		  (error "Buffer is not in speed-type statistic format")))))
       stats))
+
+(defun speed-type--find-last-continue-at-point-in-stats (file-name)
+  "Find if any the last continue-at-point-in-stats."
+  (if file-name
+      (let ((last (cl-find-if (lambda (e) (and (string-equal-ignore-case (or (cdr (assoc 'speed-type--file-name e)) "") file-name)
+					       (cdr (assoc 'speed-type--continue-at-point e))))
+			      (nreverse (speed-type-load-last-stats speed-type-statistic-filename)))))
+	(cdr (assoc 'speed-type--continue-at-point last)))
+    nil))
 
 (defun speed-type--calc-median (symbol stats)
   "Calculate the median of given SYMBOL in STATS."
