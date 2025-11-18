@@ -1304,6 +1304,53 @@ LIMIT is supplied to the random-function."
              :go-next-fn go-next-fn)))
 
 ;;;###autoload
+(defun speed-type-continue (&optional file-name)
+  "Searches the last position of the file opened by this buffer and setup a speed-type-session continuing at that last found position. If nothing is found, will begin at 0.
+
+If FILE-NAME is given, will continue with that given file-name.
+
+If FILE-NAME is not found, will throw a user-error.
+
+If FILE-NAME is nil, will use file-name of CURRENT-BUFFER."
+  (interactive "P")
+  (let* ((buffer (cond ((eq '(4) file-name)
+			(find-file-noselect (read-file-name "Pick your file:" speed-type-directory)))
+		       ((and (stringp file-name) (file-readable-p file-name)) (find-file-noselect file-name))
+		       (t (current-buffer))))
+	 (buf (speed-type-prepare-content-buffer-from-buffer buffer)))
+    (with-current-buffer buf
+      (let* ((title (save-excursion
+		      (or (when (re-search-forward "^Title: " nil t)
+			    (buffer-substring (point) (line-end-position)))
+			  (buffer-name buffer))))
+	     (author (save-excursion
+		       (when (re-search-forward "^Author: " nil t)
+			 (buffer-substring (point) (line-end-position)))))
+	     (start (or (speed-type--find-last-continue-at-point-in-stats (buffer-file-name buffer))
+			(when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+			  (end-of-line 1)
+			  (forward-line 1)
+			  (point))
+			(point-min)))
+	     (end (or (when (re-search-forward "***.END.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+			(beginning-of-line 1)
+			(forward-line -1)
+			(point))
+		      (point-max)))
+	     (text (speed-type--pick-continue-text-to-type start end)))
+	(speed-type--setup buf
+		 text
+		 :file-name (buffer-file-name buffer)
+		 :start start
+		 :author author
+		 :title title
+		 :randomize nil
+		 :add-extra-word-content-fn (lambda () (speed-type--get-next-word buf))
+		 :replay-fn #'speed-type--get-replay-fn
+		 :continue-fn (lambda () (speed-type--get-continue-fn end))
+		 :go-next-fn #'speed-type-text)))))
+
+;;;###autoload
 (defun speed-type-top-100 ()
   "Speed type the top 100 most common words."
   (interactive)
