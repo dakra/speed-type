@@ -1007,6 +1007,28 @@ CALLBACK is called when the setup process has been completed."
       (setq speed-type--buffer nil)
       (kill-buffer buf))))
 
+(defun speed-type--pick-continue-text-to-type (start end)
+  "Pick text of size between speed-type-min and speed-type-max continuing at START.
+
+If END is reached, will ignore speed-type-min.
+
+Expects to be in the content-buffer."
+  (goto-char start)
+  (while (and (< (point) end)
+	      (< (- (point) start) speed-type-min-chars))
+    (forward-paragraph 1))
+  (let ((continue t)
+	(sentence-end-double-space nil)
+	(fwd nil))
+    (while (and (< (point) end)
+		(> (- (point) start) speed-type-max-chars)
+		continue)
+      (setq continue (re-search-backward (sentence-end) start t 1))
+      (when continue (setq fwd t)))
+    (when fwd (forward-char)))
+  (unless (speed-type--code-buffer-p (current-buffer)) (speed-type--fill-region))
+  (buffer-substring-no-properties start (point)))
+
 (defun speed-type--pick-text-to-type (&optional start end)
   "Return a random section of the buffer usable for playing.
 
@@ -1094,6 +1116,46 @@ been completed."
 		syntax-table
 		font-lock-df
 		continue-fn))
+
+(defun speed-type--get-continue-fn (end)
+  "Return a replay function which will use GO-NEXT-FN after completion."
+  (remove-hook 'kill-buffer-hook 'speed-type--kill-buffer-hook t)
+  (let* ((start  (speed-type--find-last-continue-at-point-in-stats speed-type--file-name))
+	 (text (with-current-buffer speed-type--content-buffer
+	      (goto-char start)
+	      (while (and (< (point) end)
+			  (< (- (point) start) speed-type-min-chars))
+		(forward-paragraph 1))
+	      (let ((continue t)
+		    (sentence-end-double-space nil)
+		    (fwd nil))
+		(while (and (< (point) end)
+			    (> (- (point) start) speed-type-max-chars)
+			    continue)
+		  (setq continue (re-search-backward (sentence-end) start t 1))
+		  (when continue (setq fwd t)))
+		(when fwd (forward-char)))
+	      (unless (speed-type--code-buffer-p (current-buffer)) (speed-type--fill-region))
+	      (buffer-substring-no-properties start (point)))))
+    (if (speed-type--code-buffer-p speed-type--content-buffer)
+	(speed-type--code-with-highlighting
+	 speed-type--content-buffer
+	 speed-type--orig-text
+	 speed-type--title
+	 speed-type--author
+	 (with-current-buffer speed-type--content-buffer (syntax-table))
+	 (with-current-buffer speed-type--content-buffer font-lock-defaults)
+	 speed-type--go-next-fn)
+      (speed-type--setup speed-type--content-buffer
+	       text
+	       :file-name speed-type--file-name
+	       :start start
+	       :author speed-type--author
+	       :title speed-type--title
+	       :add-extra-word-content-fn (lambda () (speed-type--get-next-word speed-type--content-buffer))
+	       :replay-fn #'speed-type--get-replay-fn
+	       :continue-fn (lambda () (speed-type--get-continue-fn end))
+	       :go-next-fn #'speed-type-text))))
 
 (defun speed-type--get-replay-fn ()
   "Return a replay function which will use GO-NEXT-FN after completion."
