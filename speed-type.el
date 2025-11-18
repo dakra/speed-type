@@ -241,6 +241,7 @@ Median Remaining:              %d")
     (define-key map (kbd "d") 'speed-type--display-statistic)
     (define-key map (kbd "r") 'speed-type--replay)
     (define-key map (kbd "n") 'speed-type--play-next)
+    (define-key map (kbd "c") 'speed-type--continue)
     map))
 
 (defvar speed-type-mode-map
@@ -274,6 +275,7 @@ Median Remaining:              %d")
 (defvar-local speed-type--extra-words-animation-time nil)
 (defvar-local speed-type--extra-words-queue '())
 (defvar-local speed-type--go-next-fn nil)
+(defvar-local speed-type--continue-fn nil)
 (defvar-local speed-type--replay-fn #'speed-type--setup)
 (defvar-local speed-type--extra-word-quote nil)
 
@@ -570,6 +572,9 @@ leave buffer in read-only mode."
 		  (propertize "q" 'face 'highlight))
 	  (format "    [%s]eplay this sample\n"
 		  (propertize "r" 'face 'highlight)))
+  (when speed-type--continue-fn
+    (insert (format "    [%s]ontinue on this sample\n"
+		    (propertize "c" 'face 'highlight))))
   (when (not (eq 'never speed-type-save-statistic-option))
     (insert (format "    [%s]isplay statistic\n"
 		    (propertize "d" 'face 'highlight))))
@@ -702,9 +707,17 @@ Expects CURRENT-BUFFER to be buffer of speed-type session."
       (funcall fn)
       (kill-buffer cb))))
 
+(defun speed-type--continue ()
+  "Play a new speed-type-session continuing the content where point is currently at."
+  (interactive)
+  (when speed-type--continue-fn
+    (let ((fn speed-type--continue-fn)
+	  (cb (current-buffer)))
+      (funcall fn)
+      (kill-buffer cb))))
 
 (defun speed-type--play-next ()
-  "Play a new speed-type session, based on the current one."
+  "Play a new speed-type session with random content, based on the current one."
   (interactive)
   (when speed-type--go-next-fn
     (let ((fn speed-type--go-next-fn)
@@ -875,7 +888,7 @@ Replacements are found in `speed-type-replace-strings'."
     (length text)))
 
 (cl-defun speed-type--setup
-    (content-buffer text &key author title lang n-words add-extra-word-content-fn replay-fn go-next-fn callback)
+    (content-buffer text &key author title lang n-words continue-fn add-extra-word-content-fn replay-fn go-next-fn callback)
   "Set up a new buffer for the typing exercise on TEXT.
 
 AUTHOR and TITLE can be given, this happen when the text to type comes
@@ -918,6 +931,7 @@ CALLBACK is called when the setup process has been completed."
 	    speed-type--lang lang
 	    speed-type--n-words n-words
 	    speed-type--add-extra-word-content-fn add-extra-word-content-fn
+	    speed-type--continue-fn continue-fn
 	    speed-type--go-next-fn go-next-fn)
       (when content-buffer
 	(setq speed-type--content-buffer content-buffer)
@@ -1045,9 +1059,10 @@ and font lock defaults by FONT-LOCK-DF."
 	     :title title
 	     :replay-fn replay-fn
              :go-next-fn go-next-fn
+	     :continue-fn continue-fn
              :callback #'callback)))
 
-(defun speed-type--code-with-highlighting (content-buffer text title author &optional syntax-table font-lock-df go-next-fn)
+(defun speed-type--code-with-highlighting (content-buffer text title author &optional syntax-table font-lock-df go-next-fn continue-fn)
   "Speed type TEXT with syntax highlight which was extracted from CONTENT-BUFFER.
 
 CONTENT-BUFFER will be linked to the SPEED-TYPE-BUFFER..
@@ -1064,7 +1079,8 @@ been completed."
 		#'speed-type--get-replay-fn
 		go-next-fn
 		syntax-table
-		font-lock-df))
+		font-lock-df
+		continue-fn))
 
 (defun speed-type--get-replay-fn ()
   "Return a replay function which will use GO-NEXT-FN after completion."
