@@ -73,7 +73,7 @@ Book numbers can be picked from https://www.gutenberg.org, when looking at
 a book url.  E.G, https://www.gutenberg.org/ebooks/14577."
   :type '(repeat integer))
 
-(defcustom speed-type-gb-dir (locate-user-emacs-file "speed-type")
+(defcustom speed-type-directory (locate-user-emacs-file "speed-type")
   "Directory in which the gutenberg books will be saved."
   :type 'directory)
 
@@ -156,7 +156,7 @@ they accumulate each other if both variables are set."
 		         (const :tag "Never" never)
 		         (const :tag "Ask" ask)))
 
-(defcustom speed-type-statistic-filename (concat speed-type-gb-dir "/" "speed-type-statistic.el")
+(defcustom speed-type-statistic-filename (concat speed-type-directory "/" "speed-type-statistic.el")
   "Name of file for general stats."
   :type 'string)
 
@@ -634,11 +634,11 @@ speed-type files that were created using the speed-type functions."
 
 (defun speed-type--retrieve (filename url)
   "Return buffer FILENAME content in it or download from URL if file doesn't exist."
-  (let ((fn (expand-file-name (format "%s.txt" filename) speed-type-gb-dir))
+  (let ((fn (expand-file-name (format "%s.txt" filename) speed-type-directory))
         (url-request-method "GET"))
     (if (file-readable-p fn)
         fn
-      (make-directory speed-type-gb-dir 'parents)
+      (make-directory speed-type-directory 'parents)
       (let ((buffer (url-retrieve-synchronously url nil nil 5)))
         (when (and buffer (= 200 (url-http-symbol-value-in-buffer
                                   'url-http-response-status
