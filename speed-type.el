@@ -1529,8 +1529,8 @@ If FILE-NAME is not found, will throw a user-error.
 If FILE-NAME is nil, will use file-name of CURRENT-BUFFER."
   (interactive "P")
   (if (eq speed-type-save-statistic-option 'never)
-      (user-error "To use continue the variable speed-type-save-statistic-option can't be never.")
-    (let* ((buffer (cond ((eq '(4) file-name)
+      (user-error "To use continue the variable speed-type-save-statistic-option can't be never")
+    (let* ((buffer (cond ((equal '(4) file-name)
 			  (find-file-noselect (read-file-name "Pick your file:" speed-type-directory)))
 			 ((stringp file-name) (find-file-noselect file-name))
 			 (t (current-buffer))))
@@ -1543,6 +1543,13 @@ If FILE-NAME is nil, will use file-name of CURRENT-BUFFER."
 	       (author (save-excursion
 			 (when (re-search-forward "^Author: " nil t)
 			   (buffer-substring (point) (line-end-position)))))
+	       (fn (with-current-buffer buffer
+		     (progn
+		       (unless (buffer-file-name buffer)
+			 (let ((r-fn (read-file-name "To save progress, choose a file-location for buffer:" speed-type-directory)))
+			   (when (> (or (speed-type--find-last-continue-at-point-in-stats r-fn) 0) (point-max)) (user-error "Can not continue because file already has saved progress which exceeds buffer length"))
+			   (write-file r-fn)))
+		       (buffer-file-name (current-buffer)))))
 	       (start (or (speed-type--find-last-continue-at-point-in-stats (buffer-file-name buffer))
 			  (when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
 			    (end-of-line 1)
@@ -1554,12 +1561,24 @@ If FILE-NAME is nil, will use file-name of CURRENT-BUFFER."
 			  (forward-line -1)
 			  (point))
 			(point-max)))
-	       (text (speed-type--pick-continue-text-to-type start end)))
+	       (text (speed-type--pick-continue-text-to-type
+		      (if (>= start (1- end))
+			  (if (y-or-n-p "You completed this file, would you start over again?")
+			      (or (save-excursion
+				    (goto-char (point-min))
+				    (when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+				      (end-of-line 1)
+				      (forward-line 1)
+				      (point)))
+				  (point-min))
+			    (user-error "Aborted speed-type-continue because file completed"))
+			start)
+		      end)))
 	  (if (speed-type--code-buffer-p buf)
 	      (speed-type--code-with-highlighting
 	       buf
 	       text
-	       (buffer-file-name buffer)
+	       fn
 	       title
 	       author
 	       nil
@@ -1569,7 +1588,7 @@ If FILE-NAME is nil, will use file-name of CURRENT-BUFFER."
 	       (lambda () (speed-type--get-continue-fn end)))
 	    (speed-type--setup buf
 		     text
-		     :file-name (buffer-file-name buffer)
+		     :file-name fn
 		     :randomize nil
 		     :author author
 		     :title title
