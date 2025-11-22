@@ -1168,13 +1168,14 @@ been completed."
 		font-lock-df))
 
 (defun speed-type--get-continue-point ()
-  (cdr (get-text-property
-	(1- (save-excursion
-	   (goto-char (point-min))
-	   (text-property-search-forward 'speed-type-char-status 'nil t)
-	   (text-property-search-backward 'speed-type-char-status 'nil t)
-	   (point)))
-	'speed-type-orig-pos)))
+  (let ((continue-point (save-excursion
+			  (goto-char (point-min))
+			  (text-property-search-forward 'speed-type-char-status 'nil t)
+			  (text-property-search-backward 'speed-type-char-status 'nil t)
+			  (point))))
+    (if (= (point-min) continue-point)
+	(car (get-text-property continue-point 'speed-type-orig-pos))
+      (cdr (get-text-property (1- continue-point) 'speed-type-orig-pos)))))
 
 (defun speed-type--get-continue-fn (end)
   "Return a replay function which will use GO-NEXT-FN after completion."
