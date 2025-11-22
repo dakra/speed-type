@@ -44,7 +44,7 @@
       (remove-hook 'speed-type-mode-hook 'speed-type-mode-test-hook))))
 
 (defun speed-type--retrieve-non-existant-file-environment (filename-expected test)
-  (let ((speed-type-gb-dir "/tmp"))
+  (let ((speed-type-directory "/tmp"))
     (unwind-protect
         (progn
           (delete-file filename-expected)
@@ -52,7 +52,7 @@
       (delete-file filename-expected))))
 
 (defun speed-type--retrieve-existant-file-environment (filename-expected test)
-  (let ((speed-type-gb-dir "/tmp"))
+  (let ((speed-type-directory "/tmp"))
     (unwind-protect
         (progn
           (delete-file filename-expected)
