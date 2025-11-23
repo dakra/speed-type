@@ -136,6 +136,10 @@ beginning."
   :type 'boolean
   :group 'speed-type)
 
+(defcustom speed-type-downcase nil
+  "Toggle downcasing of mistyped words."
+  :type 'boolean)
+
 (defcustom speed-type-point-motion-on-error 'point-move
   "Define the behavior of point when mistyping a character.
 
@@ -1079,6 +1083,7 @@ CALLBACK is called when the setup process has been completed."
 			inhibit-field-text-motion t)
 	    (insert (speed-type--trim text))
 	    (speed-type--replace-map-adjust-properties speed-type-replace-strings 'speed-type-orig-pos)
+	    (when speed-type-downcase (downcase-region (point-min) (point-max)))
 	    (unless (speed-type--code-buffer-p speed-type--content-buffer)
 	      (speed-type--fill-region))
 	    (when speed-type-ignore-whitespace-for-complete
@@ -1423,7 +1428,7 @@ LIMIT is supplied to the random-function."
 	    (push word words))))
       (let ((words-as-string
 	     (concat (propertize " " 'speed-type-char-status (when speed-type-ignore-whitespace-for-complete 'ignore))
-		     (string-trim (mapconcat 'identity (nreverse words)
+		     (string-trim (mapconcat (if speed-type-downcase 'downcase 'identity) (nreverse words)
 					     (propertize " " 'speed-type-char-status (when speed-type-ignore-whitespace-for-complete 'ignore)))))))
 	(setq speed-type--extra-words-queue (append speed-type--extra-words-queue (split-string words-as-string "" t))))
     (when (not (timerp speed-type--extra-words-animation-time))
@@ -1493,6 +1498,7 @@ LIMIT is supplied to the random-function."
 		   (insert (speed-type--get-random-word buf n))
                    (insert " "))
 		 (speed-type--fill-region)
+		 (when speed-type-downcase (downcase-region (point-min) (point-max)))
 		 (if speed-type-wordlist-transform
                      (funcall speed-type-wordlist-transform (buffer-string))
                    (buffer-string))))
