@@ -56,6 +56,10 @@
   "Name of buffer consisting of the content-source for the speed-type buffer."
   :type 'string)
 
+(defcustom speed-type-preview-buffer-name "*speed-type-preview-buffer*"
+  "Name of buffer consisting of the preview for the speed-type buffer."
+  :type 'string)
+
 (defcustom speed-type-min-chars 200
   "The minimum number of chars to type required when the text is picked randomly."
   :type 'integer)
@@ -173,6 +177,12 @@ they accumulate each other if both variables are set."
   "Name of file for general stats."
   :type 'string)
 
+(defcustom speed-type-provide-preview-option nil
+  "If a separate buffer should display the actual typed characters."
+  :type '(choice (const :tag "Yes" t)
+		 (const :tag "Hidden" hidden)
+		 (const :tag "No" nil)))
+
 (defcustom speed-type-max-num-records 10000
   "Maximum number of saved records."
   :type '(natnum :tag "None negative number." ))
@@ -207,6 +217,10 @@ If nil, the completion is only triggered if all characters are typed."
 (defface speed-type-error-face
   '((t :inherit error :underline t))
   "Face for incorrectly typed characters.")
+
+(defface speed-type-info-face
+  '((t :inherit font-lock-comment-face :underline t))
+  "Face for point-movement in preview buffer.")
 
 ;; internal variables
 
@@ -269,6 +283,8 @@ Median Non-consecutive errors: %d")
 
 ;; buffer local internal variables
 
+(defvar-local speed-type--preview-buffer nil)
+(defvar-local speed-type--last-position 0)
 (defvar-local speed-type--randomize nil)
 (defvar-local speed-type--continue-at-point nil)
 (defvar-local speed-type--file-name nil)
@@ -909,6 +925,27 @@ are color coded and stats are gathered about the typing performance."
     (if (< start (point-max))
 	(let* ((end (if (> end (point-max)) (point-max) end))
 	       (orig (buffer-substring start end)))
+	  (when speed-type--preview-buffer
+	    (let ((new-last-pos start))
+	      (with-current-buffer speed-type--preview-buffer
+		(unwind-protect
+		  (save-excursion
+		    (goto-char (point-max))
+		    (when-let* ((win (get-buffer-window (current-buffer))))
+		      (set-window-point win (point)))
+		    (read-only-mode -1)
+		    (when (and (not (= speed-type--last-position 0))
+			       (> (abs (- new-last-pos speed-type--last-position)) 2))
+		      (let ((point-movement-str (concat "[ " (symbol-name last-command) "(" (number-to-string speed-type--last-position) ") → (" (number-to-string (1- new-last-pos)) ") ]")))
+			(insert point-movement-str)
+			(let ((overlay (make-overlay (- (point) (length point-movement-str)) (point))))
+			  (overlay-put overlay 'priority 1)
+			  (overlay-put overlay 'face 'speed-type-info-face))))
+		    (insert (cond ((eq this-command (key-binding (kbd "<deletechar>"))) "⌦")
+				  ((eq this-command (key-binding (kbd "DEL"))) "⌫")
+				  (t (string-replace " " "·" (string-replace "\n" "⏎" new-text)))))
+		    (setq-local speed-type--last-position new-last-pos))
+		  (read-only-mode)))))
 	  (when speed-type-ignore-whitespace-for-complete ;; add the ignore status again to deleted blank-chars
 	    (save-excursion
 	      (goto-char start)
@@ -1013,6 +1050,22 @@ CALLBACK is called when the setup process has been completed."
       (setq-local speed-type--buffer buf)
       (when (null (boundp 'speed-type--extra-word-quote))
 	(setq-local speed-type--extra-word-quote nil)))
+    (let ((pbuf (when speed-type-provide-preview-option
+		  (setq speed-type--preview-buffer (generate-new-buffer speed-type-preview-buffer-name))
+		  (with-current-buffer speed-type--preview-buffer
+		    (setq-local speed-type--buffer buf
+				speed-type--last-position 0
+				truncate-lines nil)
+		    (speed-type-mode)
+		    (add-hook 'kill-buffer-hook 'speed-type--kill-preview-buffer-hook nil t)
+		    (read-only-mode))
+		  speed-type--preview-buffer))
+	  (cbuf speed-type--content-buffer))
+      (with-current-buffer speed-type--content-buffer
+	(setq-local speed-type--preview-buffer pbuf))
+      (when speed-type--preview-buffer
+	(with-current-buffer speed-type--preview-buffer
+	  (setq-local speed-type--content-buffer cbuf))))
     (when replay-fn (setq speed-type--replay-fn replay-fn))
     (let ((b-inhibit-read-only inhibit-read-only)
 	  (b-buffer-undo-list buffer-undo-list)
@@ -1039,6 +1092,12 @@ CALLBACK is called when the setup process has been completed."
 		    inhibit-field-text-motion b-inhibit-field-text-motion)))
     (set-buffer-modified-p nil)
     (switch-to-buffer buf)
+    (when (eq speed-type-provide-preview-option t)
+      (let ((sw (selected-window))
+	    (pw (split-window nil 3 'above)))
+	(set-window-buffer sw speed-type--preview-buffer)
+	(set-window-buffer pw buf)
+	(select-window pw)))
     (goto-char 0)
     (add-hook 'before-change-functions #'speed-type--before-change nil t)
     (add-hook 'after-change-functions 'speed-type--change nil t)
@@ -1077,15 +1136,36 @@ CALLBACK is called when the setup process has been completed."
   (when speed-type--extra-words-animation-time (cancel-timer speed-type--extra-words-animation-time))
   (when speed-type--content-buffer
     (let ((buf speed-type--content-buffer))
-      (setq speed-type--content-buffer nil)
-      (kill-buffer buf))))
+      (setq-local speed-type--content-buffer nil)
+      (kill-buffer buf)))
+  (when speed-type--preview-buffer
+    (let ((pbuf speed-type--preview-buffer))
+      (setq-local speed-type--preview-buffer nil)
+      (kill-buffer pbuf))))
 
 (defun speed-type--kill-content-buffer-hook ()
   "Hook when content buffer is killed."
   (when speed-type--buffer
     (let ((buf speed-type--buffer))
-      (setq speed-type--buffer nil)
-      (kill-buffer buf))))
+      (setq-local speed-type--buffer nil)
+      (kill-buffer buf)))
+  (when speed-type--preview-buffer
+    (let ((pbuf speed-type--preview-buffer))
+      (setq-local speed-type--preview-buffer nil)
+      (kill-buffer pbuf))))
+
+(defun speed-type--kill-preview-buffer-hook ()
+  "Hook when preview buffer is killed."
+  (when (get-buffer-window (current-buffer))
+    (delete-window (get-buffer-window speed-type--preview-buffer)))
+  (when speed-type--buffer
+    (let ((buf speed-type--buffer))
+      (setq-local speed-type--buffer nil)
+      (kill-buffer buf)))
+  (when speed-type--content-buffer
+    (let ((cbuf speed-type--content-buffer))
+      (setq-local speed-type--content-buffer nil)
+      (kill-buffer cbuf))))
 
 (defun speed-type--pick-continue-text-to-type (start end)
   "Pick text of size between speed-type-min and speed-type-max continuing at START.
@@ -1227,66 +1307,78 @@ been completed."
 
 (defun speed-type--get-continue-fn (end)
   "Return a replay function which will use GO-NEXT-FN after completion."
-  (remove-hook 'kill-buffer-hook 'speed-type--kill-buffer-hook t)
-  (let* ((start (speed-type--get-continue-point))
-	 (text (with-current-buffer speed-type--content-buffer
+  (let* ((content-buffer speed-type--content-buffer)
+	 (start (speed-type--get-continue-point))
+	 (text (with-current-buffer content-buffer
 		 (speed-type--pick-continue-text-to-type start (point-max)))))
-    (if (speed-type--code-buffer-p speed-type--content-buffer)
+    (when (and speed-type--preview-buffer (get-buffer-window speed-type--preview-buffer))
+      (delete-window (get-buffer-window speed-type--preview-buffer)))
+    (when speed-type--preview-buffer
+      (with-current-buffer speed-type--preview-buffer
+	(setq-local speed-type--content-buffer nil)))
+    (setq-local speed-type--content-buffer nil)
+    (if (speed-type--code-buffer-p content-buffer)
 	(speed-type--code-with-highlighting
-	 speed-type--content-buffer
+	 content-buffer
 	 text
 	 speed-type--file-name
 	 speed-type--title
 	 speed-type--author
 	 speed-type--randomize
-	 (with-current-buffer speed-type--content-buffer (syntax-table))
-	 (with-current-buffer speed-type--content-buffer font-lock-defaults)
+	 (with-current-buffer content-buffer (syntax-table))
+	 (with-current-buffer content-buffer font-lock-defaults)
 	 speed-type--go-next-fn
 	 (lambda () (speed-type--get-continue-fn end)))
-      (speed-type--setup speed-type--content-buffer
+      (speed-type--setup content-buffer
 	       text
 	       :file-name speed-type--file-name
 	       :author speed-type--author
 	       :title speed-type--title
 	       :randomize speed-type--randomize
-	       :add-extra-word-content-fn (lambda () (speed-type--get-next-word speed-type--content-buffer))
+	       :add-extra-word-content-fn (lambda () (speed-type--get-next-word content-buffer))
 	       :replay-fn #'speed-type--get-replay-fn
 	       :continue-fn (lambda () (speed-type--get-continue-fn end))
 	       :go-next-fn speed-type--go-next-fn))))
 
 (defun speed-type--get-replay-fn ()
   "Return a replay function which will use GO-NEXT-FN after completion."
-  (remove-hook 'kill-buffer-hook 'speed-type--kill-buffer-hook t)
-  (if (speed-type--code-buffer-p speed-type--content-buffer)
-      (speed-type--code-with-highlighting
-       speed-type--content-buffer
-       (progn
-	 (read-only-mode -1)
-	 (remove-text-properties (point-min) speed-type--max-point-on-complete '(speed-type-char-status nil))
-	 (buffer-substring (point-min) speed-type--max-point-on-complete))
-       speed-type--file-name
-       speed-type--title
-       speed-type--author
-       speed-type--randomize
-       (with-current-buffer speed-type--content-buffer (syntax-table))
-       (with-current-buffer speed-type--content-buffer font-lock-defaults)
-       speed-type--go-next-fn
-       speed-type--continue-fn)
-    (speed-type--setup speed-type--content-buffer
-	     (progn
-	       (read-only-mode -1)
-	       (remove-text-properties (point-min) speed-type--max-point-on-complete '(speed-type-char-status nil))
-	       (buffer-substring (point-min) speed-type--max-point-on-complete))
-	     :lang speed-type--lang
-	     :file-name speed-type--file-name
-	     :author speed-type--author
-	     :title speed-type--title
-	     :n-words speed-type--n-words
-	     :randomize speed-type--randomize
-	     :add-extra-word-content-fn speed-type--add-extra-word-content-fn
-             :replay-fn #'speed-type--get-replay-fn
-	     :continue-fn speed-type--continue-fn
-             :go-next-fn speed-type--go-next-fn)))
+  (let ((content-buffer speed-type--content-buffer))
+    (when (and speed-type--preview-buffer (get-buffer-window speed-type--preview-buffer))
+      (delete-window (get-buffer-window speed-type--preview-buffer)))
+    (setq-local speed-type--content-buffer nil)
+    (when speed-type--preview-buffer
+      (with-current-buffer speed-type--preview-buffer
+	(setq-local speed-type--content-buffer nil)))
+    (if (speed-type--code-buffer-p content-buffer)
+	(speed-type--code-with-highlighting
+	 content-buffer
+	 (progn
+	   (read-only-mode -1)
+	   (remove-text-properties (point-min) speed-type--max-point-on-complete '(speed-type-char-status nil))
+	   (buffer-substring (point-min) speed-type--max-point-on-complete))
+	 speed-type--file-name
+	 speed-type--title
+	 speed-type--author
+	 speed-type--randomize
+	 (with-current-buffer content-buffer (syntax-table))
+	 (with-current-buffer content-buffer font-lock-defaults)
+	 speed-type--go-next-fn
+	 speed-type--continue-fn)
+      (speed-type--setup content-buffer
+	       (progn
+		 (read-only-mode -1)
+		 (remove-text-properties (point-min) speed-type--max-point-on-complete '(speed-type-char-status nil))
+		 (buffer-substring (point-min) speed-type--max-point-on-complete))
+	       :lang speed-type--lang
+	       :file-name speed-type--file-name
+	       :author speed-type--author
+	       :title speed-type--title
+	       :n-words speed-type--n-words
+	       :randomize speed-type--randomize
+	       :add-extra-word-content-fn speed-type--add-extra-word-content-fn
+               :replay-fn #'speed-type--get-replay-fn
+	       :continue-fn speed-type--continue-fn
+               :go-next-fn speed-type--go-next-fn))))
 
 (defun speed-type--get-next-word (content-buffer)
   "Get next word from point in CONTENT-BUFFER."
