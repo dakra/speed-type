@@ -64,6 +64,10 @@
   "The maximum number of chars to type required when the text is picked randomly."
   :type 'integer)
 
+(defcustom speed-type-pause-dealy-seconds 5
+  "Define after which idle delay it should pause the timer."
+  :type 'integer)
+
 (defcustom speed-type-gb-book-list
   '(1342 11 1952 1661 74 1232 23 135 5200 2591 844 84 98 2701 1400 16328 174
          46 4300 345 1080 2500 829 1260 6130 1184 768 32032 521 1399 55)
@@ -269,7 +273,7 @@ Median Non-consecutive errors: %d")
 (defvar-local speed-type--continue-at-point nil)
 (defvar-local speed-type--file-name nil)
 (defvar-local speed-type--max-point-on-complete nil)
-(defvar-local speed-type--start-time nil)
+(defvar-local speed-type--time-register nil)
 (defvar-local speed-type--last-changed-text nil)
 (defvar-local speed-type--buffer nil)
 (defvar-local speed-type--content-buffer nil)
@@ -288,7 +292,25 @@ Median Non-consecutive errors: %d")
 (defvar-local speed-type--continue-fn nil)
 (defvar-local speed-type--replay-fn #'speed-type--setup)
 (defvar-local speed-type--extra-word-quote nil)
+(defvar-local speed-type--idle-pause-timer nil)
 
+(defun speed-type--resume ()
+  "Resume the current typing session.
+
+Adding the idle timer again, and pushing the newest time to stack."
+  (unless speed-type--idle-pause-timer
+    (setq speed-type--idle-pause-timer (run-with-idle-timer 5 nil #'speed-type-pause)
+	  speed-type--time-register (append speed-type--time-register (list (float-time))))))
+
+(defun speed-type-pause ()
+  "Pushes the current time to the start-time variable.
+
+The list of times is used to calculate the overall active typing time."
+  (interactive)
+  (message "Speed-type session is paused. Resume will be triggered on buffer-change.")
+  (when speed-type--idle-pause-timer
+    (setq speed-type--idle-pause-timer nil
+	  speed-type--time-register (append speed-type--time-register (list (float-time))))))
 
 (defun speed-type--/ (number divisor)
   "Divide NUMBER by DIVISOR when DIVISOR is not null.
@@ -371,7 +393,7 @@ SPEED-TYPE-MAYBE-UPGRADE-FILE-FORMAT."
   (let ((entries speed-type--entries)
 	(errors speed-type--errors)
 	(corrections speed-type--corrections)
-	(seconds (speed-type--elapsed-time)))
+	(seconds (speed-type--elapsed-time speed-type--time-register)))
     (list (cons 'speed-type--title speed-type--title)
 	  (cons 'speed-type--author speed-type--author)
 	  (cons 'speed-type--lang speed-type--lang)
@@ -381,6 +403,7 @@ SPEED-TYPE-MAYBE-UPGRADE-FILE-FORMAT."
 	  (cons 'speed-type--non-consecutive-errors speed-type--non-consecutive-errors)
 	  (cons 'speed-type--corrections corrections)
 	  (cons 'speed-type--elapsed-time seconds)
+	  (cons 'speed-type--time-register speed-type--time-register)
 	  (cons 'speed-type--gross-wpm (speed-type--gross-wpm entries seconds))
 	  (cons 'speed-type--gross-cpm (speed-type--gross-cpm entries seconds))
 	  (cons 'speed-type--net-wpm (speed-type--net-wpm entries errors seconds))
@@ -671,11 +694,29 @@ speed-type files that were created using the speed-type functions."
   "Return buffer with wordlist for language LANG in it."
   (speed-type--retrieve lang (cdr (assoc lang speed-type-wordlist-urls))))
 
-(defun speed-type--elapsed-time ()
-  "Return float with the total time since start."
-  (let ((end-time (float-time)))
-    (if (not speed-type--start-time)
-        0 (- end-time speed-type--start-time))))
+(defun speed-type--list-to-alist-safe (lst)
+  "Convert flat list LST into an alist.
+If the list length is odd, the last element is kept as (key . nil)."
+  (cond
+   ((null lst) nil)
+   ((null (cdr lst)) (list (cons (car lst) nil)))
+   (t (cons (cons (car lst) (cadr lst))
+            (speed-type--list-to-alist-safe (cddr lst))))))
+
+(defun speed-type--elapsed-time (time-register)
+  "Return float with the total time since start.
+
+TIME-REGISTER is a list of time-floats. Must be of length 0 or a even number. The elements are paired, between the pairs the difference calculated and summed.
+
+If the length is 0 will return 0.
+
+If the length is uneven will return symbol 'uneven."
+  (if (= (% (length time-register) 2) 0)
+      (if time-register
+	  (apply #'+ (mapcar (lambda (time-pair) (- (cdr time-pair) (car time-pair)))
+			   (speed-type--list-to-alist-safe time-register)))
+	0)
+      'uneven))
 
 (defconst speed-type--whitespace-table
   (let ((tbl (make-vector 256 nil)))
@@ -791,11 +832,14 @@ ENTRIES ERRORS CORRECTIONS SECONDS."
   (interactive)
   (remove-hook 'before-change-functions #'speed-type--before-change t)
   (remove-hook 'after-change-functions #'speed-type--change t)
-  (remove-hook 'first-change-hook #'speed-type--first-change t)
   (speed-type-finish-animation speed-type--buffer)
   (goto-char (point-max))
   (with-current-buffer speed-type--buffer
     (setq speed-type--max-point-on-complete (point-max))
+    (when speed-type--idle-pause-timer ;; if session is started
+      (cancel-timer speed-type--idle-pause-timer)
+      (setq speed-type--time-register (append speed-type--time-register (list (float-time)))))
+    (speed-type-save-stats-when-customized)
     (insert "\n\n")
     (save-excursion
       (when speed-type--title (insert (propertize speed-type--title 'face 'italic)))
@@ -808,8 +852,7 @@ ENTRIES ERRORS CORRECTIONS SECONDS."
 	       speed-type--errors
 	       speed-type--non-consecutive-errors
 	       speed-type--corrections
-	       (speed-type--elapsed-time)))
-      (speed-type-save-stats-when-customized)
+	       (speed-type--elapsed-time speed-type--time-register)))
       (speed-type-display-menu))))
 
 (defun speed-type--diff (orig new start end)
@@ -858,6 +901,7 @@ END is a point where the check stops to scan for diff."
 LENGTH is ignored. Used for hook AFTER-CHANGE-FUNCTIONS.
 Make sure that the contents don't actually change, but rather the contents
 are color coded and stats are gathered about the typing performance."
+  (unless speed-type--idle-pause-timer (speed-type--resume))
   (let ((new-text (buffer-substring start end))
 	(old-text speed-type--last-changed-text))
     (speed-type--handle-del start end)
@@ -880,11 +924,6 @@ are color coded and stats are gathered about the typing performance."
 	    (speed-type-complete)))
       (beep)
       (message "End of buffer"))))
-
-(defun speed-type--first-change ()
-  "Start the timer."
-  (when (not speed-type--start-time)
-    (setq speed-type--start-time (float-time))))
 
 (defun speed-type--trim (str)
   "Trim leading and tailing whitespace from STR."
@@ -1003,7 +1042,6 @@ CALLBACK is called when the setup process has been completed."
     (goto-char 0)
     (add-hook 'before-change-functions #'speed-type--before-change nil t)
     (add-hook 'after-change-functions 'speed-type--change nil t)
-    (add-hook 'first-change-hook 'speed-type--first-change nil t)
     (add-hook 'kill-buffer-hook 'speed-type--kill-buffer-hook nil t)
     (setq-local post-self-insert-hook nil)
     (when callback (funcall callback))
@@ -1035,6 +1073,7 @@ CALLBACK is called when the setup process has been completed."
 
 (defun speed-type--kill-buffer-hook ()
   "Hook when speed-type buffer is killed."
+  (when speed-type--idle-pause-timer (cancel-timer speed-type--idle-pause-timer))
   (when speed-type--extra-words-animation-time (cancel-timer speed-type--extra-words-animation-time))
   (when speed-type--content-buffer
     (let ((buf speed-type--content-buffer))
