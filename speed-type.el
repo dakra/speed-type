@@ -119,6 +119,15 @@ To remove without replacement, use the form: `(bad-string . \"\")'"
   :type '(alist :key-type string :value-type string)
   :group 'speed-type)
 
+(defcustom speed-type-randomize t
+  "Affects the text-picker when starting speed-type-buffer or speed-type-text.
+
+When non-nil it picks a random portion, otherwise it checks for existing
+records to start from. If nothing found will take text-portion from the
+beginning."
+  :type 'boolean
+  :group 'speed-type)
+
 (defcustom speed-type-point-motion-on-error 'point-move
   "Define the behavior of point when mistyping a character.
 
@@ -256,6 +265,9 @@ Median Non-consecutive errors: %d")
 
 ;; buffer local internal variables
 
+(defvar-local speed-type--randomize nil)
+(defvar-local speed-type--continue-at-point nil)
+(defvar-local speed-type--file-name nil)
 (defvar-local speed-type--max-point-on-complete nil)
 (defvar-local speed-type--start-time nil)
 (defvar-local speed-type--last-changed-text nil)
@@ -373,7 +385,9 @@ SPEED-TYPE-MAYBE-UPGRADE-FILE-FORMAT."
 	  (cons 'speed-type--gross-cpm (speed-type--gross-cpm entries seconds))
 	  (cons 'speed-type--net-wpm (speed-type--net-wpm entries errors seconds))
 	  (cons 'speed-type--net-cpm (speed-type--net-cpm entries errors seconds))
-	  (cons 'speed-type--accuracy (speed-type--accuracy entries (- entries errors) corrections)))))
+	  (cons 'speed-type--accuracy (speed-type--accuracy entries (- entries errors) corrections))
+	  (cons 'speed-type--continue-at-point (unless speed-type--randomize (speed-type--get-continue-point)))
+	  (cons 'speed-type--file-name speed-type--file-name))))
 
 (defun speed-type-grok-file-format-version ()
   "Integer which indicates the file-format version of speed-type statistic file.
@@ -433,6 +447,15 @@ CODING is the symbol of the coding-system in which the file is encoded."
           ";;; nevertheless, you probably don't want to edit it.\n"
           ";;; "
           speed-type-end-of-version-stamp-marker))
+
+(defun speed-type--find-last-continue-at-point-in-stats (file-name)
+  "Find if any the last continue-at-point-in-stats."
+  (if file-name
+      (let ((last (cl-find-if (lambda (e) (and (string-equal-ignore-case (or (cdr (assoc 'speed-type--file-name e)) "") file-name)
+					       (cdr (assoc 'speed-type--continue-at-point e))))
+			      (nreverse (speed-type-load-last-stats speed-type-statistic-filename)))))
+	(cdr (assoc 'speed-type--continue-at-point last)))
+    nil))
 
 (defun speed-type-save-stats-when-customized ()
   "Check the custom variable SPEED-TYPE-SAVE-STATISTIC-OPTION and save stats."
@@ -763,14 +786,6 @@ ENTRIES ERRORS CORRECTIONS SECONDS."
 	  non-consecutive-errors
           speed-type-explaining-message))
 
-(defun speed-type--find-last-typed-character ()
-  "Find in the sequence of the first consecutive of typed characters the last character. return point."
-  (save-excursion
-    (goto-char (point-min))
-    (text-property-search-forward 'speed-type-char-status 'nil t)
-    (text-property-search-backward 'speed-type-char-status 'nil t)
-    (point)))
-
 (defun speed-type-complete ()
   "Remove typing hooks from the buffer and print statistics."
   (interactive)
@@ -781,22 +796,21 @@ ENTRIES ERRORS CORRECTIONS SECONDS."
   (goto-char (point-max))
   (with-current-buffer speed-type--buffer
     (setq speed-type--max-point-on-complete (point-max))
-    (when speed-type--title
-      (insert "\n\n")
-      (save-excursion
-	(insert (propertize speed-type--title 'face 'italic))
-	(when speed-type--author
-	  (insert (propertize
-		   (format ", by %s" speed-type--author)
-		   'face 'italic)))
-	(insert (speed-type-generate-stats
-		 speed-type--entries
-		 speed-type--errors
-		 speed-type--non-consecutive-errors
-		 speed-type--corrections
-		 (speed-type--elapsed-time)))
-	(speed-type-save-stats-when-customized)
-	(speed-type-display-menu)))))
+    (insert "\n\n")
+    (save-excursion
+      (when speed-type--title (insert (propertize speed-type--title 'face 'italic)))
+      (when speed-type--author
+	(insert (propertize
+		 (format ", by %s" speed-type--author)
+		 'face 'italic)))
+      (insert (speed-type-generate-stats
+	       speed-type--entries
+	       speed-type--errors
+	       speed-type--non-consecutive-errors
+	       speed-type--corrections
+	       (speed-type--elapsed-time)))
+      (speed-type-save-stats-when-customized)
+      (speed-type-display-menu))))
 
 (defun speed-type--diff (orig new start end)
   "Synchronise local buffer state with buffer-content by comparing ORIG and NEW.
@@ -915,7 +929,7 @@ PROPERTY is the text property to preserve/adjust around the replaced region."
 	     (t (put-text-property prop-start prop-end property old-property-value)))))))))
 
 (cl-defun speed-type--setup
-    (content-buffer text &key author title lang n-words continue-fn add-extra-word-content-fn replay-fn go-next-fn callback)
+    (content-buffer text &key file-name author title lang n-words randomize continue-fn add-extra-word-content-fn replay-fn go-next-fn callback)
   "Set up a new buffer for the typing exercise on TEXT.
 
 AUTHOR and TITLE can be given, this happen when the text to type comes
@@ -944,10 +958,12 @@ CALLBACK is called when the setup process has been completed."
     (set-buffer buf)
     (speed-type-mode)
     (buffer-face-set 'speed-type-default)
-    (setq speed-type--author author
+    (setq speed-type--file-name file-name
+	  speed-type--author author
 	  speed-type--title title
 	  speed-type--lang lang
 	  speed-type--n-words n-words
+	  speed-type--randomize randomize
 	  speed-type--add-extra-word-content-fn add-extra-word-content-fn
 	  speed-type--continue-fn continue-fn
 	  speed-type--go-next-fn go-next-fn)
@@ -1107,7 +1123,7 @@ to (point-min) and (point-max)"
   (buffer-substring (region-beginning) (region-end)))
 
 (defun speed-type--setup-code
-    (content-buffer text title author &optional replay-fn go-next-fn continue-fn syntax-table font-lock-df)
+    (content-buffer text file-name title author randomize &optional replay-fn go-next-fn continue-fn syntax-table font-lock-df)
   "Speed type the code snippet TEXT which was extracted from CONTENT-BUFFER.
 
 CONTENT-BUFFER will be linked to the SPEED-TYPE-BUFFER.
@@ -1129,14 +1145,16 @@ and font lock defaults by FONT-LOCK-DF."
                           (ignore-errors (font-lock-ensure))))))
     (speed-type--setup content-buffer
 	     text
+	     :file-name file-name
 	     :author author
 	     :title title
+	     :randomize randomize
 	     :replay-fn replay-fn
              :go-next-fn go-next-fn
 	     :continue-fn continue-fn
              :callback #'callback)))
 
-(defun speed-type--code-with-highlighting (content-buffer text title author &optional syntax-table font-lock-df go-next-fn continue-fn)
+(defun speed-type--code-with-highlighting (content-buffer text file-name title author randomize &optional syntax-table font-lock-df go-next-fn continue-fn)
   "Speed type TEXT with syntax highlight which was extracted from CONTENT-BUFFER.
 
 CONTENT-BUFFER will be linked to the SPEED-TYPE-BUFFER..
@@ -1148,35 +1166,50 @@ If GO-NEXT-FN is specified, call it when speed typing the text has
 been completed."
   (speed-type--setup-code content-buffer
 		text
+		file-name
 		title
 		author
+		randomize
 		#'speed-type--get-replay-fn
 		go-next-fn
 		continue-fn
 		syntax-table
 		font-lock-df))
 
+(defun speed-type--get-continue-point ()
+  (let ((continue-point (save-excursion
+			  (goto-char (point-min))
+			  (text-property-search-forward 'speed-type-char-status 'nil t)
+			  (text-property-search-backward 'speed-type-char-status 'nil t)
+			  (point))))
+    (if (= (point-min) continue-point)
+	(car (get-text-property continue-point 'speed-type-orig-pos))
+      (cdr (get-text-property (1- continue-point) 'speed-type-orig-pos)))))
+
 (defun speed-type--get-continue-fn (end)
   "Return a replay function which will use GO-NEXT-FN after completion."
   (remove-hook 'kill-buffer-hook 'speed-type--kill-buffer-hook t)
-  (let* ((continue-point (1- (speed-type--find-last-typed-character)))
-	 (start (cdr (get-text-property continue-point 'speed-type-orig-pos)))
+  (let* ((start (speed-type--get-continue-point))
 	 (text (with-current-buffer speed-type--content-buffer
 		 (speed-type--pick-continue-text-to-type start (point-max)))))
     (if (speed-type--code-buffer-p speed-type--content-buffer)
 	(speed-type--code-with-highlighting
 	 speed-type--content-buffer
 	 text
+	 speed-type--file-name
 	 speed-type--title
 	 speed-type--author
+	 speed-type--randomize
 	 (with-current-buffer speed-type--content-buffer (syntax-table))
 	 (with-current-buffer speed-type--content-buffer font-lock-defaults)
 	 speed-type--go-next-fn
 	 (lambda () (speed-type--get-continue-fn end)))
       (speed-type--setup speed-type--content-buffer
 	       text
+	       :file-name speed-type--file-name
 	       :author speed-type--author
 	       :title speed-type--title
+	       :randomize speed-type--randomize
 	       :add-extra-word-content-fn (lambda () (speed-type--get-next-word speed-type--content-buffer))
 	       :replay-fn #'speed-type--get-replay-fn
 	       :continue-fn (lambda () (speed-type--get-continue-fn end))
@@ -1192,8 +1225,10 @@ been completed."
 	 (read-only-mode -1)
 	 (remove-text-properties (point-min) speed-type--max-point-on-complete '(speed-type-char-status nil))
 	 (buffer-substring (point-min) speed-type--max-point-on-complete))
+       speed-type--file-name
        speed-type--title
        speed-type--author
+       speed-type--randomize
        (with-current-buffer speed-type--content-buffer (syntax-table))
        (with-current-buffer speed-type--content-buffer font-lock-defaults)
        speed-type--go-next-fn
@@ -1204,9 +1239,11 @@ been completed."
 	       (remove-text-properties (point-min) speed-type--max-point-on-complete '(speed-type-char-status nil))
 	       (buffer-substring (point-min) speed-type--max-point-on-complete))
 	     :lang speed-type--lang
+	     :file-name speed-type--file-name
 	     :author speed-type--author
 	     :title speed-type--title
 	     :n-words speed-type--n-words
+	     :randomize speed-type--randomize
 	     :add-extra-word-content-fn speed-type--add-extra-word-content-fn
              :replay-fn #'speed-type--get-replay-fn
 	     :continue-fn speed-type--continue-fn
@@ -1332,10 +1369,12 @@ LIMIT is supplied to the random-function."
          (go-next-fn (lambda () (speed-type-top-x n))))
     (speed-type--setup buf
 	     text
-             :title title
+             :file-name file-path
 	     :author "Uni Leipzig"
+	     :title title
              :lang lang
              :n-words n
+	     :randomize t
 	     :add-extra-word-content-fn add-extra-word-content-fn
              :replay-fn #'speed-type--get-replay-fn
              :go-next-fn go-next-fn)))
@@ -1371,6 +1410,8 @@ LIMIT is supplied to the random-function."
 				  font-lock-defaults)
       (speed-type--setup buf
 	       (buffer-substring-no-properties start end)
+	       :file-name (buffer-file-name (current-buffer))
+	       :randomize t
 	       :author (user-full-name)
 	       :title title
 	       :replay-fn #'speed-type--get-replay-fn))))
@@ -1384,25 +1425,31 @@ will be used.  Else some text will be picked randomly."
   (interactive "P")
   (if full
       (speed-type-region (point-min) (point-max))
-    (let* ((buf (speed-type-prepare-content-buffer-from-buffer (current-buffer)))
-           (text (with-current-buffer buf (speed-type--pick-text-to-type)))
-	   (line-count (with-current-buffer buf (count-lines (point-min) (point-max))))
-           (go-next-fn (lambda () (with-current-buffer buf (speed-type-buffer full)))))
-      (if (speed-type--code-buffer-p buf)
-          (speed-type--code-with-highlighting buf
-				    text
-				    (user-full-name)
-				    (buffer-name)
-                                    (syntax-table)
-                                    font-lock-defaults
-                                    go-next-fn)
-        (speed-type--setup buf
-		 text
-		 :author (user-full-name)
-		 :title (buffer-name)
-		 :add-extra-word-content-fn (lambda () (speed-type--get-separated-thing-at-random-line buf line-count " "))
-		 :replay-fn #'speed-type--get-replay-fn
-		 :go-next-fn go-next-fn)))))
+    (if speed-type-randomize
+	(let* ((buf (speed-type-prepare-content-buffer-from-buffer (current-buffer)))
+               (text (with-current-buffer buf (speed-type--pick-text-to-type)))
+	       (line-count (with-current-buffer buf (count-lines (point-min) (point-max))))
+               (go-next-fn (lambda () (with-current-buffer buf (speed-type-buffer full)))))
+	  (if (speed-type--code-buffer-p buf)
+              (speed-type--code-with-highlighting buf
+					text
+					(buffer-file-name (current-buffer))
+					(buffer-name)
+					(user-full-name)
+					t
+					(syntax-table)
+					font-lock-defaults
+					go-next-fn)
+            (speed-type--setup buf
+		     text
+		     :file-name (buffer-file-name (current-buffer))
+		     :author (user-full-name)
+		     :title (buffer-name)
+		     :randomize t
+		     :add-extra-word-content-fn (lambda () (speed-type--get-separated-thing-at-random-line buf line-count " "))
+		     :replay-fn #'speed-type--get-replay-fn
+		     :go-next-fn go-next-fn)))
+      (speed-type-continue))))
 
 ;;;###autoload
 (defun speed-type-text ()
@@ -1410,36 +1457,40 @@ will be used.  Else some text will be picked randomly."
   (interactive)
   (let* ((book-num (nth (random (length speed-type-gb-book-list))
                         speed-type-gb-book-list))
-         (fn (speed-type--gb-retrieve book-num))
-	 (buf (speed-type-prepare-content-buffer fn))
-	 (title (with-current-buffer buf
-		  (save-excursion
-		    (when (re-search-forward "^Title: " nil t)
-		      (buffer-substring (point) (line-end-position))))))
-	 (author (with-current-buffer buf
-		   (save-excursion
-		     (when (re-search-forward "^Author: " nil t)
-		       (buffer-substring (point) (line-end-position))))))
-	 (start (with-current-buffer buf
-		  (when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
-		    (end-of-line 1)
-		    (forward-line 1)
-		    (point))))
-	 (end (with-current-buffer buf
-		(when (re-search-forward "***.END.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
-		  (beginning-of-line 1)
-		  (forward-line -1)
-		  (point))))
-	 (text (with-current-buffer buf
-		 (speed-type--pick-text-to-type start end))))
-    (speed-type--setup buf
-	     text
-             :author author
-             :title title
-	     :add-extra-word-content-fn (lambda () (speed-type--get-next-word buf))
-             :replay-fn #'speed-type--get-replay-fn
-	     :continue-fn (lambda () (speed-type--get-continue-fn end))
-             :go-next-fn #'speed-type-text)))
+         (fn (speed-type--gb-retrieve book-num)))
+    (if speed-type-randomize
+	(let* ((buf (speed-type-prepare-content-buffer fn))
+	       (title (with-current-buffer buf
+			(save-excursion
+			  (when (re-search-forward "^Title: " nil t)
+			    (buffer-substring (point) (line-end-position))))))
+	       (author (with-current-buffer buf
+			 (save-excursion
+			   (when (re-search-forward "^Author: " nil t)
+			     (buffer-substring (point) (line-end-position))))))
+	       (start (with-current-buffer buf
+			(when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+			  (end-of-line 1)
+			  (forward-line 1)
+			  (point))))
+	       (end (with-current-buffer buf
+		      (when (re-search-forward "***.END.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+			(beginning-of-line 1)
+			(forward-line -1)
+			(point))))
+	       (text (with-current-buffer buf
+		       (speed-type--pick-text-to-type start end))))
+	  (speed-type--setup buf
+		   text
+		   :file-name fn
+		   :author author
+		   :title title
+		   :randomize t
+		   :add-extra-word-content-fn (lambda () (speed-type--get-next-word buf))
+		   :replay-fn #'speed-type--get-replay-fn
+		   :continue-fn (lambda () (speed-type--get-continue-fn end))
+		   :go-next-fn #'speed-type-text))
+      (speed-type-continue fn))))
 
 ;;;###autoload
 (defun speed-type-quotes (&optional arg)
@@ -1450,7 +1501,8 @@ If `ARG' is given will prompt for a specific quote-URL."
   (let* ((quote-url (if (= arg 1)
 			(nth (random (length speed-type-quote-urls)) speed-type-quote-urls)
 		      (assoc (intern (completing-read "Choose a quote: " (mapcar 'car speed-type-quote-urls) 'symbolp t nil nil "johnVonNeumann")) speed-type-quote-urls)))
-	 (buf (speed-type-prepare-content-buffer (speed-type--retrieve (car quote-url) (cdr quote-url))))
+	 (fn (speed-type--retrieve (car quote-url) (cdr quote-url)))
+	 (buf (speed-type-prepare-content-buffer fn))
 	 (title (with-current-buffer buf
 		  (save-excursion (search-forward-regexp "<title>\\(.*\\)</title>")
 				  (match-string 1))))
@@ -1471,11 +1523,92 @@ If `ARG' is given will prompt for a specific quote-URL."
 	 (go-next-fn (lambda () (speed-type-quotes arg))))
     (speed-type--setup buf
 	     text
+	     :file-name fn
 	     :title title
 	     :author author
+	     :randomize t
 	     :add-extra-word-content-fn add-extra-word-content-fn
 	     :replay-fn #'speed-type--get-replay-fn
 	     :go-next-fn go-next-fn)))
+
+;;;###autoload
+(defun speed-type-continue (&optional file-name)
+  "Searches the last position of the file opened by this buffer and setup a speed-type-session continuing at that last found position. If nothing is found, will begin at 0.
+
+If FILE-NAME is given, will continue with that given file-name.
+
+If FILE-NAME is not found, will throw a user-error.
+
+If FILE-NAME is nil, will use file-name of CURRENT-BUFFER."
+  (interactive "P")
+  (if (eq speed-type-save-statistic-option 'never)
+      (user-error "To use continue the variable speed-type-save-statistic-option can't be never")
+    (let* ((buffer (cond ((equal '(4) file-name)
+			  (find-file-noselect (read-file-name "Pick your file:" speed-type-gb-dir)))
+			 ((stringp file-name) (find-file-noselect file-name))
+			 (t (current-buffer))))
+	   (buf (speed-type-prepare-content-buffer-from-buffer buffer)))
+      (with-current-buffer buf
+	(let* ((title (save-excursion
+			(or (when (re-search-forward "^Title: " nil t)
+			      (buffer-substring (point) (line-end-position)))
+			    (buffer-name buffer))))
+	       (author (save-excursion
+			 (when (re-search-forward "^Author: " nil t)
+			   (buffer-substring (point) (line-end-position)))))
+	       (fn (with-current-buffer buffer
+		     (progn
+		       (unless (buffer-file-name buffer)
+			 (let ((r-fn (read-file-name "To save progress, choose a file-location for buffer:" speed-type-gb-dir)))
+			   (when (> (or (speed-type--find-last-continue-at-point-in-stats r-fn) 0) (point-max)) (user-error "Can not continue because file already has saved progress which exceeds buffer length"))
+			   (write-file r-fn)))
+		       (buffer-file-name (current-buffer)))))
+	       (start (or (speed-type--find-last-continue-at-point-in-stats (buffer-file-name buffer))
+			  (when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+			    (end-of-line 1)
+			    (forward-line 1)
+			    (point))
+			  (point-min)))
+	       (end (or (when (re-search-forward "***.END.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+			  (beginning-of-line 1)
+			  (forward-line -1)
+			  (point))
+			(point-max)))
+	       (text (speed-type--pick-continue-text-to-type
+		      (if (>= start (1- end))
+			  (if (y-or-n-p "You completed this file, would you start over again?")
+			      (or (save-excursion
+				    (goto-char (point-min))
+				    (when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+				      (end-of-line 1)
+				      (forward-line 1)
+				      (point)))
+				  (point-min))
+			    (user-error "Aborted speed-type-continue because file completed"))
+			start)
+		      end)))
+	  (if (speed-type--code-buffer-p buf)
+	      (speed-type--code-with-highlighting
+	       buf
+	       text
+	       fn
+	       title
+	       author
+	       nil
+	       (syntax-table)
+	       font-lock-defaults
+	       speed-type--go-next-fn
+	       (lambda () (speed-type--get-continue-fn end)))
+	    (speed-type--setup buf
+		     text
+		     :file-name fn
+		     :randomize nil
+		     :author author
+		     :title title
+		     :add-extra-word-content-fn (lambda () (speed-type--get-next-word buf))
+		     :replay-fn #'speed-type--get-replay-fn
+		     :continue-fn (lambda () (speed-type--get-continue-fn end))
+		     :go-next-fn #'speed-type-text)))))))
 
 (provide 'speed-type)
 ;;; speed-type.el ends here
