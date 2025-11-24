@@ -633,6 +633,41 @@ speed-type files that were created using the speed-type functions."
     (message "Speed-type stats in `%s' loaded" file)
     blist))
 
+(defun speed-type--convert-url (str)
+  "Convert STR to a posix standard compatible form and use hash to make it more unique."
+  (concat
+   (let* ((hash-func (or (car (member 'sha1 (secure-hash-algorithms)))
+			 (car (member 'md5 (secure-hash-algorithms)))))
+	  (hash-str (or (when hash-func (funcall hash-func str)) "no-hash"))
+	  (short-hash-str (substring hash-str 0 (min 7 (length hash-str)))))
+     short-hash-str)
+   "-"
+   (let ((posix-str (replace-regexp-in-string "-+" "-" (replace-regexp-in-string "[^A-Za-z0-9-]" "-" str))))
+     (substring posix-str 0 (min 64 (length posix-str))))))
+
+(defconst speed-type-pandoc-request-header "\"User-Agent:Emacs: speed-type/1.4 https://github.com/dakra/speed-type\""
+  "This const is used when pandoc is retrieving content from an url.")
+
+(defun speed-type-retrieve-pandoc (url)
+  "Retrieve URL and process it through pandoc.
+
+If the file is already retrieved, will return file-location."
+  (unless (executable-find "pandoc") (error "pandoc executable not installed"))
+  (let ((fn (expand-file-name (format "%s.txt" (speed-type--convert-url url)) speed-type-gb-dir))
+	(default-directory speed-type-gb-dir))
+    (if (file-readable-p fn)
+        fn
+      (make-directory speed-type-gb-dir 'parents)
+      (shell-command (let* ((cmd "pandoc")
+			   (url-opts (format "-s -r html %s" url))
+			   (request-header (format "--request-header %s" speed-type-pandoc-request-header))
+			   (text-opts "-t plain")
+			   (output (format "-o %s" fn))
+			   (full-pandoc-cmd (mapconcat 'identity (list cmd url-opts request-header text-opts output) " ")))
+		       (message "Going to execute %s to retrieve url" full-pandoc-cmd)
+		       full-pandoc-cmd))
+      fn)))
+
 (defun speed-type--gb-url (book-num)
   "Return url for BOOK-NUM."
   (format speed-type--gb-url-format book-num book-num))
@@ -1609,6 +1644,29 @@ If FILE-NAME is nil, will use file-name of CURRENT-BUFFER."
 		     :replay-fn #'speed-type--get-replay-fn
 		     :continue-fn (lambda () (speed-type--get-continue-fn end))
 		     :go-next-fn #'speed-type-text)))))))
+
+(defun speed-type-pandoc (url)
+  "Start a typing-session with the content of a given retrieved URL.
+
+If the url already is retrieved will reuse the stored content in ‘speed-type-gb-dir’.
+
+The url is converted to a unique file-name."
+  (interactive "sURL: ")
+  (let ((fn (speed-type-retrieve-pandoc url)))
+    (if speed-type-randomize
+	(let* ((buf (speed-type-prepare-content-buffer fn))
+	       (title (buffer-name))
+	       (start (with-current-buffer buf (point-min)))
+	       (end (with-current-buffer buf (point-max)))
+	       (text (with-current-buffer buf (speed-type--pick-text-to-type start end))))
+	  (speed-type--setup buf
+		   text
+		   :title title
+		   :add-extra-word-content-fn (lambda () (speed-type--get-next-word buf))
+		   :replay-fn #'speed-type--get-replay-fn
+		   :continue-fn (lambda () (speed-type--get-continue-fn end))
+		   :go-next-fn #'speed-type-text))
+      (speed-type-continue fn))))
 
 (provide 'speed-type)
 ;;; speed-type.el ends here
