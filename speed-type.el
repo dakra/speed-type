@@ -68,7 +68,7 @@
   "The maximum number of chars to type required when the text is picked randomly."
   :type 'integer)
 
-(defcustom speed-type-pause-dealy-seconds 5
+(defcustom speed-type-pause-delay-seconds 5
   "Define after which idle delay it should pause the timer."
   :type 'integer)
 
@@ -93,6 +93,14 @@ a book url.  E.G, https://www.gutenberg.org/ebooks/14577."
   "Alist of language name as key and a URL where to download a wordlist for it."
   :type '(alist :key-type symbol :value-type string))
 
+(defcustom speed-type-stop-words '()
+  "List of stop words which will be excluded for top-x-commands.
+
+Can be a list or a path to a file which contains words newline separated."
+  :type '(choice
+	  (list :tag "List of words" string)
+	  (file :tag "Store list in a file\n" :value (concat speed-type-gb-dir "/stop-words.txt"))))
+
 (defcustom speed-type-quote-urls
   '((johnVonNeumann . "https://www.azquotes.com/author/10753-John_von_Neumann")
     (happiness . "https://www.azquotes.com/quotes/topics/happiness.html")
@@ -114,10 +122,71 @@ E.g. if you always want lowercase words, set:
 (defcustom speed-type-default-lang nil
   "Default language for training wordlists.  Ask when NIL."
   :type '(choice (const :tag "None" nil)
-                 (const :tag "English" English)
-                 (const :tag "German" German)
-                 (const :tag "French" French)
-                 (const :tag "Dutch" Dutch))
+		 (const :tag "Afrikaans" af)
+		 (const :tag "Aleut" ale)
+		 (const :tag "Arabic" ar)
+		 (const :tag "Arapaho" arp)
+		 (const :tag "Bodo" brx)
+		 (const :tag "Breton" br)
+		 (const :tag "Bulgarian" bg)
+		 (const :tag "Caló" rmq)
+		 (const :tag "Catalan" ca)
+		 (const :tag "Cebuano" ceb)
+		 (const :tag "Chinese" zh)
+		 (const :tag "Czech" cs)
+		 (const :tag "Danish" da)
+		 (const :tag "Dutch" nl)
+		 (const :tag "English" en)
+		 (const :tag "Esperanto" eo)
+		 (const :tag "Estonian" et)
+		 (const :tag "Farsi" fa)
+		 (const :tag "Finnish" fi)
+		 (const :tag "French" fr)
+		 (const :tag "Frisian" fy)
+		 (const :tag "Friulian" fur)
+		 (const :tag "Gaelic Scottish" gla)
+		 (const :tag "Galician" gl)
+		 (const :tag "Gamilaraay" kld)
+		 (const :tag "German" de)
+		 (const :tag "Greek" el)
+		 (const :tag "Greek Ancient" grc)
+		 (const :tag "Hebrew" he)
+		 (const :tag "Hungarian" hu)
+		 (const :tag "Icelandic" is)
+		 (const :tag "Iloko" ilo)
+		 (const :tag "Interlingua" ia)
+		 (const :tag "Inuktitut" iu)
+		 (const :tag "Irish" ga)
+		 (const :tag "Italian" it)
+		 (const :tag "Japanese" ja)
+		 (const :tag "Kashubian" csb)
+		 (const :tag "Khasi" kha)
+		 (const :tag "Korean" ko)
+		 (const :tag "Latin" la)
+		 (const :tag "Maori" mi)
+		 (const :tag "Mayan Languages" myn)
+		 (const :tag "Middle English" enm)
+		 (const :tag "Nahuatl" nah)
+		 (const :tag "Napoletano-Calabrese" nap)
+		 (const :tag "Navajo" nav)
+		 (const :tag "North American Indian" nai)
+		 (const :tag "Norwegian" no)
+		 (const :tag "Occitan" oc)
+		 (const :tag "Ojibwa" oji)
+		 (const :tag "Old English" ang)
+		 (const :tag "Polish" pl)
+		 (const :tag "Portuguese" pt)
+		 (const :tag "Romanian" ro)
+		 (const :tag "Russian" ru)
+		 (const :tag "Sanskrit" sa)
+		 (const :tag "Serbian" sr)
+		 (const :tag "Slovenian" sl)
+		 (const :tag "Spanish" es)
+		 (const :tag "Swedish" sv)
+		 (const :tag "Tagabawa" bgs)
+		 (const :tag "Tagalog" tl)
+		 (const :tag "Telugu" te)
+		 (const :tag "Welsh" cy))
   :group 'speed-type)
 
 (defcustom speed-type-replace-strings '(("“" . "\"") ("”" . "\"") ("‘" . "'") ("’" . "'") ("—" . "-") ("–" . "-") ("Æ" . "Ae") ("æ" . "ae") ("»" . "\"") ("«" . "\""))
@@ -174,8 +243,8 @@ they accumulate each other if both variables are set."
 (defcustom speed-type-save-statistic-option 'always
   "Save the stats for the play or not."
   :type '(choice (const :tag "Always" always)
-		         (const :tag "Never" never)
-		         (const :tag "Ask" ask)))
+		 (const :tag "Never" never)
+		 (const :tag "Ask" ask)))
 
 (defcustom speed-type-statistic-filename (concat speed-type-gb-dir "/" "speed-type-statistic.el")
   "Name of file for general stats."
@@ -319,7 +388,7 @@ Median Non-consecutive errors: %d")
 
 Adding the idle timer again, and pushing the newest time to stack."
   (unless speed-type--idle-pause-timer
-    (setq speed-type--idle-pause-timer (run-with-idle-timer 5 nil #'speed-type-pause)
+    (setq speed-type--idle-pause-timer (run-with-idle-timer speed-type-pause-delay-seconds nil #'speed-type-pause)
 	  speed-type--time-register (append speed-type--time-register (list (float-time))))))
 
 (defun speed-type-pause ()
@@ -373,7 +442,7 @@ Computes net characters-per-minute as:
   (ENTRIES - UNCORRECTED-ERRORS) / (SECONDS/60)."
   (let ((net-cpm (round (- (speed-type--gross-cpm entries seconds)
                            (speed-type--/ uncorrected-errors
-                                (speed-type--seconds-to-minutes seconds))))))
+					  (speed-type--seconds-to-minutes seconds))))))
     (if (> 0 net-cpm) 0 net-cpm)))
 
 (defun speed-type--accuracy (total-entries correct-entries corrections)
@@ -431,6 +500,18 @@ SPEED-TYPE-MAYBE-UPGRADE-FILE-FORMAT."
 	  (cons 'speed-type--accuracy (speed-type--accuracy entries (- entries errors) corrections))
 	  (cons 'speed-type--continue-at-point (unless speed-type--randomize (speed-type--get-continue-point)))
 	  (cons 'speed-type--file-name speed-type--file-name))))
+
+(defun speed-type--stop-word-p (word)
+  "Return given WORD when it is a stop-word.
+
+What a stop-word is, is defined by ‘speed-type-stop-words’."
+  (cond ((not (stringp word)) (error "Given ‘WORD’(%s) must be a string" word))
+	((listp speed-type-stop-words) (car (member word speed-type-stop-words)))
+	((not (stringp speed-type-stop-words)) (error "Custom variable SPEED-TYPE-STOP-WORDS(%s) must be a list or filename" speed-type-stop-words))
+	((file-readable-p (expand-file-name speed-type-stop-words speed-type-gb-dir))
+	 (with-current-buffer (find-file-noselect (expand-file-name speed-type-stop-words speed-type-gb-dir) t)
+	   (when (save-excursion (goto-char (point-min)) (re-search-forward (concat "^" word "$") nil t 1)) word)))
+	(t (user-error "Custom variable ‘speed-type-stop-words’ must be a list or a filename in ‘speed-type-directory’"))))
 
 (defun speed-type-grok-file-format-version ()
   "Integer which indicates the file-format version of speed-type statistic file.
@@ -521,17 +602,17 @@ it can be passed along with FILE to `format'. At the end,
         (existing-buf             (get-file-buffer file))
         (emacs-lisp-mode-hook     nil) ; Avoid inserting automatic file header if existing empty file, so
         (lisp-mode-hook           nil) ; better chance `speed-type-maybe-upgrade-file-format' signals error.
-	    (speed-type-buffer (current-buffer))
-        start end)
+	(speed-type-buffer (current-buffer))
+	start end)
     (when (file-directory-p file) (error "`%s' is a directory, not a file" file))
     (message msg (abbreviate-file-name file))
     (with-current-buffer (let ((enable-local-variables ())) (find-file-noselect file))
       (goto-char (point-min))
       (if (file-exists-p file)
           (speed-type-maybe-upgrade-file-format)
-	    (delete-region (point-min) (point-max)) ; In case a find-file hook inserted a header, etc.
-	    (unless (boundp 'speed-type-coding-system)	; Emacs < 25.2.
-	      (speed-type-insert-file-format-version-stamp coding-system-for-write))
+	(delete-region (point-min) (point-max)) ; In case a find-file hook inserted a header, etc.
+	(unless (boundp 'speed-type-coding-system)	; Emacs < 25.2.
+	  (speed-type-insert-file-format-version-stamp coding-system-for-write))
         (insert "(\n)"))
       (setq start (and (file-exists-p file)
                        (or (save-excursion (goto-char (point-min))
@@ -546,11 +627,11 @@ it can be passed along with FILE to `format'. At the end,
           (goto-char 2)
         ;;  Existing file - delete old entry unless max is not reached. Rolling.
         (when (> (/ (count-lines start end) (length (or (speed-type-statistic-variables) '(1)))) speed-type-max-num-records)
-	      (save-excursion
-	        (goto-char start)
-	        (or (looking-at "(") (search-forward "(" nil t 1))
-	        (let ((bounds (bounds-of-thing-at-point 'sexp)))
-	          (kill-region (car bounds) (+ 1 (cdr bounds))))))
+	  (save-excursion
+	    (goto-char start)
+	    (or (looking-at "(") (search-forward "(" nil t 1))
+	    (let ((bounds (bounds-of-thing-at-point 'sexp)))
+	      (kill-region (car bounds) (+ 1 (cdr bounds))))))
         (goto-char (and start
                         (or (save-excursion (goto-char start) (and (looking-at ")") start))
                             (save-excursion (goto-char (point-max)) (re-search-backward "^)" nil t))
@@ -585,18 +666,20 @@ it can be passed along with FILE to `format'. At the end,
   "Read and return a speed-type stats list from the current buffer.
 Point is irrelevant and unaffected."
   (let ((stats (save-excursion
-                (goto-char (point-min))
-                (if (search-forward speed-type-end-of-version-stamp-marker nil t)
-                    (condition-case err
-                        (read (current-buffer))
-                      (error (error "Cannot read definitions in speed type statistic file:  %s"
-                                    (error-message-string err))))
+                 (goto-char (point-min))
+                 (if (search-forward speed-type-end-of-version-stamp-marker nil t)
+                     (condition-case err
+                         (read (current-buffer))
+                       (error (error "Cannot read definitions in speed type statistic file:  %s"
+                                     (error-message-string err))))
                    ;; Else we're dealing with format version 0
-		  (error "Buffer is not in speed-type statistic format")))))
-      stats))
+		   (error "Buffer is not in speed-type statistic format")))))
+    stats))
 
 (defun speed-type--calc-median (symbol stats)
   "Calculate the median of given SYMBOL in STATS."
+  (unless (symbolp symbol) (error "Given SYMBOL(%s) is not a symbol" symbol))
+  (unless (listp stats) (error "Given STATS(%s) is not an list" stats))
   (let* ((numbers (sort (remove nil (mapcar (lambda (e) (cdr (assoc symbol e))) stats)) '<))
 	 (num-of-records (length numbers))
 	 (medians (if (eq (% num-of-records 2) 0)
@@ -685,31 +768,58 @@ speed-type files that were created using the speed-type functions."
 	  (short-hash-str (substring hash-str 0 (min 7 (length hash-str)))))
      short-hash-str)
    "-"
-   (let ((posix-str (replace-regexp-in-string "-+" "-" (replace-regexp-in-string "[^A-Za-z0-9-]" "-" str))))
+   (let ((posix-str (replace-regexp-in-string "-\\." "." (replace-regexp-in-string "-+" "-" (replace-regexp-in-string "[^A-Za-z0-9-]" "-" str)))))
      (substring posix-str 0 (min 64 (length posix-str))))))
 
 (defconst speed-type-pandoc-request-header "\"User-Agent:Emacs: speed-type/1.4 https://github.com/dakra/speed-type\""
   "This const is used when pandoc is retrieving content from an url.")
+
+(defun speed-type--pandoc-top-filename (url)
+  "Return name of frequency list of a given book identified by BOOK-NUM."
+  (expand-file-name (replace-regexp-in-string "-\\." "." (replace-regexp-in-string "-+" "-" (format "%s-top-x.txt" (speed-type--convert-url url)))) speed-type-gb-dir))
 
 (defun speed-type-retrieve-pandoc (url)
   "Retrieve URL and process it through pandoc.
 
 If the file is already retrieved, will return file-location."
   (unless (executable-find "pandoc") (error "pandoc executable not installed"))
-  (let ((fn (expand-file-name (format "%s.txt" (speed-type--convert-url url)) speed-type-gb-dir))
-	(default-directory speed-type-gb-dir))
+  (let* ((default-directory speed-type-gb-dir)
+	 (fn (expand-file-name (format "%s.txt" (speed-type--convert-url url)) speed-type-gb-dir))
+         (cmd "pandoc")
+         (url-opts (format "-s -r html \"%s\"" url))
+         (request-header (format "--request-header %s" speed-type-pandoc-request-header))
+         (text-opts "-t plain")
+         (output (format "-o %s" fn))
+         (full-pandoc-cmd (mapconcat 'identity (list cmd url-opts request-header text-opts output) " ")))
+    (when (or (> (shell-command full-pandoc-cmd) 0) (not (file-readable-p fn)))
+      (message "Check executed pandoc command: %s" full-pandoc-cmd)
+      (error "Error while retrieving url with pandoc see *Messages* for details"))
+    (find-file-noselect fn t)))
+
+(defun speed-type-retrieve-pandoc-top-retrieve (url)
+  "Return buffer containing a frequency list of given book identified by BOOK-NUM."
+  (let* ((fn (speed-type--pandoc-top-filename url)))
     (if (file-readable-p fn)
-        fn
-      (make-directory speed-type-gb-dir 'parents)
-      (shell-command (let* ((cmd "pandoc")
-			   (url-opts (format "-s -r html %s" url))
-			   (request-header (format "--request-header %s" speed-type-pandoc-request-header))
-			   (text-opts "-t plain")
-			   (output (format "-o %s" fn))
-			   (full-pandoc-cmd (mapconcat 'identity (list cmd url-opts request-header text-opts output) " ")))
-		       (message "Going to execute %s to retrieve url" full-pandoc-cmd)
-		       full-pandoc-cmd))
-      fn)))
+	(find-file-noselect fn t)
+      (with-current-buffer (speed-type-retrieve-pandoc url)
+	(with-current-buffer
+	    (speed-type--calculate-word-frequency
+	     (current-buffer)
+	     (save-excursion
+	       (goto-char (point-min))
+	       (when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+		 (end-of-line 1)
+		 (forward-line 1))
+	       (point))
+	     (save-excursion
+	       (goto-char (point-max))
+	       (when (re-search-backward "***.END.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+		 (beginning-of-line 1)
+		 (forward-line -1))
+	       (point)))
+	  (write-region (point-min) (point-max) fn nil t nil 'excl)
+	  (rename-buffer (file-name-nondirectory (buffer-file-name)))
+	  (current-buffer))))))
 
 (defun speed-type--gb-url (book-num)
   "Return url for BOOK-NUM."
@@ -724,30 +834,112 @@ If the file is already retrieved, will return file-location."
   (let ((fn (expand-file-name (format "%s.txt" filename) speed-type-gb-dir))
         (url-request-method "GET"))
     (if (file-readable-p fn)
-        fn
+	(find-file-noselect fn t)
       (make-directory speed-type-gb-dir 'parents)
       (let ((buffer (url-retrieve-synchronously url nil nil 5)))
         (when (and buffer (= 200 (url-http-symbol-value-in-buffer
                                   'url-http-response-status
                                   buffer)))
           (with-current-buffer buffer
-            (write-region url-http-end-of-headers (point-max) fn))
+	    (set-buffer-file-coding-system speed-type-coding-system)
+	    (recode-region url-http-end-of-headers (point-max) 'utf-8-dos speed-type-coding-system)
+	    (write-region url-http-end-of-headers (point-max) fn))
           (unless (kill-buffer buffer)
             (message "WARNING: Buffer is not closing properly"))
-          (when (file-readable-p fn)
-            (with-temp-file fn
-              (insert-file-contents fn)
-              (delete-trailing-whitespace)
-              (decode-coding-region (point-min) (point-max) 'utf-8))
-            fn))))))
+	  (find-file-noselect fn t))))))
+
+(defun speed-type--calculate-word-frequency (buffer start end)
+  "Create a new buffer containing the words of given BUFFER ordered by frequency.
+
+Only the words which are in the boundaries START and END are considered."
+  (let ((word-counts (make-hash-table :test 'equal)))
+    (with-current-buffer buffer
+      ;; Step 1: Count word frequencies using generator
+      (save-excursion
+	(goto-char start)
+	(let ((word-start nil))
+	  (while (< (point) end)
+	    (let ((ch (char-after)))
+              (if (and ch (speed-type--char-word-syntax-p ch))
+		  (unless word-start (setq word-start (point)))
+		(when word-start
+		  (let ((word (downcase (buffer-substring-no-properties word-start (point)))))
+		    (puthash word (1+ (gethash word word-counts 0)) word-counts))
+		  (setq word-start nil))))
+	    (forward-char 1))
+	  ;; Final word at end of buffer
+	  (when word-start
+	    (let ((word (downcase (buffer-substring-no-properties word-start (point)))))
+	      (puthash word (1+ (gethash word word-counts 0)) word-counts)))))
+
+      ;; Step 2: Transfer hash map table to file
+      (let ((top-words '()))
+	(maphash (lambda (k v)
+		   ;; Step 2.1: Transfer hash map table to a sortable list
+		   (push (cons k v) top-words))
+		 word-counts)
+	(setq top-words (sort top-words (lambda (a b) (> (cdr a) (cdr b)))))
+	(with-current-buffer (generate-new-buffer "*temp*" t)
+	  (dolist (pair top-words)
+            (insert (format "%s\n" (car pair))))
+	  (current-buffer))))))
+
+(defun speed-type--char-word-syntax-p (ch)
+  "Return non-nil if CH is a word-constituent character."
+  (eq (char-syntax ch) ?w))
 
 (defun speed-type--gb-retrieve (book-num)
   "Return buffer with book number BOOK-NUM in it."
-  (speed-type--retrieve book-num  (speed-type--gb-url book-num)))
+  (speed-type--retrieve book-num (speed-type--gb-url book-num)))
+
+(defun speed-type--gb-top-filename (book-num)
+  "Return name of frequency list of a given book identified by BOOK-NUM."
+  (expand-file-name (concat (number-to-string book-num) "-top-x.txt") speed-type-gb-dir))
+
+(defun speed-type--gb-top-retrieve (book-num)
+  "Return buffer containing a frequency list of given book identified by BOOK-NUM."
+  (let* ((fn (speed-type--gb-top-filename book-num)))
+    (if (file-readable-p fn)
+	(find-file-noselect fn t)
+      (with-current-buffer (speed-type--retrieve book-num (speed-type--gb-url book-num))
+	(with-current-buffer
+	    (speed-type--calculate-word-frequency
+	     (current-buffer)
+	     (save-excursion
+	       (goto-char (point-min))
+	       (when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+		 (end-of-line 1)
+		 (forward-line 1))
+	       (point))
+	     (save-excursion
+	       (goto-char (point-max))
+	       (when (re-search-backward "***.END.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+		 (beginning-of-line 1)
+		 (forward-line -1))
+	       (point)))
+	  (write-region (point-min) (point-max) fn nil t nil 'excl)
+	  (rename-buffer (file-name-nondirectory (buffer-file-name)))
+	  (current-buffer))))))
+
+(defun speed-type--retrieve-random-book-num (lang)
+  "Get a random book-num which has the given LANG."
+  (let ((lang-book-list (with-current-buffer (speed-type--retrieve (concat lang ".html")
+							 (concat "https://www.gutenberg.org/ebooks/search/?query=l." lang))
+			  (mapcar (lambda (h) (substring (dom-attr h 'href) 8))
+				  (mapcar (lambda (c) (dom-by-tag c 'a))
+					  (dom-by-class (libxml-parse-html-region (point-min) (point-max) nil) "booklink"))))))
+    (string-to-number (nth (random (length lang-book-list)) lang-book-list))))
 
 (defun speed-type--wordlist-retrieve (lang)
   "Return buffer with wordlist for language LANG in it."
-  (speed-type--retrieve lang (cdr (assoc lang speed-type-wordlist-urls))))
+  (speed-type--retrieve
+   (cond ((string= "de" lang) "German")
+	 ((string= "en" lang) "English")
+	 ((string= "fr" lang) "French")
+	 ((string= "nl" lang) "Dutch")
+         ((member lang (mapcar 'car speed-type-wordlist-urls)) lang)
+         (t (user-error "Language (%s) not found" lang)))
+   (cdr (assoc lang speed-type-wordlist-urls))))
 
 (defun speed-type--list-to-alist-safe (lst)
   "Convert flat list LST into an alist.
@@ -769,9 +961,9 @@ If the length is uneven will return symbol 'uneven."
   (if (= (% (length time-register) 2) 0)
       (if time-register
 	  (apply #'+ (mapcar (lambda (time-pair) (- (cdr time-pair) (car time-pair)))
-			   (speed-type--list-to-alist-safe time-register)))
+			     (speed-type--list-to-alist-safe time-register)))
 	0)
-      'uneven))
+    'uneven))
 
 (defconst speed-type--whitespace-table
   (let ((tbl (make-vector 256 nil)))
@@ -787,8 +979,8 @@ Whitespace is determined using `char-syntax`."
   (let ((ca (aref a pos))
         (cb (aref b pos)))
     (or (= ca cb)
-        (and (aref speed-type--whitespace-table ca)
-             (aref speed-type--whitespace-table cb)))))
+        (and (eq (char-syntax ca) ?\s)
+             (eq (char-syntax cb) ?\s)))))
 
 (defun speed-type--handle-del (start end)
   "Keep track of the statistics when a deletion occurs between START and END."
@@ -898,10 +1090,7 @@ ENTRIES ERRORS CORRECTIONS SECONDS."
     (insert "\n\n")
     (save-excursion
       (when speed-type--title (insert (propertize speed-type--title 'face 'italic)))
-      (when speed-type--author
-	(insert (propertize
-		 (format ", by %s" speed-type--author)
-		 'face 'italic)))
+      (when speed-type--author (insert (propertize (format ", by %s" speed-type--author) 'face 'italic)))
       (insert (speed-type-generate-stats
 	       speed-type--entries
 	       speed-type--errors
@@ -968,22 +1157,22 @@ are color coded and stats are gathered about the typing performance."
 	    (let ((new-last-pos start))
 	      (with-current-buffer speed-type--preview-buffer
 		(unwind-protect
-		  (save-excursion
-		    (goto-char (point-max))
-		    (when-let* ((win (get-buffer-window (current-buffer))))
-		      (set-window-point win (point)))
-		    (read-only-mode -1)
-		    (when (and (not (= speed-type--last-position 0))
-			       (> (abs (- new-last-pos speed-type--last-position)) 2))
-		      (let ((point-movement-str (concat "[ " (symbol-name last-command) "(" (number-to-string speed-type--last-position) ") → (" (number-to-string (1- new-last-pos)) ") ]")))
-			(insert point-movement-str)
-			(let ((overlay (make-overlay (- (point) (length point-movement-str)) (point))))
-			  (overlay-put overlay 'priority 1)
-			  (overlay-put overlay 'face 'speed-type-info-face))))
-		    (insert (cond ((eq this-command (key-binding (kbd "<deletechar>"))) "⌦")
-				  ((eq this-command (key-binding (kbd "DEL"))) "⌫")
-				  (t (string-replace " " "·" (string-replace "\n" "⏎" new-text)))))
-		    (setq-local speed-type--last-position new-last-pos))
+		    (save-excursion
+		      (goto-char (point-max))
+		      (when-let* ((win (get-buffer-window (current-buffer))))
+			(set-window-point win (point)))
+		      (read-only-mode -1)
+		      (when (and (not (= speed-type--last-position 0))
+				 (> (abs (- new-last-pos speed-type--last-position)) 2))
+			(let ((point-movement-str (concat "[ " (symbol-name last-command) "(" (number-to-string speed-type--last-position) ") → (" (number-to-string (1- new-last-pos)) ") ]")))
+			  (insert point-movement-str)
+			  (let ((overlay (make-overlay (- (point) (length point-movement-str)) (point))))
+			    (overlay-put overlay 'priority 1)
+			    (overlay-put overlay 'face 'speed-type-info-face))))
+		      (insert (cond ((eq this-command (key-binding (kbd "<deletechar>"))) "⌦")
+				    ((eq this-command (key-binding (kbd "DEL"))) "⌫")
+				    (t (string-replace "\t" "⇥" (string-replace " " "·" (string-replace "\n" "⏎" new-text))))))
+		      (setq-local speed-type--last-position new-last-pos))
 		  (read-only-mode)))))
 	  (when speed-type-ignore-whitespace-for-complete ;; add the ignore status again to deleted blank-chars
 	    (save-excursion
@@ -1134,7 +1323,7 @@ CALLBACK is called when the setup process has been completed."
     (switch-to-buffer buf)
     (when (eq speed-type-provide-preview-option t)
       (let ((sw (selected-window))
-	    (pw (split-window nil 3 'above)))
+	    (pw (split-window nil 5 'above)))
 	(set-window-buffer sw speed-type--preview-buffer)
 	(set-window-buffer pw buf)
 	(select-window pw)))
@@ -1147,7 +1336,7 @@ CALLBACK is called when the setup process has been completed."
     (message "Timer will start when you type the first character.")))
 
 (defun speed-type-prepare-content-buffer-from-buffer (buffer &optional start end)
-  "Prepare content buffer from existing BUFFER."
+  "Prepare content-buffer from existing BUFFER."
   (let ((buf (generate-new-buffer speed-type-content-buffer-name)))
     (with-current-buffer buf
       (setq-local inhibit-read-only t
@@ -1163,12 +1352,6 @@ CALLBACK is called when the setup process has been completed."
         (ignore-errors (font-lock-ensure)))
       (goto-char (point-min)))
     (get-buffer-create buf)))
-
-(defun speed-type-prepare-content-buffer (file-path)
-  "Prepare content buffer from FILE-PATH."
-  (with-temp-buffer
-    (insert-file-contents file-path)
-    (speed-type-prepare-content-buffer-from-buffer (current-buffer) (point-min) (point-max))))
 
 (defun speed-type--kill-buffer-hook ()
   "Hook when speed-type buffer is killed."
@@ -1294,14 +1477,14 @@ a session if next is selected.
 For code highlighting, a syntax table can be specified by SYNTAX-TABLE,
 and font lock defaults by FONT-LOCK-DF."
   (cl-flet ((callback ()
-                      (electric-pair-mode -1)
-                      (local-set-key (kbd "TAB") 'speed-type--code-tab)
-                      (local-set-key (kbd "RET") 'speed-type--code-ret)
-                      (when syntax-table (set-syntax-table syntax-table))
-                      (when font-lock-df
-                        (let ((font-lock-defaults font-lock-df))
-                          ;; Fontify buffer
-                          (ignore-errors (font-lock-ensure))))))
+              (electric-pair-mode -1)
+              (local-set-key (kbd "TAB") 'speed-type--code-tab)
+              (local-set-key (kbd "RET") 'speed-type--code-ret)
+              (when syntax-table (set-syntax-table syntax-table))
+              (when font-lock-df
+                (let ((font-lock-defaults font-lock-df))
+                  ;; Fontify buffer
+                  (ignore-errors (font-lock-ensure))))))
     (speed-type--setup content-buffer
 	     text
 	     :file-name file-name
@@ -1380,6 +1563,34 @@ been completed."
 	       :continue-fn (lambda () (speed-type--get-continue-fn end))
 	       :go-next-fn speed-type--go-next-fn))))
 
+(defun speed-type--get-next-top-fn (x)
+  "Generates itself a function which will create a new typing session as next."
+  (let* ((content-buffer speed-type--content-buffer)
+	 (char-length (+ speed-type-min-chars (random (- speed-type-max-chars speed-type-min-chars))))
+	 (n (min x (with-current-buffer speed-type--content-buffer (count-words (point-min) (point-max)))))
+	 (text (with-temp-buffer
+		 (while (< (buffer-size) char-length)
+		   (let ((random-word (speed-type--get-random-word content-buffer n)))
+		     (unless (or (string-blank-p random-word) (speed-type--stop-word-p random-word)) (insert random-word " "))))
+		 (speed-type--fill-region)
+		 (if speed-type-wordlist-transform
+		     (funcall speed-type-wordlist-transform (buffer-string))
+		   (buffer-string)))))
+    (when (and speed-type--preview-buffer (get-buffer-window speed-type--preview-buffer))
+      (delete-window (get-buffer-window speed-type--preview-buffer)))
+    (setq-local speed-type--content-buffer nil)
+    (when speed-type--preview-buffer
+      (with-current-buffer speed-type--preview-buffer
+	(setq-local speed-type--content-buffer nil)))
+    (speed-type--setup content-buffer
+	     text
+	     :file-name speed-type--file-name
+	     :title speed-type--title
+	     :n-words n
+	     :add-extra-word-content-fn speed-type--add-extra-word-content-fn
+	     :replay-fn speed-type--replay-fn
+	     :go-next-fn speed-type--go-next-fn)))
+
 (defun speed-type--get-replay-fn ()
   "Return a replay function which will use GO-NEXT-FN after completion."
   (let ((content-buffer speed-type--content-buffer))
@@ -1450,7 +1661,10 @@ LIMIT is supplied to the random-function."
     (save-excursion
       (goto-char (point-min))
       (beginning-of-line (+ 1 (random limit)))
-      (or (word-at-point) ""))))
+      (let ((word (word-at-point)))
+
+	(or (unless (and word (speed-type--stop-word-p word)) word) ""))
+      )))
 
 (defun speed-type-add-extra-words (x)
   "Add `X' extra words of text to be typed for the typing-session to be complete."
@@ -1458,16 +1672,17 @@ LIMIT is supplied to the random-function."
     (let ((words '()))
       (dotimes (_ x)
 	(let ((word (string-trim (funcall speed-type--add-extra-word-content-fn))))
-	  (if (string-empty-p word)
+	  (if (string-blank-p word)
 	      (message "You got lucky! Extra word function resulted in empty string.")
 	    (push word words))))
-      (let ((words-as-string
-	     (concat (propertize " " 'speed-type-char-status (when speed-type-ignore-whitespace-for-complete 'ignore))
-		     (string-trim (mapconcat (if speed-type-downcase 'downcase 'identity) (nreverse words)
-					     (propertize " " 'speed-type-char-status (when speed-type-ignore-whitespace-for-complete 'ignore)))))))
-	(setq speed-type--extra-words-queue (append speed-type--extra-words-queue (split-string words-as-string "" t))))
-    (when (not (timerp speed-type--extra-words-animation-time))
-      (setq speed-type--extra-words-animation-time (run-at-time nil 0.01 'speed-type-animate-extra-word-inseration speed-type--buffer))))))
+      (when words
+	(let ((words-as-string
+	       (concat (propertize " " 'speed-type-char-status (when speed-type-ignore-whitespace-for-complete 'ignore))
+		       (string-trim (mapconcat (if speed-type-downcase 'downcase 'identity) (nreverse words)
+					       (propertize " " 'speed-type-char-status (when speed-type-ignore-whitespace-for-complete 'ignore)))))))
+	  (setq speed-type--extra-words-queue (append speed-type--extra-words-queue (split-string words-as-string "" t))))
+	(when (not (timerp speed-type--extra-words-animation-time))
+	  (setq speed-type--extra-words-animation-time (run-at-time nil 0.01 'speed-type-animate-extra-word-inseration speed-type--buffer)))))))
 
 (defun speed-type-finish-animation (buf)
   "Insert all remaining characters in ‘speed-type--extra-words-queue’ to BUF."
@@ -1514,34 +1729,68 @@ LIMIT is supplied to the random-function."
     (newline) (move-beginning-of-line nil) (speed-type--code-tab)))
 
 ;;;###autoload
-(defun speed-type-top-x (n)
+(defun speed-type-text-top-x (x)
+  "Speed type the N most common words."
+  (interactive "nTrain X most common words: ")
+  (let* ((book-num (if speed-type-default-lang
+		       (speed-type--retrieve-random-book-num speed-type-default-lang)
+		     (nth (random (length speed-type-gb-book-list)) speed-type-gb-book-list)))
+         (buffer (speed-type--gb-top-retrieve book-num))
+	 (fn (buffer-file-name buffer))
+	 (char-length (+ speed-type-min-chars (random (- speed-type-max-chars speed-type-min-chars))))
+         (n (min x (with-current-buffer buffer (count-words (point-min) (point-max)))))
+	 (buf (speed-type-prepare-content-buffer-from-buffer buffer))
+         (title (format "Top %s words of book %s" n book-num))
+	 (text (with-temp-buffer
+		 (while (< (buffer-size) char-length)
+		   (let ((random-word (speed-type--get-random-word buf n)))
+		     (unless (or (string-blank-p random-word) (speed-type--stop-word-p random-word)) (insert random-word " "))))
+		 (speed-type--fill-region)
+		 (if speed-type-wordlist-transform
+                     (funcall speed-type-wordlist-transform (buffer-string))
+                   (buffer-string))))
+	 (add-extra-word-content-fn (lambda () (speed-type--get-random-word buf n)))
+         (go-next-fn (lambda () (speed-type--get-next-top-fn x))))
+    (kill-buffer buffer) ;; buffer is retrieved, remove it again to not clutter the buffer-list
+    (speed-type--setup buf
+	     text
+	     :file-name fn
+             :title title
+	     :author "To be extracted from gb-book"
+             :n-words n
+	     :add-extra-word-content-fn add-extra-word-content-fn
+             :replay-fn #'speed-type--get-replay-fn
+             :go-next-fn go-next-fn)))
+
+
+;;;###autoload
+(defun speed-type-top-x (x)
   "Speed type the N most common words."
   (interactive "nTrain X most common words: ")
   (let* ((lang (or speed-type-default-lang
                    (intern (completing-read "Language: " (mapcar 'car speed-type-wordlist-urls)))))
-         (file-path (speed-type--wordlist-retrieve lang))
+         (buffer (speed-type--wordlist-retrieve lang))
          (char-length (+ speed-type-min-chars
                          (random (- speed-type-max-chars speed-type-min-chars))))
-         (words (with-temp-buffer
-                  (insert-file-contents file-path)
-                  (split-string (buffer-string) "\n" t)))
-         (n (min n (length words)))
-	 (buf (speed-type-prepare-content-buffer file-path))
+         (n (min x (with-current-buffer buffer (count-words (point-min) (point-max)))))
+	 (buf (speed-type-prepare-content-buffer-from-buffer buffer))
+	 (fn (buffer-file-name buffer))
          (title (format "Top %s %s words" n lang))
 	 (text (with-temp-buffer
 		 (while (< (buffer-size) char-length)
-		   (insert (speed-type--get-random-word buf n))
-                   (insert " "))
+		   (let ((random-word (speed-type--get-random-word buf n)))
+		     (unless (or (string-blank-p random-word) (speed-type--stop-word-p random-word)) (insert random-word " "))))
 		 (speed-type--fill-region)
 		 (when speed-type-downcase (downcase-region (point-min) (point-max)))
 		 (if speed-type-wordlist-transform
                      (funcall speed-type-wordlist-transform (buffer-string))
                    (buffer-string))))
 	 (add-extra-word-content-fn (lambda () (speed-type--get-random-word buf n)))
-         (go-next-fn (lambda () (speed-type-top-x n))))
+         (go-next-fn (lambda () (speed-type--get-next-top-fn x))))
+    (kill-buffer buffer) ;; buffer is retrieved, remove it again to not clutter the buffer-list
     (speed-type--setup buf
 	     text
-             :file-name file-path
+             :file-name fn
 	     :author "Uni Leipzig"
 	     :title title
              :lang lang
@@ -1568,6 +1817,7 @@ LIMIT is supplied to the random-function."
   "Open copy of [START,END] in a new buffer to speed type the text."
   (interactive "r")
   (let* ((buf (speed-type-prepare-content-buffer-from-buffer (current-buffer) start end))
+         (fn (buffer-file-name (current-buffer)))
 	 (title (concat (buffer-name)
 			(when (and start end) " Region: ")
 			(when start (int-to-string start))
@@ -1576,17 +1826,47 @@ LIMIT is supplied to the random-function."
     (if (speed-type--code-buffer-p buf)
         (speed-type--code-with-highlighting buf
 				  text
+                                  fn
 				  title
 				  (user-full-name)
 				  (syntax-table)
 				  font-lock-defaults)
       (speed-type--setup buf
 	       (buffer-substring-no-properties start end)
-	       :file-name (buffer-file-name (current-buffer))
+	       :file-name fn
 	       :randomize t
 	       :author (user-full-name)
 	       :title title
 	       :replay-fn #'speed-type--get-replay-fn))))
+
+;;;###autoload
+(defun speed-type-buffer-top-x (x)
+  "Calculate a frequency list of CURRENT-BUFFER and assemble typing-text from top-X-words."
+  (interactive "nTrain X most common words: ")
+  (let* ((buffer (speed-type--calculate-word-frequency (current-buffer) (point-min) (point-max)))
+	 (fn (buffer-file-name (current-buffer)))
+         (char-length (+ speed-type-min-chars (random (- speed-type-max-chars speed-type-min-chars))))
+         (n (min x (with-current-buffer buffer (count-words (point-min) (point-max)))))
+	 (buf (speed-type-prepare-content-buffer-from-buffer buffer))
+         (title (format "Top %s words of buffer %s" n (buffer-name (current-buffer))))
+	 (text (with-temp-buffer
+		 (while (< (buffer-size) char-length)
+		   (let ((random-word (speed-type--get-random-word buf n)))
+		     (unless (or (string-blank-p random-word) (speed-type--stop-word-p random-word)) (insert random-word " "))))
+		 (speed-type--fill-region)
+		 (if speed-type-wordlist-transform
+                     (funcall speed-type-wordlist-transform (buffer-string))
+                   (buffer-string))))
+	 (add-extra-word-content-fn (lambda () (speed-type--get-random-word buf n))))
+    (kill-buffer buffer) ;; buffer is retrieved, remove it again to not clutter the buffer-list
+    (speed-type--setup buf
+	     text
+	     :file-name fn
+             :title title
+             :n-words n
+	     :add-extra-word-content-fn add-extra-word-content-fn
+             :replay-fn #'speed-type--get-replay-fn
+             :go-next-fn (lambda () (speed-type--get-next-top-fn x)))))
 
 ;;;###autoload
 (defun speed-type-buffer (full)
@@ -1627,11 +1907,12 @@ will be used.  Else some text will be picked randomly."
 (defun speed-type-text ()
   "Setup a new text sample to practice touch or speed typing."
   (interactive)
-  (let* ((book-num (nth (random (length speed-type-gb-book-list))
-                        speed-type-gb-book-list))
-         (fn (speed-type--gb-retrieve book-num)))
+  (let* ((book-num (if speed-type-default-lang
+		       (speed-type--retrieve-random-book-num speed-type-default-lang)
+		     (nth (random (length speed-type-gb-book-list)) speed-type-gb-book-list)))
+         (buffer (speed-type--gb-retrieve book-num)))
     (if speed-type-randomize
-	(let* ((buf (speed-type-prepare-content-buffer fn))
+	(let* ((buf (speed-type-prepare-content-buffer-from-buffer buffer))
 	       (title (with-current-buffer buf
 			(save-excursion
 			  (when (re-search-forward "^Title: " nil t)
@@ -1654,7 +1935,7 @@ will be used.  Else some text will be picked randomly."
 		       (speed-type--pick-text-to-type start end))))
 	  (speed-type--setup buf
 		   text
-		   :file-name fn
+		   :file-name (buffer-file-name buffer)
 		   :author author
 		   :title title
 		   :randomize t
@@ -1662,7 +1943,8 @@ will be used.  Else some text will be picked randomly."
 		   :replay-fn #'speed-type--get-replay-fn
 		   :continue-fn (lambda () (speed-type--get-continue-fn end))
 		   :go-next-fn #'speed-type-text))
-      (speed-type-continue fn))))
+      (speed-type-continue (buffer-file-name buffer)))
+    (kill-buffer buffer)))
 
 ;;;###autoload
 (defun speed-type-quotes (&optional arg)
@@ -1673,8 +1955,9 @@ If `ARG' is given will prompt for a specific quote-URL."
   (let* ((quote-url (if (= arg 1)
 			(nth (random (length speed-type-quote-urls)) speed-type-quote-urls)
 		      (assoc (intern (completing-read "Choose a quote: " (mapcar 'car speed-type-quote-urls) 'symbolp t nil nil "johnVonNeumann")) speed-type-quote-urls)))
-	 (fn (speed-type--retrieve (car quote-url) (cdr quote-url)))
-	 (buf (speed-type-prepare-content-buffer fn))
+	 (buffer (speed-type--retrieve (car quote-url) (cdr quote-url)))
+	 (fn (buffer-file-name buffer))
+	 (buf (speed-type-prepare-content-buffer-from-buffer buffer))
 	 (title (with-current-buffer buf
 		  (save-excursion (search-forward-regexp "<title>\\(.*\\)</title>")
 				  (match-string 1))))
@@ -1693,6 +1976,7 @@ If `ARG' is given will prompt for a specific quote-URL."
 		(setq-local speed-type--extra-word-quote (cdr speed-type--extra-word-quote))
 		word))))
 	 (go-next-fn (lambda () (speed-type-quotes arg))))
+    (kill-buffer buffer)
     (speed-type--setup buf
 	     text
 	     :file-name fn
@@ -1789,21 +2073,58 @@ If the url already is retrieved will reuse the stored content in ‘speed-type-g
 
 The url is converted to a unique file-name."
   (interactive "sURL: ")
-  (let ((fn (speed-type-retrieve-pandoc url)))
+  (let* ((buffer (speed-type-retrieve-pandoc url))
+	 (fn (buffer-file-name buffer)))
     (if speed-type-randomize
-	(let* ((buf (speed-type-prepare-content-buffer fn))
+	(let* ((buf (speed-type-prepare-content-buffer-from-buffer buffer))
 	       (title (buffer-name))
 	       (start (with-current-buffer buf (point-min)))
 	       (end (with-current-buffer buf (point-max)))
 	       (text (with-current-buffer buf (speed-type--pick-text-to-type start end))))
 	  (speed-type--setup buf
 		   text
+		   :file-name fn
 		   :title title
 		   :add-extra-word-content-fn (lambda () (speed-type--get-next-word buf))
 		   :replay-fn #'speed-type--get-replay-fn
 		   :continue-fn (lambda () (speed-type--get-continue-fn end))
 		   :go-next-fn #'speed-type-text))
-      (speed-type-continue fn))))
+      (speed-type-continue fn))
+    (kill-buffer buffer) ;; buffer is retrieved, remove it again to not clutter the buffer-list
+    ))
+
+(defun speed-type-pandoc-top-x (url &optional n)
+  "Start a typing-session with the content of a given retrieved URL.
+
+If the url already is retrieved will reuse the stored content in ‘speed-type-gb-dir’.
+
+The url is converted to a unique file-name."
+  (interactive "sURL: ")
+  (let* ((x (string-to-number (completing-read "Train X most common words: " obarray 'numberp nil "100")))
+	 (buffer (speed-type-retrieve-pandoc-top-retrieve url))
+	 (fn (buffer-file-name buffer))
+         (char-length (+ speed-type-min-chars (random (- speed-type-max-chars speed-type-min-chars))))
+         (n (min x (with-current-buffer buffer (count-words (point-min) (point-max)))))
+	 (buf (speed-type-prepare-content-buffer-from-buffer buffer))
+         (title (format "Top %s words of url %s" n url))
+	 (text (with-temp-buffer
+		 (while (< (buffer-size) char-length)
+		   (let ((random-word (speed-type--get-random-word buf n)))
+		     (unless (or (string-blank-p random-word) (speed-type--stop-word-p random-word)) (insert random-word " "))))
+		 (speed-type--fill-region)
+		 (if speed-type-wordlist-transform
+                     (funcall speed-type-wordlist-transform (buffer-string))
+                   (buffer-string))))
+	 (add-extra-word-content-fn (lambda () (speed-type--get-random-word buf n))))
+    (kill-buffer buffer) ;; buffer is retrieved, remove it again to not clutter the buffer-list
+    (speed-type--setup buf
+	     text
+	     :file-name fn
+             :title title
+             :n-words n
+	     :add-extra-word-content-fn add-extra-word-content-fn
+             :replay-fn #'speed-type--get-replay-fn
+	     :go-next-fn (lambda () (speed-type--get-next-top-fn x)))))
 
 (provide 'speed-type)
 ;;; speed-type.el ends here
