@@ -56,12 +56,20 @@
   "Name of buffer consisting of the content-source for the speed-type buffer."
   :type 'string)
 
+(defcustom speed-type-preview-buffer-name "*speed-type-preview-buffer*"
+  "Name of buffer consisting of the preview for the speed-type buffer."
+  :type 'string)
+
 (defcustom speed-type-min-chars 200
   "The minimum number of chars to type required when the text is picked randomly."
   :type 'integer)
 
 (defcustom speed-type-max-chars 450
   "The maximum number of chars to type required when the text is picked randomly."
+  :type 'integer)
+
+(defcustom speed-type-pause-dealy-seconds 5
+  "Define after which idle delay it should pause the timer."
   :type 'integer)
 
 (defcustom speed-type-gb-book-list
@@ -128,6 +136,10 @@ beginning."
   :type 'boolean
   :group 'speed-type)
 
+(defcustom speed-type-downcase nil
+  "Toggle downcasing of mistyped words."
+  :type 'boolean)
+
 (defcustom speed-type-point-motion-on-error 'point-move
   "Define the behavior of point when mistyping a character.
 
@@ -169,6 +181,12 @@ they accumulate each other if both variables are set."
   "Name of file for general stats."
   :type 'string)
 
+(defcustom speed-type-provide-preview-option nil
+  "If a separate buffer should display the actual typed characters."
+  :type '(choice (const :tag "Yes" t)
+		 (const :tag "Hidden" hidden)
+		 (const :tag "No" nil)))
+
 (defcustom speed-type-max-num-records 10000
   "Maximum number of saved records."
   :type '(natnum :tag "None negative number." ))
@@ -203,6 +221,10 @@ If nil, the completion is only triggered if all characters are typed."
 (defface speed-type-error-face
   '((t :inherit error :underline t))
   "Face for incorrectly typed characters.")
+
+(defface speed-type-info-face
+  '((t :inherit font-lock-comment-face :underline t))
+  "Face for point-movement in preview buffer.")
 
 ;; internal variables
 
@@ -265,11 +287,13 @@ Median Non-consecutive errors: %d")
 
 ;; buffer local internal variables
 
+(defvar-local speed-type--preview-buffer nil)
+(defvar-local speed-type--last-position 0)
 (defvar-local speed-type--randomize nil)
 (defvar-local speed-type--continue-at-point nil)
 (defvar-local speed-type--file-name nil)
 (defvar-local speed-type--max-point-on-complete nil)
-(defvar-local speed-type--start-time nil)
+(defvar-local speed-type--time-register nil)
 (defvar-local speed-type--last-changed-text nil)
 (defvar-local speed-type--buffer nil)
 (defvar-local speed-type--content-buffer nil)
@@ -288,7 +312,25 @@ Median Non-consecutive errors: %d")
 (defvar-local speed-type--continue-fn nil)
 (defvar-local speed-type--replay-fn #'speed-type--setup)
 (defvar-local speed-type--extra-word-quote nil)
+(defvar-local speed-type--idle-pause-timer nil)
 
+(defun speed-type--resume ()
+  "Resume the current typing session.
+
+Adding the idle timer again, and pushing the newest time to stack."
+  (unless speed-type--idle-pause-timer
+    (setq speed-type--idle-pause-timer (run-with-idle-timer 5 nil #'speed-type-pause)
+	  speed-type--time-register (append speed-type--time-register (list (float-time))))))
+
+(defun speed-type-pause ()
+  "Pushes the current time to the start-time variable.
+
+The list of times is used to calculate the overall active typing time."
+  (interactive)
+  (message "Speed-type session is paused. Resume will be triggered on buffer-change.")
+  (when speed-type--idle-pause-timer
+    (setq speed-type--idle-pause-timer nil
+	  speed-type--time-register (append speed-type--time-register (list (float-time))))))
 
 (defun speed-type--/ (number divisor)
   "Divide NUMBER by DIVISOR when DIVISOR is not null.
@@ -371,7 +413,7 @@ SPEED-TYPE-MAYBE-UPGRADE-FILE-FORMAT."
   (let ((entries speed-type--entries)
 	(errors speed-type--errors)
 	(corrections speed-type--corrections)
-	(seconds (speed-type--elapsed-time)))
+	(seconds (speed-type--elapsed-time speed-type--time-register)))
     (list (cons 'speed-type--title speed-type--title)
 	  (cons 'speed-type--author speed-type--author)
 	  (cons 'speed-type--lang speed-type--lang)
@@ -381,6 +423,7 @@ SPEED-TYPE-MAYBE-UPGRADE-FILE-FORMAT."
 	  (cons 'speed-type--non-consecutive-errors speed-type--non-consecutive-errors)
 	  (cons 'speed-type--corrections corrections)
 	  (cons 'speed-type--elapsed-time seconds)
+	  (cons 'speed-type--time-register speed-type--time-register)
 	  (cons 'speed-type--gross-wpm (speed-type--gross-wpm entries seconds))
 	  (cons 'speed-type--gross-cpm (speed-type--gross-cpm entries seconds))
 	  (cons 'speed-type--net-wpm (speed-type--net-wpm entries errors seconds))
@@ -671,11 +714,29 @@ speed-type files that were created using the speed-type functions."
   "Return buffer with wordlist for language LANG in it."
   (speed-type--retrieve lang (cdr (assoc lang speed-type-wordlist-urls))))
 
-(defun speed-type--elapsed-time ()
-  "Return float with the total time since start."
-  (let ((end-time (float-time)))
-    (if (not speed-type--start-time)
-        0 (- end-time speed-type--start-time))))
+(defun speed-type--list-to-alist-safe (lst)
+  "Convert flat list LST into an alist.
+If the list length is odd, the last element is kept as (key . nil)."
+  (cond
+   ((null lst) nil)
+   ((null (cdr lst)) (list (cons (car lst) nil)))
+   (t (cons (cons (car lst) (cadr lst))
+            (speed-type--list-to-alist-safe (cddr lst))))))
+
+(defun speed-type--elapsed-time (time-register)
+  "Return float with the total time since start.
+
+TIME-REGISTER is a list of time-floats. Must be of length 0 or a even number. The elements are paired, between the pairs the difference calculated and summed.
+
+If the length is 0 will return 0.
+
+If the length is uneven will return symbol 'uneven."
+  (if (= (% (length time-register) 2) 0)
+      (if time-register
+	  (apply #'+ (mapcar (lambda (time-pair) (- (cdr time-pair) (car time-pair)))
+			   (speed-type--list-to-alist-safe time-register)))
+	0)
+      'uneven))
 
 (defconst speed-type--whitespace-table
   (let ((tbl (make-vector 256 nil)))
@@ -791,11 +852,14 @@ ENTRIES ERRORS CORRECTIONS SECONDS."
   (interactive)
   (remove-hook 'before-change-functions #'speed-type--before-change t)
   (remove-hook 'after-change-functions #'speed-type--change t)
-  (remove-hook 'first-change-hook #'speed-type--first-change t)
   (speed-type-finish-animation speed-type--buffer)
   (goto-char (point-max))
   (with-current-buffer speed-type--buffer
     (setq speed-type--max-point-on-complete (point-max))
+    (when speed-type--idle-pause-timer ;; if session is started
+      (cancel-timer speed-type--idle-pause-timer)
+      (setq speed-type--time-register (append speed-type--time-register (list (float-time)))))
+    (speed-type-save-stats-when-customized)
     (insert "\n\n")
     (save-excursion
       (when speed-type--title (insert (propertize speed-type--title 'face 'italic)))
@@ -808,8 +872,7 @@ ENTRIES ERRORS CORRECTIONS SECONDS."
 	       speed-type--errors
 	       speed-type--non-consecutive-errors
 	       speed-type--corrections
-	       (speed-type--elapsed-time)))
-      (speed-type-save-stats-when-customized)
+	       (speed-type--elapsed-time speed-type--time-register)))
       (speed-type-display-menu))))
 
 (defun speed-type--diff (orig new start end)
@@ -858,6 +921,7 @@ END is a point where the check stops to scan for diff."
 LENGTH is ignored. Used for hook AFTER-CHANGE-FUNCTIONS.
 Make sure that the contents don't actually change, but rather the contents
 are color coded and stats are gathered about the typing performance."
+  (unless speed-type--idle-pause-timer (speed-type--resume))
   (let ((new-text (buffer-substring start end))
 	(old-text speed-type--last-changed-text))
     (speed-type--handle-del start end)
@@ -865,6 +929,27 @@ are color coded and stats are gathered about the typing performance."
     (if (< start (point-max))
 	(let* ((end (if (> end (point-max)) (point-max) end))
 	       (orig (buffer-substring start end)))
+	  (when speed-type--preview-buffer
+	    (let ((new-last-pos start))
+	      (with-current-buffer speed-type--preview-buffer
+		(unwind-protect
+		  (save-excursion
+		    (goto-char (point-max))
+		    (when-let* ((win (get-buffer-window (current-buffer))))
+		      (set-window-point win (point)))
+		    (read-only-mode -1)
+		    (when (and (not (= speed-type--last-position 0))
+			       (> (abs (- new-last-pos speed-type--last-position)) 2))
+		      (let ((point-movement-str (concat "[ " (symbol-name last-command) "(" (number-to-string speed-type--last-position) ") → (" (number-to-string (1- new-last-pos)) ") ]")))
+			(insert point-movement-str)
+			(let ((overlay (make-overlay (- (point) (length point-movement-str)) (point))))
+			  (overlay-put overlay 'priority 1)
+			  (overlay-put overlay 'face 'speed-type-info-face))))
+		    (insert (cond ((eq this-command (key-binding (kbd "<deletechar>"))) "⌦")
+				  ((eq this-command (key-binding (kbd "DEL"))) "⌫")
+				  (t (string-replace " " "·" (string-replace "\n" "⏎" new-text)))))
+		    (setq-local speed-type--last-position new-last-pos))
+		  (read-only-mode)))))
 	  (when speed-type-ignore-whitespace-for-complete ;; add the ignore status again to deleted blank-chars
 	    (save-excursion
 	      (goto-char start)
@@ -880,11 +965,6 @@ are color coded and stats are gathered about the typing performance."
 	    (speed-type-complete)))
       (beep)
       (message "End of buffer"))))
-
-(defun speed-type--first-change ()
-  "Start the timer."
-  (when (not speed-type--start-time)
-    (setq speed-type--start-time (float-time))))
 
 (defun speed-type--trim (str)
   "Trim leading and tailing whitespace from STR."
@@ -974,6 +1054,22 @@ CALLBACK is called when the setup process has been completed."
       (setq-local speed-type--buffer buf)
       (when (null (boundp 'speed-type--extra-word-quote))
 	(setq-local speed-type--extra-word-quote nil)))
+    (let ((pbuf (when speed-type-provide-preview-option
+		  (setq speed-type--preview-buffer (generate-new-buffer speed-type-preview-buffer-name))
+		  (with-current-buffer speed-type--preview-buffer
+		    (setq-local speed-type--buffer buf
+				speed-type--last-position 0
+				truncate-lines nil)
+		    (speed-type-mode)
+		    (add-hook 'kill-buffer-hook 'speed-type--kill-preview-buffer-hook nil t)
+		    (read-only-mode))
+		  speed-type--preview-buffer))
+	  (cbuf speed-type--content-buffer))
+      (with-current-buffer speed-type--content-buffer
+	(setq-local speed-type--preview-buffer pbuf))
+      (when speed-type--preview-buffer
+	(with-current-buffer speed-type--preview-buffer
+	  (setq-local speed-type--content-buffer cbuf))))
     (when replay-fn (setq speed-type--replay-fn replay-fn))
     (let ((b-inhibit-read-only inhibit-read-only)
 	  (b-buffer-undo-list buffer-undo-list)
@@ -987,6 +1083,7 @@ CALLBACK is called when the setup process has been completed."
 			inhibit-field-text-motion t)
 	    (insert (speed-type--trim text))
 	    (speed-type--replace-map-adjust-properties speed-type-replace-strings 'speed-type-orig-pos)
+	    (when speed-type-downcase (downcase-region (point-min) (point-max)))
 	    (unless (speed-type--code-buffer-p speed-type--content-buffer)
 	      (speed-type--fill-region))
 	    (when speed-type-ignore-whitespace-for-complete
@@ -1000,10 +1097,15 @@ CALLBACK is called when the setup process has been completed."
 		    inhibit-field-text-motion b-inhibit-field-text-motion)))
     (set-buffer-modified-p nil)
     (switch-to-buffer buf)
+    (when (eq speed-type-provide-preview-option t)
+      (let ((sw (selected-window))
+	    (pw (split-window nil 3 'above)))
+	(set-window-buffer sw speed-type--preview-buffer)
+	(set-window-buffer pw buf)
+	(select-window pw)))
     (goto-char 0)
     (add-hook 'before-change-functions #'speed-type--before-change nil t)
     (add-hook 'after-change-functions 'speed-type--change nil t)
-    (add-hook 'first-change-hook 'speed-type--first-change nil t)
     (add-hook 'kill-buffer-hook 'speed-type--kill-buffer-hook nil t)
     (setq-local post-self-insert-hook nil)
     (when callback (funcall callback))
@@ -1035,18 +1137,40 @@ CALLBACK is called when the setup process has been completed."
 
 (defun speed-type--kill-buffer-hook ()
   "Hook when speed-type buffer is killed."
+  (when speed-type--idle-pause-timer (cancel-timer speed-type--idle-pause-timer))
   (when speed-type--extra-words-animation-time (cancel-timer speed-type--extra-words-animation-time))
   (when speed-type--content-buffer
     (let ((buf speed-type--content-buffer))
-      (setq speed-type--content-buffer nil)
-      (kill-buffer buf))))
+      (setq-local speed-type--content-buffer nil)
+      (kill-buffer buf)))
+  (when speed-type--preview-buffer
+    (let ((pbuf speed-type--preview-buffer))
+      (setq-local speed-type--preview-buffer nil)
+      (kill-buffer pbuf))))
 
 (defun speed-type--kill-content-buffer-hook ()
   "Hook when content buffer is killed."
   (when speed-type--buffer
     (let ((buf speed-type--buffer))
-      (setq speed-type--buffer nil)
-      (kill-buffer buf))))
+      (setq-local speed-type--buffer nil)
+      (kill-buffer buf)))
+  (when speed-type--preview-buffer
+    (let ((pbuf speed-type--preview-buffer))
+      (setq-local speed-type--preview-buffer nil)
+      (kill-buffer pbuf))))
+
+(defun speed-type--kill-preview-buffer-hook ()
+  "Hook when preview buffer is killed."
+  (when (get-buffer-window (current-buffer))
+    (delete-window (get-buffer-window speed-type--preview-buffer)))
+  (when speed-type--buffer
+    (let ((buf speed-type--buffer))
+      (setq-local speed-type--buffer nil)
+      (kill-buffer buf)))
+  (when speed-type--content-buffer
+    (let ((cbuf speed-type--content-buffer))
+      (setq-local speed-type--content-buffer nil)
+      (kill-buffer cbuf))))
 
 (defun speed-type--pick-continue-text-to-type (start end)
   "Pick text of size between speed-type-min and speed-type-max continuing at START.
@@ -1188,66 +1312,78 @@ been completed."
 
 (defun speed-type--get-continue-fn (end)
   "Return a replay function which will use GO-NEXT-FN after completion."
-  (remove-hook 'kill-buffer-hook 'speed-type--kill-buffer-hook t)
-  (let* ((start (speed-type--get-continue-point))
-	 (text (with-current-buffer speed-type--content-buffer
+  (let* ((content-buffer speed-type--content-buffer)
+	 (start (speed-type--get-continue-point))
+	 (text (with-current-buffer content-buffer
 		 (speed-type--pick-continue-text-to-type start (point-max)))))
-    (if (speed-type--code-buffer-p speed-type--content-buffer)
+    (when (and speed-type--preview-buffer (get-buffer-window speed-type--preview-buffer))
+      (delete-window (get-buffer-window speed-type--preview-buffer)))
+    (when speed-type--preview-buffer
+      (with-current-buffer speed-type--preview-buffer
+	(setq-local speed-type--content-buffer nil)))
+    (setq-local speed-type--content-buffer nil)
+    (if (speed-type--code-buffer-p content-buffer)
 	(speed-type--code-with-highlighting
-	 speed-type--content-buffer
+	 content-buffer
 	 text
 	 speed-type--file-name
 	 speed-type--title
 	 speed-type--author
 	 speed-type--randomize
-	 (with-current-buffer speed-type--content-buffer (syntax-table))
-	 (with-current-buffer speed-type--content-buffer font-lock-defaults)
+	 (with-current-buffer content-buffer (syntax-table))
+	 (with-current-buffer content-buffer font-lock-defaults)
 	 speed-type--go-next-fn
 	 (lambda () (speed-type--get-continue-fn end)))
-      (speed-type--setup speed-type--content-buffer
+      (speed-type--setup content-buffer
 	       text
 	       :file-name speed-type--file-name
 	       :author speed-type--author
 	       :title speed-type--title
 	       :randomize speed-type--randomize
-	       :add-extra-word-content-fn (lambda () (speed-type--get-next-word speed-type--content-buffer))
+	       :add-extra-word-content-fn (lambda () (speed-type--get-next-word content-buffer))
 	       :replay-fn #'speed-type--get-replay-fn
 	       :continue-fn (lambda () (speed-type--get-continue-fn end))
 	       :go-next-fn speed-type--go-next-fn))))
 
 (defun speed-type--get-replay-fn ()
   "Return a replay function which will use GO-NEXT-FN after completion."
-  (remove-hook 'kill-buffer-hook 'speed-type--kill-buffer-hook t)
-  (if (speed-type--code-buffer-p speed-type--content-buffer)
-      (speed-type--code-with-highlighting
-       speed-type--content-buffer
-       (progn
-	 (read-only-mode -1)
-	 (remove-text-properties (point-min) speed-type--max-point-on-complete '(speed-type-char-status nil))
-	 (buffer-substring (point-min) speed-type--max-point-on-complete))
-       speed-type--file-name
-       speed-type--title
-       speed-type--author
-       speed-type--randomize
-       (with-current-buffer speed-type--content-buffer (syntax-table))
-       (with-current-buffer speed-type--content-buffer font-lock-defaults)
-       speed-type--go-next-fn
-       speed-type--continue-fn)
-    (speed-type--setup speed-type--content-buffer
-	     (progn
-	       (read-only-mode -1)
-	       (remove-text-properties (point-min) speed-type--max-point-on-complete '(speed-type-char-status nil))
-	       (buffer-substring (point-min) speed-type--max-point-on-complete))
-	     :lang speed-type--lang
-	     :file-name speed-type--file-name
-	     :author speed-type--author
-	     :title speed-type--title
-	     :n-words speed-type--n-words
-	     :randomize speed-type--randomize
-	     :add-extra-word-content-fn speed-type--add-extra-word-content-fn
-             :replay-fn #'speed-type--get-replay-fn
-	     :continue-fn speed-type--continue-fn
-             :go-next-fn speed-type--go-next-fn)))
+  (let ((content-buffer speed-type--content-buffer))
+    (when (and speed-type--preview-buffer (get-buffer-window speed-type--preview-buffer))
+      (delete-window (get-buffer-window speed-type--preview-buffer)))
+    (setq-local speed-type--content-buffer nil)
+    (when speed-type--preview-buffer
+      (with-current-buffer speed-type--preview-buffer
+	(setq-local speed-type--content-buffer nil)))
+    (if (speed-type--code-buffer-p content-buffer)
+	(speed-type--code-with-highlighting
+	 content-buffer
+	 (progn
+	   (read-only-mode -1)
+	   (remove-text-properties (point-min) speed-type--max-point-on-complete '(speed-type-char-status nil))
+	   (buffer-substring (point-min) speed-type--max-point-on-complete))
+	 speed-type--file-name
+	 speed-type--title
+	 speed-type--author
+	 speed-type--randomize
+	 (with-current-buffer content-buffer (syntax-table))
+	 (with-current-buffer content-buffer font-lock-defaults)
+	 speed-type--go-next-fn
+	 speed-type--continue-fn)
+      (speed-type--setup content-buffer
+	       (progn
+		 (read-only-mode -1)
+		 (remove-text-properties (point-min) speed-type--max-point-on-complete '(speed-type-char-status nil))
+		 (buffer-substring (point-min) speed-type--max-point-on-complete))
+	       :lang speed-type--lang
+	       :file-name speed-type--file-name
+	       :author speed-type--author
+	       :title speed-type--title
+	       :n-words speed-type--n-words
+	       :randomize speed-type--randomize
+	       :add-extra-word-content-fn speed-type--add-extra-word-content-fn
+               :replay-fn #'speed-type--get-replay-fn
+	       :continue-fn speed-type--continue-fn
+               :go-next-fn speed-type--go-next-fn))))
 
 (defun speed-type--get-next-word (content-buffer)
   "Get next word from point in CONTENT-BUFFER."
@@ -1292,7 +1428,7 @@ LIMIT is supplied to the random-function."
 	    (push word words))))
       (let ((words-as-string
 	     (concat (propertize " " 'speed-type-char-status (when speed-type-ignore-whitespace-for-complete 'ignore))
-		     (string-trim (mapconcat 'identity (nreverse words)
+		     (string-trim (mapconcat (if speed-type-downcase 'downcase 'identity) (nreverse words)
 					     (propertize " " 'speed-type-char-status (when speed-type-ignore-whitespace-for-complete 'ignore)))))))
 	(setq speed-type--extra-words-queue (append speed-type--extra-words-queue (split-string words-as-string "" t))))
     (when (not (timerp speed-type--extra-words-animation-time))
@@ -1362,6 +1498,7 @@ LIMIT is supplied to the random-function."
 		   (insert (speed-type--get-random-word buf n))
                    (insert " "))
 		 (speed-type--fill-region)
+		 (when speed-type-downcase (downcase-region (point-min) (point-max)))
 		 (if speed-type-wordlist-transform
                      (funcall speed-type-wordlist-transform (buffer-string))
                    (buffer-string))))
