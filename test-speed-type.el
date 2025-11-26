@@ -69,18 +69,18 @@
     (speed-type--retrieve-non-existant-file-environment
      filename-expected
      (lambda ()
-       (let ((filename-response (speed-type--retrieve filename url)))
-         (should (stringp filename-response))
-         (should (string= filename-response filename-expected))
+       (let ((response (speed-type--retrieve filename url)))
+         (should (bufferp response))
+         (should (string= (buffer-file-name response) filename-expected))
          (should (file-exists-p filename-expected))
          (should (file-readable-p filename-expected)))))
 
     (speed-type--retrieve-existant-file-environment
      filename-expected
      (lambda ()
-       (let ((filename-response (speed-type--retrieve filename url)))
-         (should (stringp filename-response))
-         (should (string= filename-response filename-expected))
+       (let ((response (speed-type--retrieve filename url)))
+         (should (bufferp response))
+         (should (string= (buffer-file-name response) filename-expected))
          (should (file-exists-p filename-expected))
          (should (file-readable-p filename-expected))))))
 
@@ -91,7 +91,7 @@
     (speed-type--retrieve-non-existant-file-environment
      filename-expected
      (lambda ()
-       (let ((filename-response (speed-type--retrieve filename url)))
-         (should (null filename-response))
+       (let ((response (speed-type--retrieve filename url)))
+         (should (null response))
          (should (not (file-exists-p filename-expected)))
          (should (not (file-readable-p filename-expected))))))))
