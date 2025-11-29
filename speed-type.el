@@ -932,14 +932,16 @@ Only the words which are in the boundaries START and END are considered."
 
 (defun speed-type--wordlist-retrieve (lang)
   "Return buffer with wordlist for language LANG in it."
-  (speed-type--retrieve
-   (cond ((string= "de" lang) "German")
-	 ((string= "en" lang) "English")
-	 ((string= "fr" lang) "French")
-	 ((string= "nl" lang) "Dutch")
-         ((member lang (mapcar 'car speed-type-wordlist-urls)) lang)
-         (t (user-error "Language (%s) not found" lang)))
-   (cdr (assoc lang speed-type-wordlist-urls))))
+  (let ((legacy-lang
+         (cond ((string= "de" lang) 'German)
+               ((string= "en" lang) 'English)
+               ((string= "fr" lang) 'French)
+               ((string= "nl" lang) 'Dutch)
+               ((member lang (mapcar 'car speed-type-wordlist-urls)) lang)
+               (t (user-error "Language (%s) not found" lang)))))
+    (speed-type--retrieve
+     (symbol-name legacy-lang)
+     (cdr (assoc legacy-lang speed-type-wordlist-urls)))))
 
 (defun speed-type--list-to-alist-safe (lst)
   "Convert flat list LST into an alist.
