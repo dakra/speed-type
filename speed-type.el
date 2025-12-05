@@ -2068,7 +2068,7 @@ If FILE-NAME is nil, will use file-name of CURRENT-BUFFER."
                      :replay-fn #'speed-type--get-replay-fn
                      :continue-fn (lambda () (speed-type--get-continue-fn end))
                      :go-next-fn #'speed-type-text)))))))
-
+;;;###autoload
 (defun speed-type-pandoc (url)
   "Start a typing-session with the content of a given retrieved URL.
 
@@ -2096,6 +2096,7 @@ The url is converted to a unique file-name."
     (kill-buffer buffer) ;; buffer is retrieved, remove it again to not clutter the buffer-list
     ))
 
+;;;###autoload
 (defun speed-type-pandoc-top-x (url &optional n)
   "Start a typing-session with the content of a given retrieved URL.
 
