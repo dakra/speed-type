@@ -1831,6 +1831,7 @@ LIMIT is supplied to the random-function."
                                   fn
                                   title
                                   (user-full-name)
+                                  t
                                   (syntax-table)
                                   font-lock-defaults)
       (speed-type--setup buf
