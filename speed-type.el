@@ -989,11 +989,13 @@ Only the words which are in the boundaries START and END are considered."
 
 (defun speed-type--retrieve-random-book-num (lang)
   "Get a random book-num which has the given LANG."
-  (let ((lang-book-list (with-current-buffer (speed-type--retrieve (concat lang ".html")
-                                                         (concat "https://www.gutenberg.org/ebooks/search/?query=l." lang))
-                          (mapcar (lambda (h) (substring (dom-attr h 'href) 8))
-                                  (mapcar (lambda (c) (dom-by-tag c 'a))
-                                          (dom-by-class (libxml-parse-html-region (point-min) (point-max) nil) "booklink"))))))
+  (let* ((lang-buffer (speed-type--retrieve (concat lang ".html")
+                                  (concat "https://www.gutenberg.org/ebooks/search/?query=l." lang)))
+         (lang-book-list (with-current-buffer lang-buffer
+                           (mapcar (lambda (h) (substring (dom-attr h 'href) 8))
+                                   (mapcar (lambda (c) (dom-by-tag c 'a))
+                                           (dom-by-class (libxml-parse-html-region (point-min) (point-max) nil) "booklink"))))))
+    (kill-buffer lang-buffer)
     (string-to-number (nth (random (length lang-book-list)) lang-book-list))))
 
 (defun speed-type--wordlist-retrieve (lang)
@@ -1751,12 +1753,17 @@ If `speed-type-default-lang' is set, will pick a random book of that language."
   (let* ((book-num (if speed-type-default-lang
                        (speed-type--retrieve-random-book-num speed-type-default-lang)
                      (nth (random (length speed-type-gb-book-list)) speed-type-gb-book-list)))
+         (gb-buffer (speed-type--gb-retrieve book-num))
          (buffer (speed-type--gb-top-retrieve book-num))
          (fn (buffer-file-name buffer))
          (char-length (+ speed-type-min-chars (random (- speed-type-max-chars speed-type-min-chars))))
          (n (min x (with-current-buffer buffer (count-words (point-min) (point-max)))))
          (buf (speed-type-prepare-content-buffer-from-buffer buffer))
          (title (format "Top %s words of book %s" n book-num))
+         (author (with-current-buffer gb-buffer
+                   (save-excursion
+                     (when (re-search-forward "^Author: " nil t)
+                       (buffer-substring (point) (line-end-position))))))
          (text (with-temp-buffer
                  (while (< (buffer-size) char-length)
                    (let ((random-word (speed-type--get-random-word buf n)))
@@ -1767,12 +1774,13 @@ If `speed-type-default-lang' is set, will pick a random book of that language."
                    (buffer-string))))
          (add-extra-word-content-fn (lambda () (speed-type--get-random-word buf n)))
          (go-next-fn (lambda () (speed-type--get-next-top-fn x))))
+    (kill-buffer gb-buffer) ;; buffer is retrieved, remove it again to not clutter the buffer-list
     (kill-buffer buffer) ;; buffer is retrieved, remove it again to not clutter the buffer-list
     (speed-type--setup buf
              text
              :file-name fn
              :title title
-             :author "To be extracted from gb-book"
+             :author author
              :n-words n
              :replay-fn #'speed-type--get-replay-fn
              :go-next-fn go-next-fn
