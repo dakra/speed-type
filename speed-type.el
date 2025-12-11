@@ -1037,13 +1037,6 @@ If the length is uneven will return symbol `uneven'."
         0)
     'uneven))
 
-(defconst speed-type--whitespace-table
-  (let ((tbl (make-vector 256 nil)))
-    (dolist (c '(?\s ?\t ?\n ?\r ?\f))
-      (aset tbl c t))
-    tbl)
-  "Lookup table for ASCII whitespace characters.")
-
 (defun speed-type--check-same (pos a b)
   "Return non-nil if A[POS] and B[POS] are identical or both whitespace.
 
