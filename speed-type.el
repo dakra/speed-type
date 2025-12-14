@@ -2107,7 +2107,7 @@ The file-name of the content is a converted form of URL."
                    :file-name fn
                    :title title
                    :replay-fn #'speed-type--get-replay-fn
-                   :go-next-fn #'speed-type-text
+                   :go-next-fn #'speed-type-pandoc
                    :continue-fn (lambda () (speed-type--get-continue-fn end))
                    :add-extra-word-content-fn (lambda () (speed-type--get-next-word buf))))
       (speed-type-continue fn))
