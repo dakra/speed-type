@@ -827,14 +827,14 @@ make the filename more unique.
 If `secure-hash-algorithms' should provide sha1 or md5 else the fixed
 string \"no-hash\" is used as a prefix instead of a real hash."
   (concat
+   (let ((posix-str (replace-regexp-in-string "-\\." "." (replace-regexp-in-string "-+" "-" (replace-regexp-in-string "[^A-Za-z0-9-]" "-" url)))))
+     (substring posix-str 0 (min 64 (length posix-str))))
+   "-"
    (let* ((hash-func (or (car (member 'sha1 (secure-hash-algorithms)))
                          (car (member 'md5 (secure-hash-algorithms)))))
           (hash-str (or (when hash-func (funcall hash-func url)) "no-hash"))
           (short-hash-str (substring hash-str 0 (min 7 (length hash-str)))))
-     short-hash-str)
-   "-"
-   (let ((posix-str (replace-regexp-in-string "-\\." "." (replace-regexp-in-string "-+" "-" (replace-regexp-in-string "[^A-Za-z0-9-]" "-" url)))))
-     (substring posix-str 0 (min 64 (length posix-str))))))
+     short-hash-str)))
 
 (defconst speed-type-pandoc-request-header "\"User-Agent:Emacs: speed-type/1.4 https://github.com/dakra/speed-type\""
   "This const is used when pandoc is retrieving content from an url.")
@@ -896,22 +896,23 @@ If the file is already retrieved, will return file-location."
 
 (defun speed-type--retrieve (filename url)
   "Return buffer FILENAME content in it or download from URL if file doesn't exist."
-  (let ((fn (expand-file-name (format "%s.txt" filename) speed-type-directory))
-        (url-request-method "GET"))
-    (if (file-readable-p fn)
-        (find-file-noselect fn t)
-      (make-directory speed-type-directory 'parents)
-      (let ((buffer (url-retrieve-synchronously url nil nil 5)))
-        (when (and buffer (= 200 (url-http-symbol-value-in-buffer
-                                  'url-http-response-status
-                                  buffer)))
-          (with-current-buffer buffer
-            (set-buffer-file-coding-system speed-type-coding-system)
-            (recode-region url-http-end-of-headers (point-max) 'utf-8-dos speed-type-coding-system)
-            (write-region url-http-end-of-headers (point-max) fn))
-          (unless (kill-buffer buffer)
-            (message "WARNING: Buffer is not closing properly"))
-          (find-file-noselect fn t))))))
+  (or (let ((fn (expand-file-name (format "%s.txt" filename) speed-type-directory))
+            (url-request-method "GET"))
+        (if (file-readable-p fn)
+            (find-file-noselect fn t)
+          (make-directory speed-type-directory 'parents)
+          (let ((buffer (url-retrieve-synchronously url nil nil 5)))
+            (when (and buffer (= 200 (url-http-symbol-value-in-buffer
+                                      'url-http-response-status
+                                      buffer)))
+              (with-current-buffer buffer
+                (set-buffer-file-coding-system speed-type-coding-system)
+                (recode-region url-http-end-of-headers (point-max) 'utf-8-dos speed-type-coding-system)
+                (write-region url-http-end-of-headers (point-max) fn))
+              (unless (kill-buffer buffer)
+                (message "WARNING: Buffer is not closing properly"))
+              (find-file-noselect fn t)))))
+      (error "Error retrieving book with URL(%s)" url)))
 
 (defun speed-type--calculate-word-frequency (buffer start end)
   "Create a new buffer containing the words of given BUFFER ordered by frequency.
@@ -1905,25 +1906,26 @@ speed-type session with the assembled text."
 If using a prefix while calling this function `C-u', then the FULL text
 will be used.  Else some text will be picked randomly."
   (interactive "P")
-  (if full
-      (speed-type-region (point-min) (point-max))
-    (if speed-type-randomize
-        (let* ((buf (speed-type-prepare-content-buffer-from-buffer (current-buffer)))
-               (text (with-current-buffer buf (speed-type--pick-text-to-type)))
-               (line-count (with-current-buffer buf (count-lines (point-min) (point-max))))
-               (go-next-fn (lambda () (with-current-buffer buf (speed-type-buffer full)))))
-          (speed-type--setup buf
-                   text
-                   :file-name (buffer-file-name (current-buffer))
-                   :title (buffer-name)
-                   :author (user-full-name)
-                   :randomize t
-                   :replay-fn #'speed-type--get-replay-fn
-                   :go-next-fn go-next-fn
-                   :add-extra-word-content-fn (lambda () (speed-type--get-separated-thing-at-random-line buf line-count " "))
-                   :syntax-table (syntax-table)
-                   :fldf font-lock-defaults))
-      (speed-type-continue))))
+  (let ((cb (current-buffer)))
+    (if full
+        (speed-type-region (point-min) (point-max))
+      (if speed-type-randomize
+          (let* ((buf (speed-type-prepare-content-buffer-from-buffer (current-buffer)))
+                 (text (with-current-buffer buf (speed-type--pick-text-to-type)))
+                 (line-count (with-current-buffer buf (count-lines (point-min) (point-max))))
+                 (go-next-fn (lambda () (with-current-buffer buf (speed-type-buffer full)))))
+            (speed-type--setup buf
+                     text
+                     :file-name (buffer-file-name (current-buffer))
+                     :title (buffer-name)
+                     :author (user-full-name)
+                     :randomize t
+                     :replay-fn #'speed-type--get-replay-fn
+                     :go-next-fn go-next-fn
+                     :add-extra-word-content-fn (lambda () (speed-type--get-separated-thing-at-random-line buf line-count " "))
+                     :syntax-table (syntax-table)
+                     :fldf font-lock-defaults))
+        (speed-type-continue (lambda () (with-current-buffer (speed-type-prepare-content-buffer-from-buffer cb) (speed-type-buffer full))))))))
 
 ;;;###autoload
 (defun speed-type-text ()
@@ -1965,7 +1967,7 @@ will be used.  Else some text will be picked randomly."
                    :go-next-fn #'speed-type-text
                    :continue-fn (lambda () (speed-type--get-continue-fn end))
                    :add-extra-word-content-fn (lambda () (speed-type--get-next-word buf))))
-      (speed-type-continue (buffer-file-name buffer)))
+      (speed-type-continue #'speed-type-text (buffer-file-name buffer)))
     (kill-buffer buffer)))
 
 ;;;###autoload
@@ -2010,7 +2012,7 @@ If ARG is given will prompt for a specific quote-URL."
              :add-extra-word-content-fn add-extra-word-content-fn)))
 
 ;;;###autoload
-(defun speed-type-continue (&optional file-name)
+(defun speed-type-continue (go-next-fn &optional file-name)
   "Will continue where user left of in given FILE-NAME.
 
 Find last speed-type--continue-at-point of FILE-NAME and setup a speed-type
@@ -2078,7 +2080,7 @@ If FILE-NAME is nil, will use file-name of CURRENT-BUFFER."
                    :title title
                    :author author
                    :replay-fn #'speed-type--get-replay-fn
-                   :go-next-fn #'speed-type-text
+                   :go-next-fn go-next-fn
                    :continue-fn (lambda () (speed-type--get-continue-fn end))
                    :add-extra-word-content-fn (lambda () (speed-type--get-next-word buf))
                    :syntax-table (syntax-table)
@@ -2095,7 +2097,8 @@ If the URL is already retrieved will reuse the stored content in
 The file-name of the content is a converted form of URL."
   (interactive "sURL: ")
   (let* ((buffer (speed-type-retrieve-pandoc url))
-         (fn (buffer-file-name buffer)))
+         (fn (buffer-file-name buffer))
+         (go-next-fn (lambda () (call-interactively #'speed-type-pandoc))))
     (if speed-type-randomize
         (let* ((buf (speed-type-prepare-content-buffer-from-buffer buffer))
                (title (buffer-name))
@@ -2107,10 +2110,10 @@ The file-name of the content is a converted form of URL."
                    :file-name fn
                    :title title
                    :replay-fn #'speed-type--get-replay-fn
-                   :go-next-fn #'speed-type-pandoc
+                   :go-next-fn go-next-fn
                    :continue-fn (lambda () (speed-type--get-continue-fn end))
                    :add-extra-word-content-fn (lambda () (speed-type--get-next-word buf))))
-      (speed-type-continue fn))
+      (speed-type-continue go-next-fn fn))
     (kill-buffer buffer) ;; buffer is retrieved, remove it again to not clutter the buffer-list
     ))
 
