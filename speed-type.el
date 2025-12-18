@@ -432,7 +432,7 @@ Adding the idle timer again, and pushing the newest time to stack."
 
 The list of times is used to calculate the overall active typing time."
   (interactive)
-  (message "Speed-type session is paused. Resume will be triggered on buffer-change.")
+  (message "Speed-type: session is paused. Resume will be triggered on buffer-change.")
   (when speed-type--idle-pause-timer
     (setq speed-type--idle-pause-timer nil
           speed-type--time-register (append speed-type--time-register (list (float-time))))))
@@ -848,17 +848,19 @@ string \"no-hash\" is used as a prefix instead of a real hash."
 
 If the file is already retrieved, will return file-location."
   (unless (executable-find "pandoc") (error "Executable: pandoc not installed"))
-  (let* ((default-directory speed-type-directory)
-         (fn (expand-file-name (format "%s.txt" (speed-type--url-to-filename url)) speed-type-directory))
-         (cmd "pandoc")
-         (url-opts (format "-s -r html \"%s\"" url))
-         (request-header (format "--request-header %s" speed-type-pandoc-request-header))
-         (text-opts "-t plain")
-         (output (format "-o %s" fn))
-         (full-pandoc-cmd (mapconcat #'identity (list cmd url-opts request-header text-opts output) " ")))
-    (when (or (> (shell-command full-pandoc-cmd) 0) (not (file-readable-p fn)))
-      (message "Check executed pandoc command: %s" full-pandoc-cmd)
-      (error "Error while retrieving url with pandoc see *Messages* for details"))
+  (let ((fn (expand-file-name (format "%s.txt" (speed-type--url-to-filename url)) speed-type-directory)))
+    (unless (file-readable-p fn)
+      (let* ((default-directory speed-type-directory)
+             (cmd "pandoc")
+             (url-opts (format "-s -r html \"%s\"" url))
+             (request-header (format "--request-header %s" speed-type-pandoc-request-header))
+             (text-opts "-t plain")
+             (output (format "-o %s" fn))
+             (full-pandoc-cmd (mapconcat #'identity (list cmd url-opts request-header text-opts output) " ")))
+        (message "Speed-type: Retrieving content with pandoc...")
+        (when (or (> (call-process-shell-command full-pandoc-cmd) 0) (not (file-readable-p fn)))
+          (error "Speed-type: Retrieving content with pandoc...FAILED, command was %s" full-pandoc-cmd))
+        (message "Speed-type: Retrieving content with pandoc...DONE")))
     (find-file-noselect fn t)))
 
 (defun speed-type-retrieve-pandoc-top-retrieve (url)
