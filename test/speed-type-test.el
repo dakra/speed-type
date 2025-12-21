@@ -282,7 +282,7 @@ Also assure when that added words are downcased too."
 	 (lambda ()
 	   (should (string= "asdf" (buffer-string)))
 	   (insert "b")
-	   (sleep-for 1)
+	   (sleep-for 0.1)
 	   (should (string= "asdf asdf" (buffer-string)))
 	   (with-current-buffer speed-type--content-buffer
 	     (should (string= "ASDF" (buffer-string))))))
@@ -447,8 +447,146 @@ Also assure when that added words are downcased too."
       (kill-buffer (get-file-buffer filename-expected))
       (delete-file filename-expected))))
 
-;; this test is commented due to strange unconsistent error ("Marker does not point anywhere")
-;; sometimes it works and the test is green, when red ert seems to have a internal bug
+(ert-deftest speed-type-test/pick-continue-error-cases ()
+  "Should error if custom vars contain garbage or buffer is empty."
+   ;; min or max contain something else than a number
+  (should-error (speed-type--pick-continue-text-bounds "0" 0 1 100 0 nil))
+  (should-error (speed-type--pick-continue-text-bounds 0 "0" 1 100 0 nil))
+  (should-error (speed-type--pick-continue-text-bounds 0 0 "1" 100 0 nil))
+  (should-error (speed-type--pick-continue-text-bounds 0 0 1 "100" 0 nil))
+  (should-error (speed-type--pick-continue-text-bounds 0 0 1 100 "0" nil))
+  (should-error (speed-type--pick-continue-text-bounds -1 0 1 100 0 nil))
+  (should-error (speed-type--pick-continue-text-bounds 0 -1 1 100 0 nil))
+  (should-error (speed-type--pick-continue-text-bounds 0 0 -1 100 0 nil))
+  (should-error (speed-type--pick-continue-text-bounds 0 0 1 -100 0 nil))
+  (should-error (speed-type--pick-continue-text-bounds 0 0 1 100 -1 nil)))
+
+(ert-deftest speed-type-test/pick-continue-text-empty-cases ()
+  "Cases in which the function should return empty string."
+  (with-temp-buffer
+    (insert "asdf")
+    (should (string-empty-p (save-excursion (apply #'buffer-substring (speed-type--pick-continue-text-bounds 0 0 0 0 0 nil)))))
+    (should (string-empty-p (save-excursion (apply #'buffer-substring (speed-type--pick-continue-text-bounds 0 0 1 100 0 nil)))))
+    (should (string-empty-p (save-excursion (apply #'buffer-substring (speed-type--pick-continue-text-bounds 1 5 0 0 0 nil))))))
+  (with-temp-buffer
+    (should (string-empty-p (apply #'buffer-substring (speed-type--pick-continue-text-bounds (point-min) (point-max) 1 100 0 nil))))))
+
+(ert-deftest speed-type-test/normal-case-min-is-considered ()
+  (with-temp-buffer
+    (insert "The quick brown fox jumps over the lazy dog.")
+    (should (string-prefix-p "The quick brown" (apply #'buffer-substring (speed-type--pick-continue-text-bounds (point-min) (point-max) 10 20 5 t))))))
+
+(ert-deftest speed-type-test/special-case-very-long-word-max-+-tolerance-is-not-exceeded ()
+  (with-temp-buffer
+    (insert "Antidisestablishmentarianism is a very long word.")
+    (should (string= "Antidisestablishmentarianism" (apply #'buffer-substring (speed-type--pick-continue-text-bounds (point-min) (point-max) 5 10 20 t))))))
+
+(ert-deftest speed-type-test/special-case-very-very-long-word-split-to-not-exceed-max-+-tolerance ()
+  (with-temp-buffer
+    (insert "Supercalifragilisticexpialidocious phenomenon.")
+    (should (string= "Supercalifragil" (apply #'buffer-substring (speed-type--pick-continue-text-bounds (point-min) (point-max) 5 10 5 t))))))
+
+(ert-deftest speed-type-test/special-case-end-is-reached-before-min-can-be-achieved ()
+  (with-temp-buffer
+    (insert "Short.")
+    (should (string= "Short." (apply #'buffer-substring (speed-type--pick-continue-text-bounds (point-min) (point-max) 20 30 10 t))))))
+
+(ert-deftest speed-type-test/whitespace-case-whitespace-considered ()
+  (with-temp-buffer
+    (insert "This    text
+
+has     lots
+   of     whitespace.")
+    (should (string-prefix-p "This    text" (apply #'buffer-substring (speed-type--pick-continue-text-bounds (point-min) (point-max) 10 20 5 nil))))))
+
+(ert-deftest speed-type-test/special-case-minimal-length-zero-tolerance ()
+  (with-temp-buffer
+    (insert "asdf")
+    (should (string= "s" (apply #'buffer-substring (speed-type--pick-continue-text-bounds 2 3 1 1 0 t))))))
+
+(ert-deftest speed-type-test/special-case-minimal-length-one-tolerance ()
+  (with-temp-buffer
+    (insert "asdf")
+    (should (string= "as" (apply #'buffer-substring (speed-type--pick-continue-text-bounds 1 3 1 1 1 t))))))
+
+
+(ert-deftest speed-type-test/special-case-tolerance-0-expect-exact-boundary-behavior ()
+  (with-temp-buffer
+    (insert "One two three four five six seven eight nine ten.")
+    (should (string= "One two three f" (apply #'buffer-substring (speed-type--pick-continue-text-bounds (point-min) (point-max) 15 15 0 nil))))))
+
+(ert-deftest speed-type-test/multiple-runs-result-in-different-target-lengths ()
+  (with-temp-buffer
+    (insert "Lorem ipsum dolor sit amet consectetur adipiscing elit.")
+    (let ((min 10)
+          (max 40)
+          (tolerance 5))
+      (dotimes (_ 5)
+        (let ((content (save-excursion (apply #'buffer-substring (speed-type--pick-continue-text-bounds (point-min) (point-max) min max tolerance nil)))))
+          (should (string-prefix-p "Lorem ipsum" content))
+          (should (> (length content) min))
+          (should (<= (length content) (+ max tolerance))))))))
+
+(ert-deftest speed-type-test/special-case-leading-whitespace-at-the-start ()
+  (with-temp-buffer
+    (insert "      Leading whitespace should not break logic.")
+    (should (string-prefix-p "      Leading whitespace" (apply #'buffer-substring (speed-type--pick-continue-text-bounds (point-min) (point-max) 10 25 5 t))))))
+
+(ert-deftest speed-type-test/51-words-expect-repeated-call-will-not-include-previous-chars ()
+  (with-temp-buffer
+    (dotimes (i 50)
+      (insert (concat "Word" (number-to-string i) " ")))
+    (insert "Word50.")
+    (goto-char (point-min))
+    ;; 51 words are 347 characters
+    ;; min is 50 which leads to a maximum times of 7 (347 / 50= 6.94)
+    ;; ensure function moves always forward and never takes characters from the previous call
+    (let ((previous-last-char "")
+          (current-first-word nil)
+          (min 50)
+          (max 200)
+          (tolerance 10))
+      (dotimes (i 7)
+        (let ((previous-point (point))
+              (content (apply #'buffer-substring (speed-type--pick-continue-text-bounds (point) (point-max) min max tolerance nil))))
+          (message "Speed-type-test: Content is %s" content)
+          (should (string= (buffer-substring previous-point (point)) content))
+
+          (should (<= (length content) (+ max tolerance)))
+          (unless (eobp)
+            (should (> (point) (* (1+ i) min)))
+            (should (> (length content) min))
+            (when (string= previous-last-char (substring content 0 1))
+              (message "Previous point was %d. Current point is %d. The same character is %s" previous-point (point) (substring content 0 1)))
+            (should (not (string= previous-last-char (substring content 0 1))))
+            (setq previous-last-char (substring content (- (length content) 1)))))))))
+
+(ert-deftest speed-type-test/special-case-asdfasdfasdfasdfasdf1-excceds-max-but-tolerance-allows-longer-word ()
+  (with-temp-buffer
+    (insert "asdfasdfasdfasdfasdf1")
+    (should (string= "asdfasdfasdfasdfasdf1" (apply #'buffer-substring (speed-type--pick-continue-text-bounds (point-min) (point-max) 20 20 20 t))))))
+
+(ert-deftest speed-type-test/special-case-1-included-even-though-it-exceeds-max-because-word-ends-within-tolerance ()
+  (with-temp-buffer
+    (insert "asdf asdf asdf asdf asdf1")
+    (should (string= "asdf asdf asdf asdf asdf1" (apply #'buffer-substring (speed-type--pick-continue-text-bounds (point-min) (point-max) 20 20 20 t))))))
+
+(ert-deftest speed-type-test/special-case-1234bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb--second-last-word-and-must-be-split-because-tolerance-exceeded ()
+  (with-temp-buffer
+    (insert "asdf asdf 1234bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb asdf")
+    (should (string= "asdf asdf 1234bbbbbbbbbbbbbbbbbbbbbbbbbb" (apply #'buffer-substring (speed-type--pick-continue-text-bounds (point-min) (point-max) 20 20 20 nil))))))
+
+(ert-deftest speed-type-test/special-case-1234aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-is-the-last-word-split-because-tolerance-exceeded ()
+  (with-temp-buffer
+    (insert "asdf asdf asdf asdf 1234aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+    (should (string= "asdf asdf asdf asdf 1234aaaaaaaaaaaaaaaa" (apply #'buffer-substring (speed-type--pick-continue-text-bounds (point-min) (point-max) 20 20 20 nil))))))
+
+(ert-deftest speed-type-test/special-case-1234aaaaaaaaaaaaa-is-a-whole-word-and-following-word-not-split-because-within-tolerance ()
+  (with-temp-buffer
+    (insert "asdf asdf asdf asdf 1234aaaaaaaaaaaaa asdf")
+    (should (string= "asdf asdf asdf asdf 1234aaaaaaaaaaaaa" (apply #'buffer-substring (speed-type--pick-continue-text-bounds (point-min) (point-max) 20 20 20 t))))))
+
+;; TODO For some reason it deletes a random buffer which is not intended
 ;; (ert-deftest speed-type--retrieve-test ()
 ;;   (let ((speed-type-directory-b speed-type-directory))
 ;;     (unwind-protect
@@ -477,10 +615,6 @@ Also assure when that added words are downcased too."
 ;;                      (url "https://www.google.com/nonexitanresource"))
 ;;                  (speed-type--retrieve-non-existant-file-environment
 ;;                   filename-expected
-;;                   (lambda ()
-;;                     (let ((response (speed-type--retrieve filename url)))
-;;                       (should (null response))
-;;                       (should (not (file-exists-p filename-expected)))
-;;                       (should (not (file-readable-p filename-expected))))))))
+;;                   (lambda () (should-error (speed-type--retrieve filename url))))))
 ;;       (setq speed-type-directory speed-type-directory-b))))
-;; ;;; speed-type-test.el ends here
+;;; speed-type-test.el ends here

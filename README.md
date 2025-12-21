@@ -156,12 +156,18 @@ A little diagram because [uniline](https://github.com/tbanel/uniline) is fun:
                            │  ▽     │   ▽ resume    │         ▽
   ╭─────╮   ╭─────╮       ╭┴──┴─────┴───┴────╮    ╭─┴─────────┴─╮     ╭────╮
   │start├──▷┤setup├──────▷┤speed-type session├───▷┤complete/menu├────▷┤quit│
-  ╰─────╯   ╰─┬───╯       ╰──────────────────╯    ╰──────┬──────╯     ╰────╯
-              △                                          │
+  ╰─────╯   ╰─┬───╯       ╰─┬──────────────┬─╯   │╰──────┬──────╯     ╰────╯
+              △             │              △     save    │
+              │             ▽              │             │
+              │           ╭─┴──────────────┴─╮           │
+              │           │add words on error│           │
+              │           ╰──────────────────╯           │
               │                                          ▽
               │                            ╭─────────────┴──────╮
               ╰────────────────────────────┤replay/next/continue│
                                            ╰────────────────────╯
+
+
 ```
 
 
@@ -230,14 +236,42 @@ To color the characters a overlay is used:
   - correct
   - error
 
+### Undo
+There is the possibility to undo but it currently doesn't work very
+well... :(
+### Pause
+An idle-timer (`speed-type--idle-pause-timer`) is used in case the
+user leaves his speed-type session untouched for a configured delay
+(`speed-type-pause-delay-seconds`). On pause the `(float-time)` is
+pushed to a register (`speed-type--time-register`). On resume a
+`(float-time)` is pushed again. The elapsed time is calculated by
+`speed-type--elapsed-time` which expects an even length in the
+register. It pairs them, calculates the diff an sums them.
+### Add words on error
+
+Adding words is animated using timers which means it run more or less
+asynchronous to the typing itself. The words are picked using the
+function `speed-type--add-extra-word-content-fn`. The words are pushed to the queue
+`speed-type--extra-words-queue`. This queue is consumed by
+`speed-type--extra-words-animation-timer` which calls
+`speed-type-animate-extra-word-inseration`.
+
+The function is called X-times depending on the two custom variables
+`speed-type-add-extra-words-on-non-consecutive-errors` and
+`speed-type-add-extra-words-on-error`. If neither are set, no words
+are added if both are set they accumulate each other.
+
 ### Completion and Menu
 
 A typing session is considered complete when every character in the
 buffer has a `speed-type-char-status` property. Once all characters
-have such a value, completion is triggered.
+have such a value, completion is triggered. Before displaying the
+menu, the buffer-local-vars are stored into the stats-file (when
+customized).
 
 At this point, the `speed-type-buffer` becomes read-only and only the
-menu-control keys remain active.
+menu-control keys remain active. The user has the choice to either
+quit trigger an action which creates a new speed-type session.
 
 ### Replay / Continue / Next
 
@@ -248,7 +282,8 @@ action calls `speed-type--setup` with mostly the same parameters
 again, which starts a new session.
 
 After setup is complete it kills the completed `speed-type-buffer` and
-`speed-type-preview-buffer`. It may reuse the existing content-buffer.
+`speed-type-preview-buffer`. It may reuse the existing content-buffer
+for the new speed-type session.
 
 ### Median Stats
 Calculates and displays the median stats of various buffer-local vars
