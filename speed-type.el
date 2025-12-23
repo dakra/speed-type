@@ -929,20 +929,32 @@ Only the words which are in the boundaries START and END are considered."
       ;; Step 1: Count word frequencies using generator
       (save-excursion
         (goto-char start)
-        (let ((word-start nil))
+        (let ((word-start nil)
+              (first-word-in-sentence-p (bobp)))
           (while (< (point) end)
             (let ((ch (char-after)))
-              (if (and ch (speed-type--char-word-syntax-p ch))
+              (if (and ch (eq (char-syntax ch) ?w))
                   (unless word-start (setq word-start (point)))
                 (when word-start
-                  (let ((word (downcase (buffer-substring-no-properties word-start (point)))))
-                    (puthash word (1+ (gethash word word-counts 0)) word-counts))
-                  (setq word-start nil))))
+                  (let* ((word (buffer-substring-no-properties word-start (point)))
+                         (key (downcase word))
+                         (value (gethash key word-counts (list 0 nil)))
+                         (rep (if first-word-in-sentence-p (cadr value) word)))
+                    (puthash (downcase word) (list (1+ (car value)) rep) word-counts))
+                  (setq word-start nil
+                        first-word-in-sentence-p nil))
+                (when (and (not first-word-in-sentence-p) (string-match-p (sentence-end) (char-to-string ch)))
+                  (setq first-word-in-sentence-p t))))
             (forward-char 1))
           ;; Final word at end of buffer
           (when word-start
-            (let ((word (downcase (buffer-substring-no-properties word-start (point)))))
-              (puthash word (1+ (gethash word word-counts 0)) word-counts)))))
+            (let* ((word (buffer-substring-no-properties word-start (point)))
+                   (key (downcase word))
+                   (value (gethash key word-counts (list 0 nil)))
+                   (rep (if first-word-in-sentence-p (cadr value) word)))
+              (puthash (downcase word) (list (1+ (car value)) rep) word-counts))
+            (setq word-start nil
+                  first-word-in-sentence-p nil))))
 
       ;; Step 2: Transfer hash map table to file
       (let ((top-words '()))
@@ -950,15 +962,11 @@ Only the words which are in the boundaries START and END are considered."
                    ;; Step 2.1: Transfer hash map table to a sortable list
                    (push (cons k v) top-words))
                  word-counts)
-        (setq top-words (sort top-words (lambda (a b) (> (cdr a) (cdr b)))))
+        (setq top-words (sort top-words (lambda (a b) (> (cadr a) (cadr b)))))
         (with-current-buffer (generate-new-buffer "*temp*" t)
           (dolist (pair top-words)
-            (insert (format "%s\n" (car pair))))
+            (insert (format "%s\n" (or (caddr pair) (car pair)))))
           (current-buffer))))))
-
-(defun speed-type--char-word-syntax-p (ch)
-  "Return non-nil if CH is a word-constituent character."
-  (eq (char-syntax ch) ?w))
 
 (defun speed-type--gb-retrieve (book-num)
   "Return buffer with book number BOOK-NUM in it."
