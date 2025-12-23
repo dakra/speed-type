@@ -1261,40 +1261,49 @@ are color coded and stats are gathered about the typing performance."
                             ""
                             str))
 
-(defun speed-type--replace-map-adjust-properties (map property)
+(defun speed-type--replace-map-adjust-properties (map property &optional object)
   "Replace each FROM/TO pair in MAP while adjusting PROPERTY regions.
 MAP is a list of (FROM . TO) string pairs.
-PROPERTY is the text property to preserve/adjust around the replaced region."
+PROPERTY is the text property to preserve/adjust around the replaced region.
+
+Optional OBJECT can be a string. It will be inserted into a temp-buffer
+and property adjusted. A new string is returned with adjusted
+properties."
   (save-excursion
-    (dolist (pair map)
-      (let ((from (car pair))
-            (to   (cdr pair)))
-        (goto-char (point-min))
-        (while (search-forward from nil t)
-          (let* ((start (match-beginning 0))
-                 (end   (match-end 0))
-                 (prop-start (previous-single-property-change start property speed-type--buffer (point-min)))
-                 (prop-end   (next-single-property-change end property speed-type--buffer (point-max)))
-                 (len-from (length from))
-                 (len-to   (length to))
-                 (old-property-value (get-text-property start property)))
-            (replace-match to t t)
+    (eval `(,(or (and object 'with-temp-buffer) 'with-current-buffer)
+	    (unless ,object (current-buffer))
+	    (progn
+	      (when ,object (insert ,object))
+	      (dolist (pair ',map)
+		(let ((from (car pair))
+		      (to   (cdr pair)))
+		  (goto-char (point-min))
+		  (while (search-forward from nil t)
+		    (let* ((start (match-beginning 0))
+			   (end   (match-end 0))
+			   (prop-start (previous-single-property-change start ',property speed-type--buffer (point-min)))
+			   (prop-end   (next-single-property-change end ',property speed-type--buffer (point-max)))
+			   (len-from (length from))
+			   (len-to   (length to))
+			   (old-property-value (get-text-property start ',property)))
+		      (replace-match to t t)
 
-            (cond
-             ;; TO longer → extend property region
-             ((> len-to len-from)
-              (put-text-property
-               prop-start (+ prop-end (- len-to len-from))
-               property old-property-value))
+		      (cond
+		       ;; TO longer → extend property region
+		       ((> len-to len-from)
+			(put-text-property
+			 prop-start (+ prop-end (- len-to len-from))
+			 ',property old-property-value))
 
-             ;; FROM longer → shrink property region
-             ((< len-to len-from)
-              (let ((new-prop-end (- prop-end (- len-from len-to))))
-                (when (> new-prop-end prop-start)
-                  (put-text-property
-                   prop-start new-prop-end
-                   property old-property-value))))
-             (t (put-text-property prop-start prop-end property old-property-value)))))))))
+		       ;; FROM longer → shrink property region
+		       ((< len-to len-from)
+			(let ((new-prop-end (- prop-end (- len-from len-to))))
+			  (when (> new-prop-end prop-start)
+			    (put-text-property
+			     prop-start new-prop-end
+			     ',property old-property-value))))
+		       (t (put-text-property prop-start prop-end ',property old-property-value)))))))
+	      (when ,object (buffer-string)))))))
 
 (cl-defun speed-type--setup
     (content-buffer text &key file-name title author lang n-words randomize continue-fn add-extra-word-content-fn replay-fn go-next-fn syntax-table fldf)
@@ -1683,7 +1692,7 @@ LIMIT is supplied to the random-function."
         (let ((word (string-trim (funcall speed-type--add-extra-word-content-fn))))
           (if (string-blank-p word)
               (message "You got lucky! Extra word function resulted in empty string.")
-            (push word words))))
+            (push (speed-type--replace-map-adjust-properties speed-type-replace-strings 'speed-type-orig-pos word) words))))
       (when words
         (let ((words-as-string
                (concat (propertize " " 'speed-type-char-status (when speed-type-ignore-whitespace-for-complete 'ignore))
