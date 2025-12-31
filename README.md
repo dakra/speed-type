@@ -264,10 +264,13 @@ are added if both are set they accumulate each other.
 ### Completion and Menu
 
 A typing session is considered complete when every character in the
-buffer has a `speed-type-char-status` property. Once all characters
-have such a value, completion is triggered. Before displaying the
-menu, the buffer-local-vars are stored into the stats-file (when
-customized).
+buffer has a `speed-type-char-status` property (see also
+`speed-type-complete-all-correct`). Once all characters have such a
+value, completion is triggered. It's also possible to call
+`speed-type-complete` interactivly.
+
+Before displaying the menu, the buffer-local-vars are stored into the
+stats-file (when customized).
 
 At this point, the `speed-type-buffer` becomes read-only and only the
 menu-control keys remain active. The user has the choice to either

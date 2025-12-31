@@ -121,8 +121,7 @@ the transformed string that is used for the speed type exercise.
 E.g. if you always want lowercase words, set:
 `speed-type-wordlist-transform' to `downcase'."
   :type '(choice (const :tag "None" nil)
-                 (function :tag "Transform function"))
-  :group 'speed-type)
+                 (function :tag "Transform function")))
 
 (defcustom speed-type-default-lang nil
   "Default language for training wordlists.  Ask when NIL."
@@ -191,15 +190,13 @@ E.g. if you always want lowercase words, set:
                  (const :tag "Tagabawa" bgs)
                  (const :tag "Tagalog" tl)
                  (const :tag "Telugu" te)
-                 (const :tag "Welsh" cy))
-  :group 'speed-type)
+                 (const :tag "Welsh" cy)))
 
 (defcustom speed-type-replace-strings '(("“" . "\"") ("”" . "\"") ("‘" . "'") ("’" . "'") ("—" . "-") ("–" . "-") ("Æ" . "Ae") ("æ" . "ae") ("»" . "\"") ("«" . "\""))
   "Alist of strings to replace and their replacement, in the form:
 `(bad-string . good-string)'
 To remove without replacement, use the form: `(bad-string . \"\")'"
-  :type '(alist :key-type string :value-type string)
-  :group 'speed-type)
+  :type '(alist :key-type string :value-type string))
 
 (defcustom speed-type-randomize t
   "Affects the text-picker when starting speed-type-buffer or speed-type-text.
@@ -207,8 +204,7 @@ To remove without replacement, use the form: `(bad-string . \"\")'"
 When non-nil it picks a random portion, otherwise it checks for existing
 records to start from. If nothing found will take text-portion from the
 beginning."
-  :type 'boolean
-  :group 'speed-type)
+  :type 'boolean)
 
 (defcustom speed-type-downcase nil
   "Toggle downcasing of mistyped words."
@@ -220,8 +216,17 @@ beginning."
 when point-move (default), moves the point one character further.
 
 when point-stay, stays at the current position until correct character is typed."
-  :type 'symbol
-  :group 'speed-type)
+  :type 'symbol)
+
+(defcustom speed-type-complete-all-correct nil
+  "This flag controls the behaviour of triggering complete in speed-type session.
+
+When non-nil, will complete if all characters are typed correctly (have
+status correct or ignore)
+
+When nil, will complete when all characters have a status (any non-nil
+status value)."
+  :type 'boolean)
 
 (defcustom speed-type-add-extra-words-on-error 0
   "How many new words should be added on error.
@@ -1255,9 +1260,16 @@ are color coded and stats are gathered about the typing performance."
                                       (car (overlays-at end)))))
               (move-overlay overlay (1- (overlay-end overlay)) (overlay-end overlay)) (current-buffer))
             (speed-type--diff orig new-text start end)
-            (when (and (not (save-excursion (text-property-search-forward 'speed-type-char-status 'nil t)))
-                       (not (save-excursion (text-property-search-backward 'speed-type-char-status 'nil t)))
-                       (not (text-property-any (point-min) (point-max) 'speed-type-char-status 'nil)))
+            (when
+                (and (not (save-excursion (text-property-search-forward 'speed-type-char-status 'nil t)))
+                     (not (save-excursion (text-property-search-backward 'speed-type-char-status 'nil t)))
+                     (null speed-type--extra-words-queue)
+                     (not (text-property-any (point-min) (point-max) 'speed-type-char-status 'nil))
+                     (or (not speed-type-complete-all-correct)
+                         (and speed-type-complete-all-correct
+                              (not (save-excursion (text-property-search-forward 'speed-type-char-status 'error t)))
+                              (not (save-excursion (text-property-search-backward 'speed-type-char-status 'error t)))
+                              (not (text-property-any (point-min) (point-max) 'speed-type-char-status 'error)))))
               (speed-type-complete)))
         (beep)
         (message "End of buffer")))))
@@ -1279,39 +1291,39 @@ and property adjusted. A new string is returned with adjusted
 properties."
   (save-excursion
     (eval `(,(or (and object 'with-temp-buffer) 'with-current-buffer)
-	    (unless ,object (current-buffer))
-	    (progn
-	      (when ,object (insert ,object))
-	      (dolist (pair ',map)
-		(let ((from (car pair))
-		      (to   (cdr pair)))
-		  (goto-char (point-min))
-		  (while (search-forward from nil t)
-		    (let* ((start (match-beginning 0))
-			   (end   (match-end 0))
-			   (prop-start (previous-single-property-change start ',property speed-type--buffer (point-min)))
-			   (prop-end   (next-single-property-change end ',property speed-type--buffer (point-max)))
-			   (len-from (length from))
-			   (len-to   (length to))
-			   (old-property-value (get-text-property start ',property)))
-		      (replace-match to t t)
+            (unless ,object (current-buffer))
+            (progn
+              (when ,object (insert ,object))
+              (dolist (pair ',map)
+                (let ((from (car pair))
+                      (to   (cdr pair)))
+                  (goto-char (point-min))
+                  (while (search-forward from nil t)
+                    (let* ((start (match-beginning 0))
+                           (end   (match-end 0))
+                           (prop-start (previous-single-property-change start ',property speed-type--buffer (point-min)))
+                           (prop-end   (next-single-property-change end ',property speed-type--buffer (point-max)))
+                           (len-from (length from))
+                           (len-to   (length to))
+                           (old-property-value (get-text-property start ',property)))
+                      (replace-match to t t)
 
-		      (cond
-		       ;; TO longer → extend property region
-		       ((> len-to len-from)
-			(put-text-property
-			 prop-start (+ prop-end (- len-to len-from))
-			 ',property old-property-value))
+                      (cond
+                       ;; TO longer → extend property region
+                       ((> len-to len-from)
+                        (put-text-property
+                         prop-start (+ prop-end (- len-to len-from))
+                         ',property old-property-value))
 
-		       ;; FROM longer → shrink property region
-		       ((< len-to len-from)
-			(let ((new-prop-end (- prop-end (- len-from len-to))))
-			  (when (> new-prop-end prop-start)
-			    (put-text-property
-			     prop-start new-prop-end
-			     ',property old-property-value))))
-		       (t (put-text-property prop-start prop-end ',property old-property-value)))))))
-	      (when ,object (buffer-string)))))))
+                       ;; FROM longer → shrink property region
+                       ((< len-to len-from)
+                        (let ((new-prop-end (- prop-end (- len-from len-to))))
+                          (when (> new-prop-end prop-start)
+                            (put-text-property
+                             prop-start new-prop-end
+                             ',property old-property-value))))
+                       (t (put-text-property prop-start prop-end ',property old-property-value)))))))
+              (when ,object (buffer-string)))))))
 
 (cl-defun speed-type--setup
     (content-buffer text &key file-name title author lang n-words randomize continue-fn add-extra-word-content-fn replay-fn go-next-fn syntax-table fldf)
