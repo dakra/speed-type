@@ -1274,6 +1274,13 @@ are color coded and stats are gathered about the typing performance."
         (beep)
         (message "End of buffer")))))
 
+(defun speed-type--trim (str)
+  "Trim leading and tailing whitespace from STR."
+  (replace-regexp-in-string (rx (or (: bos (* (any "\n")))
+                                    (: (* (any " \t\n")) eos)))
+                            ""
+                            str))
+
 (defun speed-type--replace-map-adjust-properties (map property &optional object)
   "Replace each FROM/TO pair in MAP while adjusting PROPERTY regions.
 MAP is a list of (FROM . TO) string pairs.
@@ -1392,7 +1399,7 @@ CALLBACK is called when the setup process has been completed."
                         buffer-undo-list t
                         inhibit-modification-hooks t
                         inhibit-field-text-motion t)
-            (insert (string-trim text))
+            (insert (speed-type--trim text))
             (speed-type--replace-map-adjust-properties speed-type-replace-strings 'speed-type-orig-pos)
             (when speed-type-downcase (downcase-region (point-min) (point-max)))
             (unless (speed-type--code-buffer-p speed-type--content-buffer)
