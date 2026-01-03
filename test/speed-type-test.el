@@ -407,6 +407,7 @@ Also assure when that added words are downcased too."
   (should (not (speed-type--check-same 2 "\nfoo\s" "\nfxo\n"))))
 
 (ert-deftest speed-type--trim-tests ()
+  ;; in case of code we want to keep the indentation
   (should (string= "foo\n\t\sbar"
                    (speed-type--trim "\n\nfoo\n\t\sbar\n\n\n")))
   (should (string= "\tfoo\n\t\sbar"

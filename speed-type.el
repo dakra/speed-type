@@ -1399,7 +1399,7 @@ CALLBACK is called when the setup process has been completed."
                         buffer-undo-list t
                         inhibit-modification-hooks t
                         inhibit-field-text-motion t)
-            (insert (speed-type--trim text))
+            (insert (if (speed-type--code-buffer-p speed-type--content-buffer) (speed-type--trim text) (string-trim text)))
             (speed-type--replace-map-adjust-properties speed-type-replace-strings 'speed-type-orig-pos)
             (when speed-type-downcase (downcase-region (point-min) (point-max)))
             (unless (speed-type--code-buffer-p speed-type--content-buffer)
