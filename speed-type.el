@@ -1573,14 +1573,15 @@ END MIN MAX TOLERANCE IGNORE are supplied to
 
 (defun speed-type--get-continue-point ()
   "Get speed-type-orig-pos of the last char in the first typed sequence."
-  (let ((continue-point (save-excursion
-                          (goto-char (point-min))
-                          (text-property-search-forward 'speed-type-char-status 'nil t)
-                          (text-property-search-backward 'speed-type-char-status 'nil t)
-                          (point))))
-    (if (= (point-min) continue-point)
-        (car (get-text-property continue-point 'speed-type-orig-pos))
-      (cdr (get-text-property (1- continue-point) 'speed-type-orig-pos)))))
+  (save-excursion
+    (goto-char (point-min))
+    (or (text-property-search-forward 'speed-type-char-status 'nil t)
+        (goto-char (point-max)))
+    (text-property-search-backward 'speed-type-char-status 'nil t)
+    (if (or (bolp)
+            (eq (char-syntax (char-before (point))) ?\s))
+        (car (get-text-property (point) 'speed-type-orig-pos))
+      (cdr (get-text-property (1- (point)) 'speed-type-orig-pos)))))
 
 (defun speed-type--get-continue-fn (end)
   "Return a function when evaled continues where current-speed-type session end.
@@ -1638,6 +1639,7 @@ X is the user-picked limit for the random-function."
              text
              :file-name speed-type--file-name
              :title speed-type--title
+             :randomize speed-type--randomize
              :n-words n
              :replay-fn speed-type--replay-fn
              :go-next-fn speed-type--go-next-fn
@@ -1819,6 +1821,7 @@ If `speed-type-default-lang' is set, will pick a random book of that language."
              :file-name fn
              :title title
              :author author
+             :randomize t
              :n-words n
              :replay-fn #'speed-type--get-replay-fn
              :go-next-fn go-next-fn
@@ -1894,9 +1897,9 @@ More details see `speed-type-top-x'."
     (speed-type--setup buf
              text
              :file-name fn
-             :randomize t
              :title title
              :author (user-full-name)
+             :randomize t
              :replay-fn #'speed-type--get-replay-fn
              :syntax-table (with-current-buffer buf (syntax-table))
              :fldf (with-current-buffer buf font-lock-defaults))))
@@ -1928,6 +1931,7 @@ speed-type session with the assembled text."
              text
              :file-name fn
              :title title
+             :randomize t
              :n-words n
              :replay-fn #'speed-type--get-replay-fn
              :go-next-fn (lambda () (speed-type--get-next-top-fn x))
@@ -2119,9 +2123,9 @@ If FILE-NAME is nil, will use file-name of CURRENT-BUFFER."
           (speed-type--setup buf
                    text
                    :file-name fn
-                   :randomize nil
                    :title title
                    :author author
+                   :randomize nil
                    :replay-fn #'speed-type--get-replay-fn
                    :go-next-fn go-next-fn
                    :continue-fn (lambda () (speed-type--get-continue-fn end))
@@ -2155,6 +2159,7 @@ The file-name of the content is a converted form of URL."
                    text
                    :file-name fn
                    :title title
+                   :randomize t
                    :replay-fn #'speed-type--get-replay-fn
                    :go-next-fn go-next-fn
                    :continue-fn (lambda () (speed-type--get-continue-fn end))
@@ -2200,6 +2205,7 @@ stored content in `speed-type-directory'."
              :file-name fn
              :title title
              :n-words n
+             :randomize t
              :replay-fn #'speed-type--get-replay-fn
              :go-next-fn (lambda () (speed-type--get-next-top-fn x))
              :add-extra-word-content-fn add-extra-word-content-fn)))
