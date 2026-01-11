@@ -470,24 +470,26 @@ Computes words-per-minute as (ENTRIES/5) / (SECONDS/60)."
 Computes characters-per-minute as ENTRIES / (SECONDS/60)."
   (round (speed-type--/ entries (speed-type--seconds-to-minutes seconds))))
 
-(defun speed-type--net-wpm (entries uncorrected-errors seconds)
+(defun speed-type--net-wpm (entries errors corrections seconds)
   "Return net words-per-minute.
 
 Computes net words-per-minute as:
+UNCORRECTED-ERRORS = ERRORS - CORRECTIONS
   ((ENTRIES/5) - UNCORRECTED-ERRORS) / (SECONDS/60)."
   (let ((net-wpm (round (- (speed-type--gross-wpm entries seconds)
-                           (speed-type--/ uncorrected-errors
+                           (speed-type--/ (- errors corrections)
                                 (speed-type--seconds-to-minutes seconds))))))
     (if (> 0 net-wpm) 0 net-wpm)))
 
-(defun speed-type--net-cpm (entries uncorrected-errors seconds)
+(defun speed-type--net-cpm (entries errors corrections seconds)
   "Return net characters-per-minute.
 
 Computes net characters-per-minute as:
+UNCORRECTED-ERRORS = ERRORS - CORRECTIONS
   (ENTRIES - UNCORRECTED-ERRORS) / (SECONDS/60)."
   (let ((net-cpm (round (- (speed-type--gross-cpm entries seconds)
-                           (speed-type--/ uncorrected-errors
-                                          (speed-type--seconds-to-minutes seconds))))))
+                           (speed-type--/ (- errors corrections)
+                                (speed-type--seconds-to-minutes seconds))))))
     (if (> 0 net-cpm) 0 net-cpm)))
 
 (defun speed-type--accuracy (total-entries correct-entries corrections)
@@ -540,8 +542,8 @@ SPEED-TYPE-MAYBE-UPGRADE-FILE-FORMAT."
           (cons 'speed-type--time-register speed-type--time-register)
           (cons 'speed-type--gross-wpm (speed-type--gross-wpm entries seconds))
           (cons 'speed-type--gross-cpm (speed-type--gross-cpm entries seconds))
-          (cons 'speed-type--net-wpm (speed-type--net-wpm entries errors seconds))
-          (cons 'speed-type--net-cpm (speed-type--net-cpm entries errors seconds))
+          (cons 'speed-type--net-wpm (speed-type--net-wpm entries errors corrections seconds))
+          (cons 'speed-type--net-cpm (speed-type--net-cpm entries errors corrections seconds))
           (cons 'speed-type--accuracy (speed-type--accuracy entries (- entries errors) corrections))
           (cons 'speed-type--continue-at-point (unless speed-type--randomize (speed-type--get-continue-point)))
           (cons 'speed-type--file-name speed-type--file-name))))
@@ -1132,9 +1134,9 @@ Expects CURRENT-BUFFER to be buffer of speed-type session."
   "Format statistic data using given arguments:
 ENTRIES ERRORS NON-CONSECUTIVE-ERRORS CORRECTIONS SECONDS."
   (format speed-type-stats-format
-          (speed-type--skill (speed-type--net-wpm entries errors seconds))
-          (speed-type--net-wpm entries errors seconds)
-          (speed-type--net-cpm entries errors seconds)
+          (speed-type--skill (speed-type--net-wpm entries errors corrections seconds))
+          (speed-type--net-wpm entries errors corrections seconds)
+          (speed-type--net-cpm entries errors corrections seconds)
           (speed-type--gross-wpm entries seconds)
           (speed-type--gross-cpm entries seconds)
           (speed-type--accuracy entries (- entries errors) corrections)
@@ -1192,11 +1194,9 @@ END is a point where the check stops to scan for diff."
 
         (if (speed-type--check-same i orig new)
             (progn (setq is-same t)
-                   (let ((char-status (get-text-property (1+ pos0) 'speed-type-char-status)))
-                     (cond ((eq char-status 'ignore) t)
-                           (t (progn
-                                (when (eq char-status 'error) (cl-incf speed-type--corrections))
-                                (add-text-properties pos (1+ pos) '(speed-type-char-status correct)))))))
+                   (let ((char-status (get-text-property i 'speed-type-char-status orig)))
+                     (when (eq char-status 'error) (cl-incf speed-type--corrections))
+                     (add-text-properties pos (1+ pos) '(speed-type-char-status correct))))
           (progn (unless any-error (setq any-error t))
                  (cl-incf speed-type--errors)
                  (when non-consecutive-error-p (cl-incf speed-type--non-consecutive-errors))
@@ -1251,11 +1251,6 @@ are color coded and stats are gathered about the typing performance."
                                       (t (string-replace "\t" "⇥" (string-replace " " "·" (string-replace "\n" "⏎" new-text))))))
                         (setq-local speed-type--last-position new-last-pos))
                     (read-only-mode)))))
-            (when speed-type-ignore-whitespace-for-complete ;; add the ignore status again to deleted blank-chars
-              (save-excursion
-                (goto-char start)
-                (while (search-forward-regexp "[[:blank:]\n]+" (+ end length) t 1)
-                  (add-text-properties (match-beginning 0) (match-end 0) '(speed-type-char-status ignore)))))
             (when-let* ((overlay (and (equal new-text "")
                                       (car (overlays-at end)))))
               (move-overlay overlay (1- (overlay-end overlay)) (overlay-end overlay)) (current-buffer))
