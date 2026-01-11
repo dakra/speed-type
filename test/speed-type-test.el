@@ -390,7 +390,7 @@ Also assure when that added words are downcased too."
 (ert-deftest speed-type--stats-test ()
   (should (= 3 (speed-type--seconds-to-minutes 180)))
   (should (= 30 (speed-type--gross-wpm 450 180)))
-  (should (= 15 (speed-type--net-wpm 450 45 180)))
+  (should (= 15 (speed-type--net-wpm 450 50 5 180)))
   (should (= 85 (speed-type--accuracy 100 90 5)))
   (should (string= "Beginner" (speed-type--skill 10)))
   (should (string= "Pro" (speed-type--skill 45)))
