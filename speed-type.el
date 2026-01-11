@@ -1194,11 +1194,9 @@ END is a point where the check stops to scan for diff."
 
         (if (speed-type--check-same i orig new)
             (progn (setq is-same t)
-                   (let ((char-status (get-text-property (1+ pos0) 'speed-type-char-status)))
-                     (cond ((eq char-status 'ignore) t)
-                           (t (progn
-                                (when (eq char-status 'error) (cl-incf speed-type--corrections))
-                                (add-text-properties pos (1+ pos) '(speed-type-char-status correct)))))))
+                   (let ((char-status (get-text-property i 'speed-type-char-status orig)))
+                     (when (eq char-status 'error) (cl-incf speed-type--corrections))
+                     (add-text-properties pos (1+ pos) '(speed-type-char-status correct))))
           (progn (unless any-error (setq any-error t))
                  (cl-incf speed-type--errors)
                  (when non-consecutive-error-p (cl-incf speed-type--non-consecutive-errors))
@@ -1253,11 +1251,6 @@ are color coded and stats are gathered about the typing performance."
                                       (t (string-replace "\t" "⇥" (string-replace " " "·" (string-replace "\n" "⏎" new-text))))))
                         (setq-local speed-type--last-position new-last-pos))
                     (read-only-mode)))))
-            (when speed-type-ignore-whitespace-for-complete ;; add the ignore status again to deleted blank-chars
-              (save-excursion
-                (goto-char start)
-                (while (search-forward-regexp "[[:blank:]\n]+" (+ end length) t 1)
-                  (add-text-properties (match-beginning 0) (match-end 0) '(speed-type-char-status ignore)))))
             (when-let* ((overlay (and (equal new-text "")
                                       (car (overlays-at end)))))
               (move-overlay overlay (1- (overlay-end overlay)) (overlay-end overlay)) (current-buffer))
