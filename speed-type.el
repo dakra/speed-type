@@ -1100,6 +1100,7 @@ Whitespace is determined using `char-syntax'."
 Expects CURRENT-BUFFER to be buffer of speed-type session."
   (interactive)
   (unless (derived-mode-p 'speed-type-mode) (user-error "Not in a speed-type buffer: cannot quit session"))
+  (unless speed-type--max-point-on-complete (save-excursion (speed-type-complete)))
   (kill-buffer speed-type--buffer))
 
 (defun speed-type--execute-action (action-fn)
