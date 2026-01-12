@@ -359,11 +359,11 @@ Median Non-consecutive errors: %d")
 
 (defvar-keymap speed-type-mode-completed-map
   :doc "Key when speed-type session is completed (menu)."
-  "q" #'speed-type--quit
+  "q" #'speed-type-quit
   "d" #'speed-type--display-statistic
-  "r" #'speed-type--replay
-  "n" #'speed-type--play-next
-  "c" #'speed-type--continue)
+  "r" #'speed-type-replay
+  "n" #'speed-type-play-next
+  "c" #'speed-type-play-continue)
 
 (defvar-keymap speed-type-mode-map
   :doc "Keymap for `speed-type-mode'."
@@ -1084,6 +1084,8 @@ Whitespace is determined using `char-syntax'."
 (defun speed-type--display-statistic ()
   "Display median values from current and past entries."
   (interactive)
+  (unless (derived-mode-p 'speed-type-mode) (user-error "Not in a speed-type buffer: cannot execute action"))
+  (unless speed-type--max-point-on-complete (speed-type-complete))
   (with-current-buffer speed-type--buffer
     (let ((original-max (point-max)))
       (goto-char original-max)
@@ -1093,30 +1095,34 @@ Whitespace is determined using `char-syntax'."
       (read-only-mode)
       (goto-char original-max))))
 
-(defun speed-type--quit ()
+(defun speed-type-quit ()
   "Kill buffer of speed-type session.
 Expects CURRENT-BUFFER to be buffer of speed-type session."
   (interactive)
+  (unless (derived-mode-p 'speed-type-mode) (user-error "Not in a speed-type buffer: cannot quit session"))
   (kill-buffer speed-type--buffer))
 
 (defun speed-type--execute-action (action-fn)
   "ACTION-FN is a function which setups a new speed-type session."
-  (when action-fn
+  (unless (derived-mode-p 'speed-type-mode) (user-error "Not in a speed-type buffer: cannot execute action"))
+  (if action-fn
     (let ((cb (current-buffer)))
+      (unless speed-type--max-point-on-complete (save-excursion (speed-type-complete)))
       (funcall action-fn)
-      (kill-buffer cb))))
+      (kill-buffer cb))
+    (user-error "Action not available")))
 
-(defun speed-type--replay ()
+(defun speed-type-replay ()
   "Replay a speed-type session."
   (interactive)
   (speed-type--execute-action speed-type--replay-fn))
 
-(defun speed-type--continue ()
+(defun speed-type-play-continue ()
   "Play new speed-type-session continuing right where current session ended."
   (interactive)
   (speed-type--execute-action speed-type--continue-fn))
 
-(defun speed-type--play-next ()
+(defun speed-type-play-next ()
   "Play a new speed-type session with random content, based on the current one."
   (interactive)
   (speed-type--execute-action speed-type--go-next-fn))
