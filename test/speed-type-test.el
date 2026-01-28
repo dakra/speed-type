@@ -45,10 +45,10 @@
 ;; :add-extra-word-content-fn
 ;; :replay-fn
 ;; (speed-type--setup buf
-;; 	       (buffer-substring-no-properties start end)
-;; 	       :author (user-full-name)
-;; 	       :title title
-;; 	       :replay-fn #'speed-type--get-replay-fn))))
+;;             (buffer-substring-no-properties start end)
+;;             :author (user-full-name)
+;;             :title title
+;;             :replay-fn #'speed-type--get-replay-fn))))
 
 (ert-deftest speed-type-test/stop-words-p-supply-garbage ()
   (should-error (speed-type--stop-word-p nil))
@@ -68,11 +68,11 @@
   (setq speed-type-stop-words (concat (temporary-file-directory) "/stop-words.txt"))
   (let ((buffer (find-file-noselect speed-type-stop-words)))
     (unwind-protect
-	(progn (with-current-buffer buffer
-		 (insert "word\n")
-		 (insert "otherWord\n")
-		 (save-buffer))
-	       (should (string= (speed-type--stop-word-p "word") "word")))
+        (progn (with-current-buffer buffer
+                 (insert "word\n")
+                 (insert "otherWord\n")
+                 (save-buffer))
+               (should (string= (speed-type--stop-word-p "word") "word")))
       (delete-file (buffer-file-name buffer))
       (kill-buffer buffer))))
 
@@ -125,8 +125,8 @@
 
 TEST-IN-BUF is a lambda which is executed within the speed-type-buffer."
   (let ((content text)
-	(speed-type-save-statistic-option-b speed-type-save-statistic-option)
-	(speed-type-statistic-filename (concat (temporary-file-directory) "speed-type-statistic.el"))
+        (speed-type-save-statistic-option-b speed-type-save-statistic-option)
+        (speed-type-statistic-filename (concat (temporary-file-directory) "speed-type-statistic.el"))
         (speed-type-randomize-b speed-type-randomize))
     (with-temp-buffer
       (insert content)
@@ -134,28 +134,29 @@ TEST-IN-BUF is a lambda which is executed within the speed-type-buffer."
       (setq speed-type-save-statistic-option 'never
             speed-type-randomize t)
       (let ((buf (speed-type-buffer nil)))
-	(unwind-protect
-	    (with-current-buffer buf
-	      (funcall test-in-buf))
-	  (setq speed-type-save-statistic-option speed-type-save-statistic-option-b
+        (unwind-protect
+            (with-current-buffer buf
+              (funcall test-in-buf))
+          (setq speed-type-save-statistic-option speed-type-save-statistic-option-b
                 speed-type-randomize speed-type-randomize-b)
-	  (kill-buffer buf))))))
+          (kill-buffer buf))))))
 
 (defun speed-type-test-region (test-in-buf)
   "Setup a speed-type-region for testing.
 
 TEST-IN-BUF is a lambda which is executed within the speed-type-buffer."
   (let ((content "abcde")
-	(mode (nth (random 2) '(fundamental-mode emacs-lisp-mode)))
-	(speed-type-statistic-filename (concat (temporary-file-directory) "speed-type-statistic.el")))
+        (mode (nth (random 2) '(fundamental-mode emacs-lisp-mode)))
+        (speed-type-provide-preview-option t)
+        (speed-type-statistic-filename (concat (temporary-file-directory) "speed-type-statistic.el")))
     (with-temp-buffer
       (insert content)
       (funcall mode)
       (let ((buf (speed-type-region (point-min) (point-max))))
-	(unwind-protect
-	    (with-current-buffer buf
-	      (funcall test-in-buf))
-	  (kill-buffer buf))))))
+        (unwind-protect
+            (with-current-buffer buf
+              (funcall test-in-buf))
+          (kill-buffer buf))))))
 
 (ert-deftest speed-type-test/times-is-empty-when-no-input ()
   "Test the time-register-variable is empty for flow: session-start -> complete."
@@ -210,60 +211,60 @@ TEST-IN-BUF is a lambda which is executed within the speed-type-buffer."
   "Test if points stays and error are counted correctly."
   (let ((b-speed-type-point-motion-on-error speed-type-point-motion-on-error))
     (unwind-protect
-	(progn
-	  (setq speed-type-point-motion-on-error 'point-stay)
-	  (speed-type-test-region
-	   (lambda ()
-	     (should (= (point) 1))
-	     (should (= speed-type--errors 0))
-	     (should (= speed-type--non-consecutive-errors 0))
-	     (insert "b")
-	     (should (= speed-type--errors 1))
-	     (should (= speed-type--non-consecutive-errors 1))
-	     (should (= (point) 1))
-	     (insert "c")
-	     (should (= speed-type--errors 2))
-	     (should (= speed-type--non-consecutive-errors 1))
-	     (should (= (point) 1))
-	     (insert "a")
-	     (should (= speed-type--errors 2))
-	     (should (= speed-type--non-consecutive-errors 1))
-	     (should (= (point) 2))
-	     (funcall (keymap-lookup nil "DEL") 1)
-	     (should (= (point) 1))
-	     (insert "a")
-	     (should (= speed-type--errors 2))
-	     (should (= speed-type--corrections 1))
-	     (should (= speed-type--non-consecutive-errors 1))
-	     (should (= (point) 2)))))
+        (progn
+          (setq speed-type-point-motion-on-error 'point-stay)
+          (speed-type-test-region
+           (lambda ()
+             (should (= (point) 1))
+             (should (= speed-type--errors 0))
+             (should (= speed-type--non-consecutive-errors 0))
+             (insert "b")
+             (should (= speed-type--errors 1))
+             (should (= speed-type--non-consecutive-errors 1))
+             (should (= (point) 1))
+             (insert "c")
+             (should (= speed-type--errors 2))
+             (should (= speed-type--non-consecutive-errors 1))
+             (should (= (point) 1))
+             (insert "a")
+             (should (= speed-type--errors 2))
+             (should (= speed-type--non-consecutive-errors 1))
+             (should (= (point) 2))
+             (funcall (keymap-lookup nil "DEL") 1)
+             (should (= (point) 1))
+             (insert "a")
+             (should (= speed-type--errors 2))
+             (should (= speed-type--corrections 1))
+             (should (= speed-type--non-consecutive-errors 1))
+             (should (= (point) 2)))))
       (setq speed-type-point-motion-on-error b-speed-type-point-motion-on-error))))
 
 (ert-deftest speed-type-test/point-motion-move ()
   "Test if points move and error are counted correctly."
   (let ((b-speed-type-point-motion-on-error speed-type-point-motion-on-error))
     (unwind-protect
-	(progn
-	  (setq speed-type-point-motion-on-error 'point-move)
-	  (speed-type-test-region
-	   (lambda ()
-	     (should (= (point) 1))
-	     (should (= speed-type--errors 0))
-	     (should (= speed-type--non-consecutive-errors 0))
-	     (insert "b")
-	     (should (= speed-type--errors 1))
-	     (should (= speed-type--non-consecutive-errors 1))
-	     (should (= (point) 2))
-	     (insert "c")
-	     (should (= speed-type--errors 2))
-	     (should (= speed-type--non-consecutive-errors 1))
-	     (should (= (point) 3))
-	     (funcall (keymap-lookup nil "DEL") 1)
-	     (should (= (point) 2))
-	     (insert "b")
-	     (should (= speed-type--errors 2))
-	     (should (= speed-type--corrections 1))
-	     (should (= speed-type--non-consecutive-errors 1))
-	     (should (= (point) 3)))))
+        (progn
+          (setq speed-type-point-motion-on-error 'point-move)
+          (speed-type-test-region
+           (lambda ()
+             (should (= (point) 1))
+             (should (= speed-type--errors 0))
+             (should (= speed-type--non-consecutive-errors 0))
+             (insert "b")
+             (should (= speed-type--errors 1))
+             (should (= speed-type--non-consecutive-errors 1))
+             (should (= (point) 2))
+             (insert "c")
+             (should (= speed-type--errors 2))
+             (should (= speed-type--non-consecutive-errors 1))
+             (should (= (point) 3))
+             (funcall (keymap-lookup nil "DEL") 1)
+             (should (= (point) 2))
+             (insert "b")
+             (should (= speed-type--errors 2))
+             (should (= speed-type--corrections 1))
+             (should (= speed-type--non-consecutive-errors 1))
+             (should (= (point) 3)))))
       (setq speed-type-point-motion-on-error b-speed-type-point-motion-on-error))))
 
 (ert-deftest speed-type-test/test-chars-downcased ()
@@ -271,121 +272,121 @@ TEST-IN-BUF is a lambda which is executed within the speed-type-buffer."
 
 Also assure when that added words are downcased too."
   (let ((b-speed-type-downcase speed-type-downcase)
-	(b-speed-type-add-extra-words-on-error speed-type-add-extra-words-on-error)
-	(b-speed-type-add-extra-words-on-non-consecutive-errors speed-type-add-extra-words-on-non-consecutive-errors))
+        (b-speed-type-add-extra-words-on-error speed-type-add-extra-words-on-error)
+        (b-speed-type-add-extra-words-on-non-consecutive-errors speed-type-add-extra-words-on-non-consecutive-errors))
     (setq speed-type-downcase t
-	  speed-type-add-extra-words-on-error 1
-	  speed-type-add-extra-words-on-non-consecutive-errors 0)
+          speed-type-add-extra-words-on-error 1
+          speed-type-add-extra-words-on-non-consecutive-errors 0)
     (unwind-protect
-	(speed-type-test-buffer
-	 "ASDF"
-	 (lambda ()
-	   (should (string= "asdf" (buffer-string)))
-	   (insert "b")
-	   (sleep-for 0.1)
-	   (should (string= "asdf asdf" (buffer-string)))
-	   (with-current-buffer speed-type--content-buffer
-	     (should (string= "ASDF" (buffer-string))))))
+        (speed-type-test-buffer
+         "ASDF"
+         (lambda ()
+           (should (string= "asdf" (buffer-string)))
+           (insert "b")
+           (sleep-for 0.1)
+           (should (string= "asdf asdf" (buffer-string)))
+           (with-current-buffer speed-type--content-buffer
+             (should (string= "ASDF" (buffer-string))))))
       (setq speed-type-downcase b-speed-type-downcase
-	    speed-type-add-extra-words-on-error b-speed-type-add-extra-words-on-error
-	    speed-type-add-extra-words-on-non-consecutive-errors b-speed-type-add-extra-words-on-non-consecutive-errors))))
+            speed-type-add-extra-words-on-error b-speed-type-add-extra-words-on-error
+            speed-type-add-extra-words-on-non-consecutive-errors b-speed-type-add-extra-words-on-non-consecutive-errors))))
 
-					; assure preview buffer in general region
-					; test continue feature
+                                        ; assure preview buffer in general region
+                                        ; test continue feature
 ;; complete a typing session and restart the same example
 ;; test variation with random
-					; test top word iterator/calculation
-					; test top word file and source file is written
+                                        ; test top word iterator/calculation
+                                        ; test top word file and source file is written
 (ert-deftest speed-type-test/general-region ()
   "Do a general test with `speed-type-region' with fundamental mode and a prog-mode, checking content, overlays, point and point-motion, buffer-variables and statistic file."
   (let ((content "abcde")
-	(mode (nth (random 2) '(fundamental-mode emacs-lisp-mode)))
-	(speed-type-statistic-filename (concat (temporary-file-directory) "speed-type-statistic.el")))
+        (mode (nth (random 2) '(fundamental-mode emacs-lisp-mode)))
+        (speed-type-statistic-filename (concat (temporary-file-directory) "speed-type-statistic.el")))
     (with-temp-buffer
       (insert content)
       (funcall mode)
       (let ((buf (speed-type-region (point-min) (point-max)))
-	    (content-buf speed-type--content-buffer))
-	(unwind-protect
-	    (with-current-buffer buf
-	      (insert "a")
-	      (insert "b")
-	      (insert "a")
-	      (insert "a")
-	      (funcall (keymap-lookup nil "DEL") 1)
-	      (funcall (keymap-lookup nil "DEL") 1)
-	      (insert "c")
-	      (insert "!")
-	      (insert "!")
-					;	(should (= speed-type--start-time 1753299414.2124302))
-	      (should (eq speed-type--buffer (current-buffer)))
-					; (should (eq speed-type--content-buffer (get-buffer "*speed-type-content-buffer*")))
-	      (should (= speed-type--entries 5))
-	      (should (= speed-type--errors 4))
-	      (should (= speed-type--non-consecutive-errors 2))
-	      (should (= speed-type--corrections 1))
-					; (should (string= speed-type--title (buffer-name)))
-	      (should (string= speed-type--author (user-full-name)))
-	      (should (eq speed-type--lang nil))
-	      (should (eq speed-type--n-words nil))
-	      (should (eq speed-type--add-extra-word-content-fn nil))
-	      (should (eq speed-type--extra-words-animation-timer nil))
-	      (should (eq speed-type--extra-word-quote nil))
-	      (should (eq speed-type--go-next-fn nil))
-	      (should (eq speed-type--replay-fn 'speed-type--get-replay-fn))
-	      (should (eq speed-type--extra-word-quote nil))
-	      (dotimes (i 3)
-		(should (eq (overlay-get (car (overlays-at (1+ i))) 'face) 'speed-type-correct-face)))
-	      (should (eq (overlay-get (car (overlays-at 4)) 'face) 'speed-type-error-face))
-	      (should (eq (overlay-get (car (overlays-at 5)) 'face) 'speed-type-consecutive-error-face))
-	      )
-	  (kill-buffer buf)
-	  (should (eq (buffer-live-p content-buf) nil)))))))
+            (content-buf speed-type--content-buffer))
+        (unwind-protect
+            (with-current-buffer buf
+              (insert "a")
+              (insert "b")
+              (insert "a")
+              (insert "a")
+              (funcall (keymap-lookup nil "DEL") 1)
+              (funcall (keymap-lookup nil "DEL") 1)
+              (insert "c")
+              (insert "!")
+              (insert "!")
+                                        ;       (should (= speed-type--start-time 1753299414.2124302))
+              (should (eq speed-type--buffer (current-buffer)))
+                                        ; (should (eq speed-type--content-buffer (get-buffer "*speed-type-content-buffer*")))
+              (should (= speed-type--entries 5))
+              (should (= speed-type--errors 4))
+              (should (= speed-type--non-consecutive-errors 2))
+              (should (= speed-type--corrections 1))
+                                        ; (should (string= speed-type--title (buffer-name)))
+              (should (string= speed-type--author (user-full-name)))
+              (should (eq speed-type--lang nil))
+              (should (eq speed-type--n-words nil))
+              (should (eq speed-type--add-extra-word-content-fn nil))
+              (should (eq speed-type--extra-words-animation-timer nil))
+              (should (eq speed-type--extra-word-quote nil))
+              (should (eq speed-type--go-next-fn nil))
+              (should (eq speed-type--replay-fn 'speed-type--get-replay-fn))
+              (should (eq speed-type--extra-word-quote nil))
+              (dotimes (i 3)
+                (should (eq (overlay-get (car (overlays-at (1+ i))) 'face) 'speed-type-correct-face)))
+              (should (eq (overlay-get (car (overlays-at 4)) 'face) 'speed-type-error-face))
+              (should (eq (overlay-get (car (overlays-at 5)) 'face) 'speed-type-consecutive-error-face))
+              )
+          (kill-buffer buf)
+          (should (eq (buffer-live-p content-buf) nil)))))))
 
 (ert-deftest speed-type-test/general-file-ref ()
   "Do a general test with `speed-type-region' and different modes, checking content, overlays, point and point-motion, buffer-variables and statistic file."
   (let ((content "abcde")
-	(mode (nth 0 '(hexl-mode)))
-	(speed-type-statistic-filename (concat (temporary-file-directory) "speed-type-statistic.el")))
+        (mode (nth 0 '(hexl-mode)))
+        (speed-type-statistic-filename (concat (temporary-file-directory) "speed-type-statistic.el")))
     (with-temp-buffer
       (insert content)
       (write-file "test.bin")
       (funcall mode)
       (let ((buf (speed-type-region (point-min) (point-max))))
-	(unwind-protect
-	    (with-current-buffer buf
-	      (insert "0")
-	      (insert "0")
-	      (insert "a")
-	      (insert "b")
-	      (funcall (keymap-lookup nil "DEL") 1)
-	      (funcall (keymap-lookup nil "DEL") 1)
-	      (insert "0")
-	      (insert "!")
-	      (insert "!")
-	      (should (eq speed-type--buffer (current-buffer)))
-	      (should (= speed-type--entries 5))
-	      (should (= speed-type--errors 4))
-	      (should (= speed-type--non-consecutive-errors 2))
-	      (should (= speed-type--corrections 1))
-	      (should (string= speed-type--author (user-full-name)))
-	      (should (eq speed-type--lang nil))
-	      (should (eq speed-type--n-words nil))
-	      (should (eq speed-type--add-extra-word-content-fn nil))
-	      (should (eq speed-type--extra-words-animation-timer nil))
-	      (should (eq speed-type--extra-word-quote nil))
-	      (should (eq speed-type--go-next-fn nil))
-	      (should (eq speed-type--replay-fn 'speed-type--get-replay-fn))
-	      (should (eq speed-type--extra-word-quote nil))
-	      (dotimes (i 3)
-		(should (eq (overlay-get (car (overlays-at (1+ i))) 'face) 'speed-type-correct-face)))
-	      (should (eq (overlay-get (car (overlays-at 4)) 'face) 'speed-type-error-face))
-	      (should (eq (overlay-get (car (overlays-at 5)) 'face) 'speed-type-consecutive-error-face))
-	      (let ((offset 5))
-		(dotimes (i (- 51 offset))
-		  (should (eq (car (overlays-at (+ (1+ offset) i))) nil))))
-	      (speed-type-complete))
-	  (kill-buffer buf))))))
+        (unwind-protect
+            (with-current-buffer buf
+              (insert "0")
+              (insert "0")
+              (insert "a")
+              (insert "b")
+              (funcall (keymap-lookup nil "DEL") 1)
+              (funcall (keymap-lookup nil "DEL") 1)
+              (insert "0")
+              (insert "!")
+              (insert "!")
+              (should (eq speed-type--buffer (current-buffer)))
+              (should (= speed-type--entries 5))
+              (should (= speed-type--errors 4))
+              (should (= speed-type--non-consecutive-errors 2))
+              (should (= speed-type--corrections 1))
+              (should (string= speed-type--author (user-full-name)))
+              (should (eq speed-type--lang nil))
+              (should (eq speed-type--n-words nil))
+              (should (eq speed-type--add-extra-word-content-fn nil))
+              (should (eq speed-type--extra-words-animation-timer nil))
+              (should (eq speed-type--extra-word-quote nil))
+              (should (eq speed-type--go-next-fn nil))
+              (should (eq speed-type--replay-fn 'speed-type--get-replay-fn))
+              (should (eq speed-type--extra-word-quote nil))
+              (dotimes (i 3)
+                (should (eq (overlay-get (car (overlays-at (1+ i))) 'face) 'speed-type-correct-face)))
+              (should (eq (overlay-get (car (overlays-at 4)) 'face) 'speed-type-error-face))
+              (should (eq (overlay-get (car (overlays-at 5)) 'face) 'speed-type-consecutive-error-face))
+              (let ((offset 5))
+                (dotimes (i (- 51 offset))
+                  (should (eq (car (overlays-at (+ (1+ offset) i))) nil))))
+              (speed-type-complete))
+          (kill-buffer buf))))))
 
 (ert-deftest speed-type--stats-test ()
   (should (= 3 (speed-type--seconds-to-minutes 180)))
@@ -430,7 +431,7 @@ Also assure when that added words are downcased too."
   (let ((speed-type-directory (temporary-file-directory)))
     (unwind-protect
         (progn
-	  (kill-buffer (get-file-buffer filename-expected))
+          (kill-buffer (get-file-buffer filename-expected))
           (delete-file filename-expected)
           (funcall test))
       (kill-buffer (get-file-buffer filename-expected))
@@ -440,7 +441,7 @@ Also assure when that added words are downcased too."
   (let ((speed-type-directory (temporary-file-directory)))
     (unwind-protect
         (progn
-	  (kill-buffer (get-file-buffer filename-expected))
+          (kill-buffer (get-file-buffer filename-expected))
           (delete-file filename-expected)
           (with-temp-buffer
             (write-file filename-expected))
