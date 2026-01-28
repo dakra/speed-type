@@ -156,21 +156,17 @@ A little diagram because [uniline](https://github.com/tbanel/uniline) is fun:
                            │  ▽     │   ▽ resume    │         ▽
   ╭─────╮   ╭─────╮       ╭┴──┴─────┴───┴────╮    ╭─┴─────────┴─╮     ╭────╮
   │start├──▷┤setup├──────▷┤speed-type session├───▷┤complete/menu├────▷┤quit│
-  ╰─────╯   ╰─┬───╯       ╰─┬──────────────┬─╯   │╰──────┬──────╯     ╰────╯
-              △             │              △     save    │
-              │             ▽              │             │
-              │           ╭─┴──────────────┴─╮           │
-              │           │add words on error│           │
-              │           ╰──────────────────╯           │
-              │                                          ▽
-              │                            ╭─────────────┴──────╮
-              ╰────────────────────────────┤replay/next/continue│
-                                           ╰────────────────────╯
-
-
+  ╰─────╯   ╰─┬───╯       ╰─┬──────────────┬─╯   │╰───┬───┬───┬─╯     ╰────╯
+              △             │              △   save   │   │   △
+              │             ▽              │          │   ▽   │
+              │           ╭─┴──────────────┴─╮        │   ├───┴──────────╮
+              │           │add words on error│        │   │toggle preview│
+              │           ╰──────────────────╯        │   ╰──────────────╯
+              │                                       │
+              │          ╭────────────────────╮       │
+              ╰──────────┤replay/next/continue├─-◁────╯
+                         ╰────────────────────╯
 ```
-
-
 ### Start
 The flow is started by calling one of the autoloaded commands:
 - `speed-type-text`
@@ -229,8 +225,8 @@ To color the characters a overlay is used:
 
 #### Text Properties:
 - speed-type-orig-pos: Used for "continue" and add new words
-  - car: start
-  - cdr: end
+  - car: start of word
+  - cdr: end of word
 - speed-type-char-status: Used to ignore characters and determine complete
   - ignore
   - correct
@@ -287,6 +283,14 @@ again, which starts a new session.
 After setup is complete it kills the completed `speed-type-buffer` and
 `speed-type-preview-buffer`. It may reuse the existing content-buffer
 for the new speed-type session.
+
+### Toggle Preview
+Toggles the display of the preview buffer. It opens a little window
+below the speed-type buffer.
+
+If the preview buffer is already displayed, will delete the window.
+The buffer stays open in the background until the speed-type buffer is
+quit.
 
 ### Median Stats
 Calculates and displays the median stats of various buffer-local vars

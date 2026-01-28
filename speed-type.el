@@ -207,7 +207,7 @@ beginning."
   :type 'boolean)
 
 (defcustom speed-type-downcase nil
-  "Toggle downcasing of mistyped words."
+  "If t will downcase content."
   :type 'boolean)
 
 (defcustom speed-type-point-motion-on-error 'point-move
@@ -363,7 +363,8 @@ Median Non-consecutive errors: %d")
   "d" #'speed-type--display-statistic
   "r" #'speed-type-replay
   "n" #'speed-type-play-next
-  "c" #'speed-type-play-continue)
+  "c" #'speed-type-play-continue
+  "t" #'speed-type-toggle-preview)
 
 (defvar-keymap speed-type-mode-map
   :doc "Keymap for `speed-type-mode'."
@@ -790,6 +791,9 @@ leave buffer in read-only mode."
   (when (not (eq 'never speed-type-save-statistic-option))
     (insert (format "    [%s]isplay statistic\n"
                     (propertize "d" 'face 'highlight))))
+  (when (not (null speed-type-provide-preview-option))
+    (insert (format "    [%s]oggle preview\n"
+                    (propertize "t" 'face 'highlight))))
   (when speed-type--go-next-fn
     (insert (format "    [%s]ext random sample\n"
                     (propertize "n" 'face 'highlight))))
@@ -1058,6 +1062,20 @@ If the length is uneven will return symbol `uneven'."
         0)
     'uneven))
 
+(defun speed-type--check-same-str (a b)
+  "Return non-nil if A and B are identical or both whitespace.
+
+Whitespace is determined using `char-syntax'."
+  (when (not (= (length a) (length b))) (user-error "A(%d) and B(%d) must be the same" a b))
+  (let ((still-correct t)
+        (i 0)
+        (length-a (length a)))
+    (while (and (< i length-a) still-correct)
+      (setq still-correct (speed-type--check-same i a b))
+      (setq i (1+ i)))
+    still-correct))
+
+
 (defun speed-type--check-same (pos a b)
   "Return non-nil if A[POS] and B[POS] are identical or both whitespace.
 
@@ -1080,6 +1098,24 @@ Whitespace is determined using `char-syntax'."
             ((or (eq q 'correct)
                  (eq q 'error))
              (cl-decf speed-type--entries))))))
+
+(defun speed-type-toggle-preview ()
+  "Toggle preview of speed-type session in `current-buffer'.
+
+If preview is currently display in some window will delete that window.
+Else if there is no such window, `split-window' and display the preview
+in new window."
+  (interactive)
+  (unless (derived-mode-p 'speed-type-mode) (user-error "Not in a speed-type buffer: cannot open preview"))
+  (unless (and (boundp 'speed-type--preview-buffer) speed-type--preview-buffer) (user-error "Preview buffer not defined please configure `speed-type-provide-preview-option'"))
+  (let ((bw (get-buffer-window speed-type--preview-buffer)))
+    (if bw (delete-window bw)
+      (let ((sw (selected-window))
+            (pw (split-window nil 5 'above))
+            (buf (current-buffer)))
+        (set-window-buffer sw speed-type--preview-buffer)
+        (set-window-buffer pw buf)
+        (select-window pw)))))
 
 (defun speed-type--display-statistic ()
   "Display median values from current and past entries."
@@ -1180,6 +1216,52 @@ ENTRIES ERRORS NON-CONSECUTIVE-ERRORS CORRECTIONS SECONDS."
                (speed-type--elapsed-time speed-type--time-register)))
       (speed-type-display-menu))))
 
+(defun speed-type-preview-buffer-insert (orig new new-last-pos face)
+  "Insert NEW at the end of preview-buffer and set given FACE as overlay.
+
+ORIG is inserted below, when it doesn't match NEW.
+
+POS is used to access the focused char.
+
+NEW-LAST-POS is `point' in `current-buffer', it's used to determine if
+movement-commands were used since last insert.
+
+When `current-buffer' has no variable `speed-type--preview-buffer' with non-nil
+value return nil."
+  (when (and (boundp 'speed-type--preview-buffer) speed-type--preview-buffer)
+    (with-current-buffer speed-type--preview-buffer
+      (unwind-protect
+          (save-excursion
+            (goto-char (point-min))
+            (end-of-line)
+            (when-let* ((win (get-buffer-window (current-buffer))))
+              (set-window-point win (point)))
+            (read-only-mode -1)
+            (when (and (not (= speed-type--last-position 0))
+                       (> (abs (- new-last-pos speed-type--last-position)) 2))
+              (let ((point-movement-str (concat "[ " (symbol-name last-command) "(" (number-to-string speed-type--last-position) ") → (" (number-to-string (1- new-last-pos)) ") ]")))
+                (insert point-movement-str)
+                (let ((overlay (make-overlay (- (point) (length point-movement-str)) (point))))
+                  (overlay-put overlay 'priority 1)
+                  (overlay-put overlay 'face 'speed-type-info-face))))
+            (insert (string-replace "\t" "⇥" (string-replace " " "·" (string-replace "\n" "⏎" new))))
+            (let ((overlay (make-overlay (- (point) (length new)) (point))))
+              (overlay-put overlay 'priority 1)
+              (overlay-put overlay 'face face))
+            (setq-local speed-type--insert-position (point))
+            (when (not (speed-type--check-same-str orig new))
+              (let ((inhibit-message t))
+                (end-of-line)
+                (let ((cc (1- (current-column))))
+                  (or (search-forward "\n" nil t 1) (insert "\n"))
+                  (move-to-column cc t))
+                (insert (string-replace "\t" "⇥" (string-replace " " "·" (string-replace "\n" "⏎" orig))))
+                (let ((overlay (make-overlay (- (point) (length orig)) (point))))
+                  (overlay-put overlay 'priority 1)
+                  (overlay-put overlay 'face 'speed-type-correct-face))))
+            (setq-local speed-type--last-position new-last-pos))
+        (read-only-mode)))))
+
 (defun speed-type--diff (orig new start end)
   "Synchronise local buffer state with buffer-content by comparing ORIG and NEW.
 ORIG is the original text. NEW is the new text.
@@ -1211,9 +1293,11 @@ END is a point where the check stops to scan for diff."
                  (speed-type-add-extra-words (+ (or speed-type-add-extra-words-on-error 0)
                                       (or (and non-consecutive-error-p speed-type-add-extra-words-on-non-consecutive-errors) 0)))))
         (cl-incf speed-type--entries)
-        (let ((overlay (make-overlay pos (1+ pos))))
-          (overlay-put overlay 'priority 1)
-          (overlay-put overlay 'face (if is-same 'speed-type-correct-face (if non-consecutive-error-p 'speed-type-error-face 'speed-type-consecutive-error-face))))))
+        (let ((f (if is-same 'speed-type-correct-face (if non-consecutive-error-p 'speed-type-error-face 'speed-type-consecutive-error-face))))
+          (let ((overlay (make-overlay pos (1+ pos))))
+            (overlay-put overlay 'priority 1)
+            (overlay-put overlay 'face f))
+          (speed-type-preview-buffer-insert (char-to-string (aref orig i)) (char-to-string (aref new i)) pos f))))
     (if (or (eq speed-type-point-motion-on-error 'point-move)
             (string= new "")
             (not any-error))
@@ -1237,27 +1321,10 @@ are color coded and stats are gathered about the typing performance."
       (if (< start (point-max))
           (let* ((end (if (> end (point-max)) (point-max) end))
                  (orig (buffer-substring start end)))
-            (when speed-type--preview-buffer
-              (let ((new-last-pos start))
-                (with-current-buffer speed-type--preview-buffer
-                  (unwind-protect
-                      (save-excursion
-                        (goto-char (point-max))
-                        (when-let* ((win (get-buffer-window (current-buffer))))
-                          (set-window-point win (point)))
-                        (read-only-mode -1)
-                        (when (and (not (= speed-type--last-position 0))
-                                   (> (abs (- new-last-pos speed-type--last-position)) 2))
-                          (let ((point-movement-str (concat "[ " (symbol-name last-command) "(" (number-to-string speed-type--last-position) ") → (" (number-to-string (1- new-last-pos)) ") ]")))
-                            (insert point-movement-str)
-                            (let ((overlay (make-overlay (- (point) (length point-movement-str)) (point))))
-                              (overlay-put overlay 'priority 1)
-                              (overlay-put overlay 'face 'speed-type-info-face))))
-                        (insert (cond ((eq this-command (key-binding (kbd "<deletechar>"))) "⌦")
-                                      ((eq this-command (key-binding (kbd "DEL"))) "⌫")
-                                      (t (string-replace "\t" "⇥" (string-replace " " "·" (string-replace "\n" "⏎" new-text))))))
-                        (setq-local speed-type--last-position new-last-pos))
-                    (read-only-mode)))))
+            (when-let ((special-char (cond ((eq this-command (key-binding (kbd "<deletechar>"))) "->")
+                                           ((eq this-command (key-binding (kbd "DEL"))) "<-")
+                                           (t nil))))
+              (speed-type-preview-buffer-insert special-char special-char start 'speed-type-info-face))
             (when-let* ((overlay (and (equal new-text "")
                                       (car (overlays-at end)))))
               (move-overlay overlay (1- (overlay-end overlay)) (overlay-end overlay)) (current-buffer))
@@ -1380,7 +1447,7 @@ CALLBACK is called when the setup process has been completed."
                   (with-current-buffer speed-type--preview-buffer
                     (setq-local speed-type--buffer buf
                                 speed-type--last-position 0
-                                truncate-lines nil)
+                                truncate-lines t)
                     (speed-type-mode)
                     (add-hook 'kill-buffer-hook #'speed-type--kill-preview-buffer-hook nil t)
                     (read-only-mode))
