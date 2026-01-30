@@ -146,6 +146,9 @@ included.
 [melpa-stable-badge]: https://stable.melpa.org/packages/speed-type-badge.svg
 
 ## Documentation
+The documentation describes what exists and should give new people a
+basic understanding how speed-type works.
+
 A little diagram because [uniline](https://github.com/tbanel/uniline) is fun:
 ```uniline
                           ╭────╮   ╭─────╮         ╭────────────╮
@@ -289,8 +292,21 @@ Toggles the display of the preview buffer. It opens a little window
 below the speed-type buffer.
 
 If the preview buffer is already displayed, will delete the window.
-The buffer stays open in the background until the speed-type buffer is
-quit.
+The preview buffer stays open in the background until the speed-type
+buffer is quit.
+
+The preview buffer works with two lines:
++ On the first line every input is appended.
++ On the second line the corresponding correct-character is inserted
+  below if the input was an error.
+
+If a user types a newline (or whitespace in general) in the speed-type
+buffer it's converted to a representation of that whitespace. This
+makes sure the input is logged always on the first line.
+
+A `post-command-hook` is used to log commands and show point-movement.
+
+If the user makes no error the second line stays empty.
 
 ### Median Stats
 Calculates and displays the median stats of various buffer-local vars

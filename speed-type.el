@@ -1194,6 +1194,7 @@ ENTRIES ERRORS NON-CONSECUTIVE-ERRORS CORRECTIONS SECONDS."
   "Remove typing hooks from the buffer and print statistics."
   (interactive)
   (unless (derived-mode-p 'speed-type-mode) (user-error "Not in a speed-type buffer: cannot complete session"))
+  (remove-hook 'post-command-hook #'speed-type-preview-logger t)
   (remove-hook 'before-change-functions #'speed-type--before-change t)
   (remove-hook 'after-change-functions #'speed-type--change t)
   (speed-type-finish-animation speed-type--buffer)
@@ -1215,6 +1216,35 @@ ENTRIES ERRORS NON-CONSECUTIVE-ERRORS CORRECTIONS SECONDS."
                speed-type--corrections
                (speed-type--elapsed-time speed-type--time-register)))
       (speed-type-display-menu))))
+
+(defun speed-type-preview-logger ()
+  "Logs the commands of a speed-type session."
+  (unless (or
+           (not (boundp 'speed-type--preview-buffer))
+           (null speed-type--preview-buffer)
+           (null speed-type--time-register)
+           (member this-command '(self-insert-command speed-type-code-ret speed-type-code-tab))
+           (null this-command))
+    (let ((new-last-pos (point)))
+      (with-current-buffer speed-type--preview-buffer
+        (unwind-protect
+            (save-excursion
+              (goto-char (point-min))
+              (end-of-line)
+              (when-let* ((win (get-buffer-window (current-buffer))))
+                (set-window-point win (point)))
+              (read-only-mode -1)
+              (let ((command-str
+                     (cond ((eq this-command (key-binding (kbd "<deletechar>"))) "->")
+                           ((eq this-command (key-binding (kbd "DEL"))) "<-")
+                           ((eq this-command 'isearch-printing-char) (key-description (this-command-keys)))
+                           (t (concat "[ " (symbol-name this-command) "(" (number-to-string speed-type--last-position) ") → (" (number-to-string (1- new-last-pos )) ") ]")))))
+                (insert command-str)
+                (let ((overlay (make-overlay (- (point) (length command-str)) (point))))
+                  (overlay-put overlay 'priority 1)
+                  (overlay-put overlay 'face 'speed-type-info-face)))
+              (setq-local speed-type--last-position new-last-pos))
+          (read-only-mode))))))
 
 (defun speed-type-preview-buffer-insert (orig new new-last-pos face)
   "Insert NEW at the end of preview-buffer and set given FACE as overlay.
@@ -1248,7 +1278,6 @@ value return nil."
             (let ((overlay (make-overlay (- (point) (length new)) (point))))
               (overlay-put overlay 'priority 1)
               (overlay-put overlay 'face face))
-            (setq-local speed-type--insert-position (point))
             (when (not (speed-type--check-same-str orig new))
               (let ((inhibit-message t))
                 (end-of-line)
@@ -1321,10 +1350,6 @@ are color coded and stats are gathered about the typing performance."
       (if (< start (point-max))
           (let* ((end (if (> end (point-max)) (point-max) end))
                  (orig (buffer-substring start end)))
-            (when-let ((special-char (cond ((eq this-command (key-binding (kbd "<deletechar>"))) "->")
-                                           ((eq this-command (key-binding (kbd "DEL"))) "<-")
-                                           (t nil))))
-              (speed-type-preview-buffer-insert special-char special-char start 'speed-type-info-face))
             (when-let* ((overlay (and (equal new-text "")
                                       (car (overlays-at end)))))
               (move-overlay overlay (1- (overlay-end overlay)) (overlay-end overlay)) (current-buffer))
@@ -1492,6 +1517,7 @@ CALLBACK is called when the setup process has been completed."
         (select-window pw)))
     (goto-char 0)
     (add-hook 'before-change-functions #'speed-type--before-change nil t)
+    (add-hook 'post-command-hook #'speed-type-preview-logger nil t)
     (add-hook 'after-change-functions #'speed-type--change nil t)
     (add-hook 'kill-buffer-hook #'speed-type--kill-buffer-hook nil t)
     (setq-local post-self-insert-hook nil)
