@@ -273,7 +273,7 @@ stats-file (when customized).
 
 At this point, the `speed-type-buffer` becomes read-only and only the
 menu-control keys remain active. The user has the choice to either
-quit trigger an action which creates a new speed-type session.
+quit or trigger an action.
 
 ### Replay / Continue / Next
 
