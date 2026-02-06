@@ -35,6 +35,7 @@
 ;; stats (WPM, CPM, accuracy) while you are typing.
 
 ;;; Code:
+(require 'track-changes)
 (require 'text-property-search)
 (require 'cl-lib)
 (require 'compat)
@@ -395,10 +396,10 @@ Median Non-consecutive errors: %d")
 It's the point within speed-type-buffer.")
 (defvar-local speed-type--time-register nil
   "Used to calculate duration of a speed-type session.")
-(defvar-local speed-type--last-changed-text nil
-  "Used to store characters which are going be compared against.
-
-It's used in the before-change-hook.")
+(defvar-local speed-type--tracker nil
+  "Tracker from track-changes package.")
+(defvar-local speed-type--pending-signal nil "Holds the currenlty processed signal.")
+(defvar-local speed-type--track-this-command nil "Holds this command for delete-char in overwrite-mode.")
 (defvar-local speed-type--buffer nil)
 (defvar-local speed-type--content-buffer nil)
 (defvar-local speed-type--entries 0 "Counts the number of keystrokes typed.")
@@ -437,8 +438,8 @@ It's used in the before-change-hook.")
 
 Adding the idle timer again, and pushing the newest time to stack."
   (unless speed-type--idle-pause-timer
-    (setq speed-type--idle-pause-timer (run-with-idle-timer speed-type-pause-delay-seconds nil #'speed-type-pause)
-          speed-type--time-register (append speed-type--time-register (list (float-time))))))
+    (setq-local speed-type--idle-pause-timer (run-with-idle-timer speed-type-pause-delay-seconds nil #'speed-type-pause)
+                speed-type--time-register (append speed-type--time-register (list (float-time))))))
 
 (defun speed-type-pause ()
   "Pushes the current time to the start-time variable.
@@ -447,8 +448,8 @@ The list of times is used to calculate the overall active typing time."
   (interactive)
   (message "Speed-type: session is paused. Resume will be triggered on buffer-change.")
   (when speed-type--idle-pause-timer
-    (setq speed-type--idle-pause-timer nil
-          speed-type--time-register (append speed-type--time-register (list (float-time))))))
+    (setq-local speed-type--idle-pause-timer nil
+                speed-type--time-register (append speed-type--time-register (list (float-time))))))
 
 (defun speed-type--/ (number divisor)
   "Divide NUMBER by DIVISOR when DIVISOR is not null.
@@ -1176,10 +1177,6 @@ Expects CURRENT-BUFFER to be buffer of speed-type session."
   (with-current-buffer buf
     (cl-find-if #'derived-mode-p speed-type-code-modes)))
 
-(defun speed-type--before-change (start end)
-  "Store the region between START and END which is going to be modified."
-  (setq speed-type--last-changed-text (buffer-substring start end)))
-
 (defun speed-type-format-stats (entries errors non-consecutive-errors corrections best-correct-streak seconds)
   "Format statistic data using given arguments:
 ENTRIES ERRORS NON-CONSECUTIVE-ERRORS CORRECTIONS SECONDS."
@@ -1203,9 +1200,8 @@ ENTRIES ERRORS NON-CONSECUTIVE-ERRORS CORRECTIONS SECONDS."
   (interactive)
   (unless (derived-mode-p 'speed-type-mode) (user-error "Not in a speed-type buffer: cannot complete session"))
   (remove-hook 'post-command-hook #'speed-type-preview-logger t)
-  (remove-hook 'before-change-functions #'speed-type--before-change t)
-  (remove-hook 'after-change-functions #'speed-type--change t)
   (speed-type-finish-animation speed-type--buffer)
+  (track-changes-unregister speed-type--tracker)
   (goto-char (point-max))
   (with-current-buffer speed-type--buffer
     (setq speed-type--max-point-on-complete (point-max))
@@ -1300,6 +1296,27 @@ value return nil."
             (setq-local speed-type--last-position new-last-pos))
         (read-only-mode)))))
 
+(defun speed-type--update-overlay (start end _old-text)
+  "Undo does not track overlay changes but it does update text-properties.
+Undo has finished it's job and we now update the overlay to the new
+text-property value."
+  (remove-overlays start end 'face 'speed-type-correct-face)
+  (remove-overlays start end 'face 'speed-type-error-face)
+  (remove-overlays start end 'face 'speed-type-consecutive-error-face)
+  (dotimes (i (- end start))
+    (let* ((pos (+ start i))
+           (pos0 (+ (1- start) i))
+           (non-consecutive-error-p (or (and (<= pos0 0) (= speed-type--non-consecutive-errors 0)) ;; first char is always a non-consecutive error if counter is 0
+                                        (or (and (eq speed-type-point-motion-on-error 'point-stay) (not (eq (get-text-property (1+ pos0) 'speed-type-char-status) 'error))) ;; staying, no movement, check current
+                                            (and (> pos0 0) (eq speed-type-point-motion-on-error 'point-move) (not (eq (get-text-property pos0 'speed-type-char-status) 'error))))))
+           (char-status (get-text-property pos 'speed-type-char-status)))
+      (when-let (f (cond ((eq char-status 'correct) 'speed-type-correct-face)
+                         ((eq char-status 'error)
+                          (if non-consecutive-error-p 'speed-type-error-face 'speed-type-consecutive-error-face))
+                         (t nil)))
+        (let ((overlay (make-overlay pos (1+ pos))))
+          (overlay-put overlay 'priority 1)
+          (overlay-put overlay 'face f))))))
 
 (defvar current-correct-streak 0 "Tracks the correct streak since last error or beginning.")
 (defun speed-type--diff (orig new start end)
@@ -1345,22 +1362,58 @@ END is a point where the check stops to scan for diff."
     (if (or (eq speed-type-point-motion-on-error 'point-move)
             (string= new "")
             (not any-error))
-        (goto-char (- end (if overwrite-mode 1 0)))
-      (goto-char (- end (if overwrite-mode 2 1)))
+        (goto-char end)
+      (goto-char start)
       (beep)
       (message "Wrong key"))
     (not any-error)))
 
-(defun speed-type--change (start end length)
+(defun speed-type--signal (tid)
+  "Receive signal of first change in buffer and supply TID to fetch."
+  (setq-local speed-type--tracker tid)
+  (message "last command: %s, this-command: %s, this-this-command: %s" (symbol-name last-command) (symbol-name this-command) (symbol-name this-original-command))
+  (cond
+   (speed-type--pending-signal nil)
+   ((member this-command '(fill-paragraph remove-yank-excluded-properties))
+    (setq-local speed-type--pending-signal (run-with-timer 0 nil #'speed-type--track-ignore tid)))
+   (undo-in-progress (setq-local speed-type--pending-signal (run-with-timer 0 nil #'speed-type--track-overlay tid)))
+   (t (setq-local
+       speed-type--track-this-command this-command
+       speed-type--pending-signal (run-with-timer 0 nil #'speed-type--track-change tid)))))
+
+(defun speed-type--track-change (tid)
+  "Received an immediate signal which we want to fetch."
+  (track-changes-fetch tid #'speed-type--change)
+  (track-changes-fetch tid #'speed-type--ignore))
+
+(defun speed-type--track-ignore (tid)
+  "Ignore an immediate signal which we should be fetched."
+  (track-changes-fetch tid #'speed-type--ignore))
+
+(defun speed-type--track-overlay (tid)
+  "What todo when ignoring a change. START END OLD-TEXT"
+  (track-changes-fetch tid #'speed-type--update-overlay)
+  (setq-local speed-type--pending-signal nil)
+  nil)
+
+(defun speed-type--ignore (_start _end _old-text)
+  "What todo when ignoring a change. START END OLD-TEXT"
+  (setq-local speed-type--pending-signal nil)
+  nil)
+
+(defun speed-type--change (start end old-text)
   "Handle buffer change between START and END.
 LENGTH is ignored. Used for hook AFTER-CHANGE-FUNCTIONS.
 Make sure that the contents don't actually change, but rather the contents
 are color coded and stats are gathered about the typing performance."
-  (unless (eq this-command 'fill-paragraph)
-    (unless speed-type--idle-pause-timer (speed-type--resume))
-    (let ((new-text (buffer-substring start end))
-          (old-text speed-type--last-changed-text))
+  (unless (eq old-text 'error)
+    (speed-type--resume)
+    (let ((new-text (buffer-substring start end)))
       (speed-type--handle-del start end)
+      (when (and overwrite-mode
+                 (member speed-type--track-this-command
+                         (list (key-binding (kbd "<deletechar>")) (key-binding (kbd "DEL")))))
+        (setq end start))
       (insert old-text)
       (if (< start (point-max))
           (let* ((end (if (> end (point-max)) (point-max) end))
@@ -1510,40 +1563,29 @@ CALLBACK is called when the setup process has been completed."
       (when (null (boundp 'speed-type--extra-word-quote))
         (setq-local speed-type--extra-word-quote nil)))
     (when speed-type-provide-preview-option (speed-type--connect-preview-buffer buf content-buffer))
-    (let ((b-inhibit-read-only inhibit-read-only)
-          (b-buffer-undo-list buffer-undo-list)
-          (b-inhibit-modification-hooks inhibit-modification-hooks)
-          (b-inhibit-field-text-motion inhibit-field-text-motion))
-      (unwind-protect
-          (progn
-            (setq-local inhibit-read-only t
-                        buffer-undo-list t
-                        inhibit-modification-hooks t
-                        inhibit-field-text-motion t)
-            (insert (if (speed-type--code-buffer-p speed-type--content-buffer) (speed-type--trim text) (string-trim text)))
-            (speed-type--replace-map-adjust-properties speed-type-replace-strings 'speed-type-orig-pos)
-            (when speed-type-downcase (downcase-region (point-min) (point-max)))
-            (unless (speed-type--code-buffer-p speed-type--content-buffer)
-              (fill-region (point-min) (point-max) 'none t))
-            (when speed-type-ignore-whitespace-for-complete
-              (save-excursion
-                (goto-char (point-min))
-                (while (search-forward-regexp "[[:blank:]\n]+" nil t 1)
-                  (add-text-properties (match-beginning 0) (match-end 0) '(speed-type-char-status ignore))))))
-        (setq-local inhibit-read-only b-inhibit-read-only
-                    buffer-undo-list b-buffer-undo-list
-                    inhibit-modification-hooks b-inhibit-modification-hooks
-                    inhibit-field-text-motion b-inhibit-field-text-motion)))
+    (let ((inhibit-read-only t)
+          (buffer-undo-list t)
+          (inhibit-modification-hooks t)
+          (inhibit-field-text-motion t))
+      (insert (if (speed-type--code-buffer-p speed-type--content-buffer) (speed-type--trim text) (string-trim text)))
+      (speed-type--replace-map-adjust-properties speed-type-replace-strings 'speed-type-orig-pos)
+      (when speed-type-downcase (downcase-region (point-min) (point-max)))
+      (unless (speed-type--code-buffer-p speed-type--content-buffer)
+        (fill-region (point-min) (point-max) 'none t))
+      (when speed-type-ignore-whitespace-for-complete
+        (save-excursion
+          (goto-char (point-min))
+          (while (search-forward-regexp "[[:blank:]\n]+" nil t 1)
+            (add-text-properties (match-beginning 0) (match-end 0) '(speed-type-char-status ignore))))))
     (set-buffer-modified-p nil)
     (switch-to-buffer buf)
     (when (eq speed-type-provide-preview-option t)
       (speed-type-toggle-preview))
     (goto-char 0)
-    (add-hook 'before-change-functions #'speed-type--before-change nil t)
     (add-hook 'post-command-hook #'speed-type-preview-logger nil t)
-    (add-hook 'after-change-functions #'speed-type--change nil t)
     (add-hook 'kill-buffer-hook #'speed-type--kill-buffer-hook nil t)
-    (setq-local post-self-insert-hook nil)
+    (setq-local post-self-insert-hook nil
+                speed-type--tracker (track-changes-register #'speed-type--signal :immediate t))
     (when (speed-type--code-buffer-p content-buffer)
       (electric-pair-mode -1)
       (when syntax-table (set-syntax-table syntax-table))
@@ -1844,9 +1886,10 @@ LIMIT is supplied to the random-function."
 
 (defun speed-type-finish-animation (buf)
   "Insert all remaining characters in `speed-type--extra-words-queue' to BUF."
+  (interactive)
   (save-excursion
     (with-current-buffer buf
-      (remove-hook 'after-change-functions #'speed-type--change t)
+      (track-changes-unregister speed-type--tracker)
       (when speed-type--extra-words-animation-timer (cancel-timer speed-type--extra-words-animation-timer))
       (setq speed-type--extra-words-animation-timer nil)
       (when speed-type--extra-words-queue
@@ -1854,24 +1897,26 @@ LIMIT is supplied to the random-function."
         (insert (mapconcat #'identity speed-type--extra-words-queue ""))
         (unless (speed-type--code-buffer-p speed-type--content-buffer)
           (fill-region (point-min) (point-max) 'none t))
-        (setq speed-type--extra-words-queue nil)))))
+        (setq speed-type--extra-words-queue nil))
+      (setq-local speed-type--tracker (track-changes-register #'speed-type--signal :immediate t)))))
 
 (defun speed-type-animate-extra-word-inseration (buf)
   "Add words of punishment-lines in animated fashion to BUF."
-  (save-excursion
-    (with-current-buffer buf
-      (remove-hook 'before-change-functions #'speed-type--before-change t)
-      (remove-hook 'after-change-functions #'speed-type--change t)
-      (if speed-type--extra-words-queue
-          (let ((token (pop speed-type--extra-words-queue)))
-            (goto-char (point-max))
-            (insert token))
-        (unless (speed-type--code-buffer-p speed-type--content-buffer)
-          (fill-region (point-min) (point-max) 'none t))
-        (cancel-timer speed-type--extra-words-animation-timer)
-        (setq speed-type--extra-words-animation-timer nil))
-      (add-hook 'before-change-functions #'speed-type--before-change nil t)
-      (add-hook 'after-change-functions #'speed-type--change nil t))))
+  (with-undo-amalgamate
+    (save-excursion
+      (with-current-buffer buf
+        (track-changes-unregister speed-type--tracker)
+        (if speed-type--extra-words-queue
+            (let ((token (pop speed-type--extra-words-queue)))
+              (goto-char (point-max))
+              (insert token))
+          (unless (speed-type--code-buffer-p speed-type--content-buffer)
+            (fill-region (point-min) (point-max) 'none t))
+          (cancel-timer speed-type--extra-words-animation-timer)
+          (setq-local speed-type--extra-words-animation-timer nil))
+        (setq-local speed-type--tracker (track-changes-register #'speed-type--signal :immediate t))))
+    (goto-char (point)) ;; this is for undo making the "jump-back" part of this undo-group
+    ))
 
 (defun speed-type-code-tab ()
   "A command to be mapped to TAB when speed typing code."
