@@ -393,6 +393,9 @@ Median Non-consecutive errors: %d")
 It's the point within speed-type-buffer.")
 (defvar-local speed-type--time-register nil
   "Used to calculate duration of a speed-type session.")
+(defvar-local speed-type--last-modified-tick nil
+  "Used to determine if there was only a property change between before- and after-functions.")
+
 (defvar-local speed-type--last-changed-text nil
   "Used to store characters which are going be compared against.
 
@@ -1171,7 +1174,8 @@ Expects CURRENT-BUFFER to be buffer of speed-type session."
 
 (defun speed-type--before-change (start end)
   "Store the region between START and END which is going to be modified."
-  (setq speed-type--last-changed-text (buffer-substring start end)))
+  (setq speed-type--last-changed-text (buffer-substring start end)
+        speed-type--last-modified-tick (buffer-chars-modified-tick)))
 
 (defun speed-type-format-stats (entries errors non-consecutive-errors corrections seconds)
   "Format statistic data using given arguments:
@@ -1195,9 +1199,9 @@ ENTRIES ERRORS NON-CONSECUTIVE-ERRORS CORRECTIONS SECONDS."
   (interactive)
   (unless (derived-mode-p 'speed-type-mode) (user-error "Not in a speed-type buffer: cannot complete session"))
   (remove-hook 'post-command-hook #'speed-type-preview-logger t)
+  (speed-type-finish-animation speed-type--buffer)
   (remove-hook 'before-change-functions #'speed-type--before-change t)
   (remove-hook 'after-change-functions #'speed-type--change t)
-  (speed-type-finish-animation speed-type--buffer)
   (goto-char (point-max))
   (with-current-buffer speed-type--buffer
     (setq speed-type--max-point-on-complete (point-max))
@@ -1336,37 +1340,63 @@ END is a point where the check stops to scan for diff."
       (message "Wrong key"))
     (not any-error)))
 
-(defun speed-type--change (start end length)
+(defun speed-type--update-overlay (start end)
+  "Undo does not track overlay changes but it does update text-properties.
+Undo has finished it's job and we now update the overlay to the new
+text-property value."
+  (remove-overlays start end 'face 'speed-type-correct-face)
+  (remove-overlays start end 'face 'speed-type-error-face)
+  (remove-overlays start end 'face 'speed-type-consecutive-error-face)
+  (dotimes (i (- end start))
+    (let* ((pos (+ start i))
+           (pos0 (+ (1- start) i))
+           (non-consecutive-error-p (or (and (<= pos0 0) (= speed-type--non-consecutive-errors 0)) ;; first char is always a non-consecutive error if counter is 0
+                                        (or (and (eq speed-type-point-motion-on-error 'point-stay) (not (eq (get-text-property (1+ pos0) 'speed-type-char-status) 'error))) ;; staying, no movement, check current
+                                            (and (> pos0 0) (eq speed-type-point-motion-on-error 'point-move) (not (eq (get-text-property pos0 'speed-type-char-status) 'error))))))
+           (char-status (get-text-property pos 'speed-type-char-status)))
+      (when-let (f (cond ((eq char-status 'correct) 'speed-type-correct-face)
+                         ((eq char-status 'error)
+                          (if non-consecutive-error-p 'speed-type-error-face 'speed-type-consecutive-error-face))
+                         (t nil)))
+        (let ((overlay (make-overlay pos (1+ pos))))
+          (overlay-put overlay 'priority 1)
+          (overlay-put overlay 'face f))))))
+
+(defun speed-type--change (start end _length)
   "Handle buffer change between START and END.
 LENGTH is ignored. Used for hook AFTER-CHANGE-FUNCTIONS.
 Make sure that the contents don't actually change, but rather the contents
 are color coded and stats are gathered about the typing performance."
-  (unless (eq this-command 'fill-paragraph)
-    (unless speed-type--idle-pause-timer (speed-type--resume))
-    (let ((new-text (buffer-substring start end))
-          (old-text speed-type--last-changed-text))
-      (speed-type--handle-del start end)
-      (insert old-text)
-      (if (< start (point-max))
-          (let* ((end (if (> end (point-max)) (point-max) end))
-                 (orig (buffer-substring start end)))
-            (when-let* ((overlay (and (equal new-text "")
-                                      (car (overlays-at end)))))
-              (move-overlay overlay (1- (overlay-end overlay)) (overlay-end overlay)) (current-buffer))
-            (speed-type--diff orig new-text start end)
-            (when
-                (and (not (save-excursion (text-property-search-forward 'speed-type-char-status 'nil t)))
-                     (not (save-excursion (text-property-search-backward 'speed-type-char-status 'nil t)))
-                     (null speed-type--extra-words-queue)
-                     (not (text-property-any (point-min) (point-max) 'speed-type-char-status 'nil))
-                     (or (not speed-type-complete-all-correct)
-                         (and speed-type-complete-all-correct
-                              (not (save-excursion (text-property-search-forward 'speed-type-char-status 'error t)))
-                              (not (save-excursion (text-property-search-backward 'speed-type-char-status 'error t)))
-                              (not (text-property-any (point-min) (point-max) 'speed-type-char-status 'error)))))
-              (speed-type-complete)))
-        (beep)
-        (message "End of buffer")))))
+  (cond (undo-in-progress (speed-type--update-overlay start end))
+        ((or (member this-command '(fill-paragraph))
+             (= speed-type--last-modified-tick (buffer-chars-modified-tick)))
+         nil)
+        (t (progn
+             (unless speed-type--idle-pause-timer (speed-type--resume))
+             (let ((new-text (buffer-substring start end))
+                   (old-text speed-type--last-changed-text))
+               (speed-type--handle-del start end)
+               (insert old-text)
+               (if (< start (point-max))
+                   (let* ((end (if (> end (point-max)) (point-max) end))
+                          (orig (buffer-substring start end)))
+                     (when-let* ((overlay (and (equal new-text "")
+                                               (car (overlays-at end)))))
+                       (move-overlay overlay (1- (overlay-end overlay)) (overlay-end overlay)) (current-buffer))
+                     (speed-type--diff orig new-text start end)
+                     (when
+                         (and (not (save-excursion (text-property-search-forward 'speed-type-char-status 'nil t)))
+                              (not (save-excursion (text-property-search-backward 'speed-type-char-status 'nil t)))
+                              (null speed-type--extra-words-queue)
+                              (not (text-property-any (point-min) (point-max) 'speed-type-char-status 'nil))
+                              (or (not speed-type-complete-all-correct)
+                                  (and speed-type-complete-all-correct
+                                       (not (save-excursion (text-property-search-forward 'speed-type-char-status 'error t)))
+                                       (not (save-excursion (text-property-search-backward 'speed-type-char-status 'error t)))
+                                       (not (text-property-any (point-min) (point-max) 'speed-type-char-status 'error)))))
+                       (speed-type-complete)))
+                 (beep)
+                 (message "End of buffer")))))))
 
 (defun speed-type--trim (str)
   "Trim leading and tailing whitespace from STR."
@@ -1819,10 +1849,11 @@ LIMIT is supplied to the random-function."
         (when (not (timerp speed-type--extra-words-animation-timer))
           (setq speed-type--extra-words-animation-timer (run-at-time nil 0.01 #'speed-type-animate-extra-word-inseration speed-type--buffer)))))))
 
-(defun speed-type-finish-animation (buf)
+(defun speed-type-finish-animation (&optional buf)
   "Insert all remaining characters in `speed-type--extra-words-queue' to BUF."
+  (interactive)
   (save-excursion
-    (with-current-buffer buf
+    (with-current-buffer (or buf speed-type--buffer)
       (remove-hook 'after-change-functions #'speed-type--change t)
       (when speed-type--extra-words-animation-timer (cancel-timer speed-type--extra-words-animation-timer))
       (setq speed-type--extra-words-animation-timer nil)
@@ -1831,24 +1862,28 @@ LIMIT is supplied to the random-function."
         (insert (mapconcat #'identity speed-type--extra-words-queue ""))
         (unless (speed-type--code-buffer-p speed-type--content-buffer)
           (fill-region (point-min) (point-max) 'none t))
-        (setq speed-type--extra-words-queue nil)))))
+        (setq speed-type--extra-words-queue nil))
+      (add-hook 'after-change-functions #'speed-type--change nil t))))
 
 (defun speed-type-animate-extra-word-inseration (buf)
   "Add words of punishment-lines in animated fashion to BUF."
-  (save-excursion
-    (with-current-buffer buf
-      (remove-hook 'before-change-functions #'speed-type--before-change t)
-      (remove-hook 'after-change-functions #'speed-type--change t)
-      (if speed-type--extra-words-queue
-          (let ((token (pop speed-type--extra-words-queue)))
-            (goto-char (point-max))
-            (insert token))
-        (unless (speed-type--code-buffer-p speed-type--content-buffer)
-          (fill-region (point-min) (point-max) 'none t))
-        (cancel-timer speed-type--extra-words-animation-timer)
-        (setq speed-type--extra-words-animation-timer nil))
-      (add-hook 'before-change-functions #'speed-type--before-change nil t)
-      (add-hook 'after-change-functions #'speed-type--change nil t))))
+  (with-undo-amalgamate
+    (save-excursion
+      (with-current-buffer buf
+        (remove-hook 'before-change-functions #'speed-type--before-change t)
+        (remove-hook 'after-change-functions #'speed-type--change t)
+        (if speed-type--extra-words-queue
+            (let ((token (pop speed-type--extra-words-queue)))
+              (goto-char (point-max))
+              (insert token))
+          (unless (speed-type--code-buffer-p speed-type--content-buffer)
+            (fill-region (point-min) (point-max) 'none t))
+          (cancel-timer speed-type--extra-words-animation-timer)
+          (setq speed-type--extra-words-animation-timer nil))
+        (add-hook 'before-change-functions #'speed-type--before-change nil t)
+        (add-hook 'after-change-functions #'speed-type--change nil t)))
+    (goto-char (point)) ;; this is for undo making the "jump-back" part of this undo-group
+    ))
 
 (defun speed-type-code-tab ()
   "A command to be mapped to TAB when speed typing code."
