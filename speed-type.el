@@ -1115,7 +1115,9 @@ Else if there is no such window, `split-window' and display the preview
 in new window."
   (interactive)
   (unless (derived-mode-p 'speed-type-mode) (user-error "Not in a speed-type buffer: cannot open preview"))
-  (unless (and (boundp 'speed-type--preview-buffer) speed-type--preview-buffer) (user-error "Preview buffer not defined please configure `speed-type-provide-preview-option'"))
+  (unless (and (boundp 'speed-type--preview-buffer) speed-type--preview-buffer)
+    (speed-type--connect-preview-buffer speed-type--buffer speed-type--content-buffer)
+    (message "Preview-buffer connected to current speed-type session."))
   (let ((bw (get-buffer-window speed-type--preview-buffer)))
     (if bw (delete-window bw)
       (let ((sw (selected-window))
@@ -1462,6 +1464,33 @@ properties."
                        (t (put-text-property prop-start prop-end ',property old-property-value)))))))
               (when ,object (buffer-string)))))))
 
+(defun speed-type--connect-preview-buffer (s-buf c-buf)
+  "Create preview-buffer and connect it to S-BUF and C-BUF.
+
+S-BUF is the speed-type buffer which runs the speed-type session.
+
+C-BUF is the content buffer which holds the content from which the
+speed-type session has been started.
+
+With connect means a kill-hook is added which kills the preview-buffer
+if one of the other buffers are killed and vice versa.
+
+Returns the preview-buffer."
+  (let ((p-buf (generate-new-buffer speed-type-preview-buffer-name)))
+    (with-current-buffer s-buf
+      (setq-local speed-type--preview-buffer p-buf))
+    (with-current-buffer c-buf
+      (setq-local speed-type--preview-buffer p-buf))
+    (with-current-buffer p-buf
+      (setq-local speed-type--buffer s-buf
+                  speed-type--content-buffer c-buf
+                  speed-type--last-position 0
+                  truncate-lines t)
+      (speed-type-mode)
+      (add-hook 'kill-buffer-hook #'speed-type--kill-preview-buffer-hook nil t)
+      (read-only-mode))
+    p-buf))
+
 (cl-defun speed-type--setup
     (content-buffer text &key file-name title author lang n-words randomize continue-fn add-extra-word-content-fn replay-fn go-next-fn syntax-table fldf)
   "Set up a new buffer for the typing exercise on TEXT.
@@ -1510,22 +1539,7 @@ CALLBACK is called when the setup process has been completed."
       (setq-local speed-type--buffer buf)
       (when (null (boundp 'speed-type--extra-word-quote))
         (setq-local speed-type--extra-word-quote nil)))
-    (let ((pbuf (when speed-type-provide-preview-option
-                  (setq-local speed-type--preview-buffer (generate-new-buffer speed-type-preview-buffer-name))
-                  (with-current-buffer speed-type--preview-buffer
-                    (setq-local speed-type--buffer buf
-                                speed-type--last-position 0
-                                truncate-lines t)
-                    (speed-type-mode)
-                    (add-hook 'kill-buffer-hook #'speed-type--kill-preview-buffer-hook nil t)
-                    (read-only-mode))
-                  speed-type--preview-buffer))
-          (cbuf speed-type--content-buffer))
-      (with-current-buffer speed-type--content-buffer
-        (setq-local speed-type--preview-buffer pbuf))
-      (when speed-type--preview-buffer
-        (with-current-buffer speed-type--preview-buffer
-          (setq-local speed-type--content-buffer cbuf))))
+    (when speed-type-provide-preview-option (speed-type--connect-preview-buffer buf content-buffer))
     (let ((b-inhibit-read-only inhibit-read-only)
           (b-buffer-undo-list buffer-undo-list)
           (b-inhibit-modification-hooks inhibit-modification-hooks)
@@ -1553,11 +1567,7 @@ CALLBACK is called when the setup process has been completed."
     (set-buffer-modified-p nil)
     (switch-to-buffer buf)
     (when (eq speed-type-provide-preview-option t)
-      (let ((sw (selected-window))
-            (pw (split-window nil 5 'above)))
-        (set-window-buffer sw speed-type--preview-buffer)
-        (set-window-buffer pw buf)
-        (select-window pw)))
+      (speed-type-toggle-preview))
     (goto-char 0)
     (add-hook 'before-change-functions #'speed-type--before-change nil t)
     (add-hook 'post-command-hook #'speed-type-preview-logger nil t)
