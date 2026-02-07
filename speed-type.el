@@ -52,11 +52,11 @@
   "Name of buffer in which the user completes his typing session."
   :type 'string)
 
-(defcustom speed-type-content-buffer-name "*speed-type-content-buffer*"
+(defcustom speed-type-content-buffer-name "*speed-type-content*"
   "Name of buffer consisting of the content-source for the speed-type buffer."
   :type 'string)
 
-(defcustom speed-type-preview-buffer-name "*speed-type-preview-buffer*"
+(defcustom speed-type-preview-buffer-name "*speed-type-preview*"
   "Name of buffer consisting of the preview for the speed-type buffer."
   :type 'string)
 
@@ -192,7 +192,7 @@ E.g. if you always want lowercase words, set:
                  (const :tag "Telugu" te)
                  (const :tag "Welsh" cy)))
 
-(defcustom speed-type-replace-strings '(("“" . "\"") ("”" . "\"") ("‘" . "'") ("’" . "'") ("—" . "-") ("–" . "-") ("Æ" . "Ae") ("æ" . "ae") ("»" . "\"") ("«" . "\"") ("„" . "\""))
+(defcustom speed-type-replace-strings '(("“" . "\"") ("”" . "\"") ("‘" . "'") ("’" . "'") ("—" . "-") ("–" . "-") ("Æ" . "Ae") ("æ" . "ae") ("»" . "\"") ("«" . "\"") ("„" . "\"") ("…" . "..."))
   "Alist of strings to replace and their replacement, in the form:
 `(bad-string . good-string)'
 To remove without replacement, use the form: `(bad-string . \"\")'"
@@ -338,6 +338,7 @@ Accuracy:                     %.2f%%
 Total time:                   %s
 Total chars:                  %d
 Corrections:                  %d
+Best correct streak:          %d
 Total errors:                 %d
 Total non-consecutive errors: %d
 %s")
@@ -354,6 +355,7 @@ Median Accuracy:               %.2f%%
 Median Total time:             %d
 Median Total chars:            %d
 Median Corrections:            %d
+Median Best correct streak:    %d
 Median Total errors:           %d
 Median Non-consecutive errors: %d")
 
@@ -404,6 +406,7 @@ It's used in the before-change-hook.")
 (defvar-local speed-type--content-buffer nil)
 (defvar-local speed-type--entries 0 "Counts the number of keystrokes typed.")
 (defvar-local speed-type--errors 0 "Counts mistyped characters.")
+(defvar-local speed-type--best-correct-streak 0 "The highest count of consecutively correct typed characters.")
 (defvar-local speed-type--non-consecutive-errors 0 "Counts mistyped characters but only if previous was correct.")
 (defvar-local speed-type--corrections 0
   "Counts the speed-type-status transition of characters from error to correct.")
@@ -550,7 +553,8 @@ SPEED-TYPE-MAYBE-UPGRADE-FILE-FORMAT."
           (cons 'speed-type--net-cpm (speed-type--net-cpm entries errors corrections seconds))
           (cons 'speed-type--accuracy (speed-type--accuracy entries (- entries errors) corrections))
           (cons 'speed-type--continue-at-point (unless speed-type--randomize (speed-type--get-continue-point)))
-          (cons 'speed-type--file-name speed-type--file-name))))
+          (cons 'speed-type--file-name speed-type--file-name)
+          (cons 'speed-type--best-correct-streak speed-type--best-correct-streak))))
 
 (defun speed-type--stop-word-p (word)
   "Return given WORD when it is a stop-word.
@@ -776,6 +780,7 @@ Additional provide length and skill-value."
      (speed-type--calc-median 'speed-type--elapsed-time stats)
      (speed-type--calc-median 'speed-type--entries stats)
      (speed-type--calc-median 'speed-type--corrections stats)
+     (speed-type--calc-median 'speed-type--best-correct-streak stats)
      (speed-type--calc-median 'speed-type--errors stats)
      (speed-type--calc-median 'speed-type--non-consecutive-errors stats))))
 
@@ -1177,7 +1182,7 @@ Expects CURRENT-BUFFER to be buffer of speed-type session."
   (setq speed-type--last-changed-text (buffer-substring start end)
         speed-type--last-modified-tick (buffer-chars-modified-tick)))
 
-(defun speed-type-format-stats (entries errors non-consecutive-errors corrections seconds)
+(defun speed-type-format-stats (entries errors non-consecutive-errors corrections best-correct-streak seconds)
   "Format statistic data using given arguments:
 ENTRIES ERRORS NON-CONSECUTIVE-ERRORS CORRECTIONS SECONDS."
   (format speed-type-stats-format
@@ -1190,6 +1195,7 @@ ENTRIES ERRORS NON-CONSECUTIVE-ERRORS CORRECTIONS SECONDS."
           (format-seconds "%M %z%S" seconds)
           entries
           corrections
+          best-correct-streak
           errors
           non-consecutive-errors
           speed-type-explaining-message))
@@ -1218,6 +1224,7 @@ ENTRIES ERRORS NON-CONSECUTIVE-ERRORS CORRECTIONS SECONDS."
                speed-type--errors
                speed-type--non-consecutive-errors
                speed-type--corrections
+               speed-type--best-correct-streak
                (speed-type--elapsed-time speed-type--time-register)))
       (speed-type-display-menu))))
 
@@ -1295,6 +1302,8 @@ value return nil."
             (setq-local speed-type--last-position new-last-pos))
         (read-only-mode)))))
 
+
+(defvar current-correct-streak 0 "Tracks the correct streak since last error or beginning.")
 (defun speed-type--diff (orig new start end)
   "Synchronise local buffer state with buffer-content by comparing ORIG and NEW.
 ORIG is the original text. NEW is the new text.
@@ -1316,11 +1325,15 @@ END is a point where the check stops to scan for diff."
 
         (if (speed-type--check-same i orig new)
             (progn (setq is-same t)
+                   (cl-incf current-correct-streak)
+                   (when (> current-correct-streak speed-type--best-correct-streak)
+                     (setq speed-type--best-correct-streak current-correct-streak))
                    (let ((char-status (get-text-property i 'speed-type-char-status orig)))
                      (when (eq char-status 'error) (cl-incf speed-type--corrections))
                      (add-text-properties pos (1+ pos) '(speed-type-char-status correct))))
           (progn (unless any-error (setq any-error t))
                  (cl-incf speed-type--errors)
+                 (setq current-correct-streak 0)
                  (when non-consecutive-error-p (cl-incf speed-type--non-consecutive-errors))
                  (add-text-properties pos (1+ pos) '(speed-type-char-status error))
                  (speed-type-add-extra-words (+ (or speed-type-add-extra-words-on-error 0)
