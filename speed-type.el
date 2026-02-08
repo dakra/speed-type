@@ -1359,6 +1359,8 @@ END is a point where the check stops to scan for diff."
   "Undo does not track overlay changes but it does update text-properties.
 Undo has finished it's job and we now update the overlay to the new
 text-property value."
+  (when-let ((orig-end (cdr (get-text-property (1- (point-max)) 'speed-type-orig-pos))))
+    (with-current-buffer speed-type--content-buffer (goto-char orig-end)))
   (remove-overlays start end 'face 'speed-type-correct-face)
   (remove-overlays start end 'face 'speed-type-error-face)
   (remove-overlays start end 'face 'speed-type-consecutive-error-face)
