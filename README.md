@@ -158,15 +158,15 @@ A little diagram because [uniline](https://github.com/tbanel/uniline) is fun:
                            │  │     │   │           │         │
                            │  ▽     │   ▽ resume    │         ▽
   ╭─────╮   ╭─────╮       ╭┴──┴─────┴───┴────╮    ╭─┴─────────┴─╮     ╭────╮
-  │start├──▷┤setup├──────▷┤speed-type session├───▷┤complete/menu├────▷┤quit│
-  ╰─────╯   ╰─┬───╯       ╰─┬──────────────┬─╯   │╰───┬───┬───┬─╯     ╰────╯
-              △             │              △   save   │   │   △
-              │             ▽              │          │   ▽   │
-              │           ╭─┴──────────────┴─╮        │   ├───┴──────────╮
-              │           │add words on error│        │   │toggle preview│
-              │           ╰──────────────────╯        │   ╰──────────────╯
+  │start├──▷┤setup├──────▷┤speed-type session├───▷┤complete menu├────▷┤quit│
+  ╰─────╯   ╰─┬───╯       ╰─┬──────────┬─────╯   │╰───┬──┬──────┤     ╰────╯
+              △             │          △       save   │  ▽toggle△
+              │             ▽ add      │              │  │      │
+              │           ╭─┴──────────┴─╮            │  ├──────┴╮
+              │           │words on error│            │  │preview│
+              │           ╰──────────────╯            │  ╰───────╯
               │                                       │
-              │          ╭────────────────────╮       │
+              │          ╭─────play-action────╮       │
               ╰──────────┤replay/next/continue├─-◁────╯
                          ╰────────────────────╯
 ```

@@ -44,6 +44,31 @@
 (require 'thingatpt)
 (require 'dom)
 
+(when (version< emacs-version "29.1")
+  (eval-and-compile
+    (defmacro with-undo-amalgamate (&rest body)
+      "Like `progn' but perform BODY with amalgamated undo barriers.
+
+This allows multiple operations to be undone in a single step.
+When undo is disabled this behaves like `progn'."
+      (declare (indent 0) (debug t))
+      (let ((handle (make-symbol "--change-group-handle--")))
+        `(let ((,handle (prepare-change-group))
+               ;; Don't truncate any undo data in the middle of this,
+               ;; otherwise Emacs might truncate part of the resulting
+               ;; undo step: we want to mimic the behavior we'd get if the
+               ;; undo-boundaries were never added in the first place.
+               (undo-outer-limit nil)
+               (undo-limit most-positive-fixnum)
+               (undo-strong-limit most-positive-fixnum))
+           (unwind-protect
+               (progn
+                 (activate-change-group ,handle)
+                 ,@body)
+             (progn
+               (accept-change-group ,handle)
+               (undo-amalgamate-change-group ,handle))))))))
+
 (defgroup speed-type nil
   "Practice touch-typing in Emacs."
   :group 'games)
@@ -69,7 +94,7 @@
   :type 'integer)
 
 (defcustom speed-type-text-picker-tolerance 20
-  "The default tolerance to look forward if text-picker would cut of word otherwise."
+  "Char-count allowed to exceed MAX if text-picker would cut of word otherwise."
   :type 'integer)
 
 (defcustom speed-type-pause-delay-seconds 5
@@ -320,7 +345,6 @@ If nil, the completion is only triggered if all characters are typed."
   "Face for point-movement in preview buffer.")
 
 ;; internal variables
-
 (defvar speed-type--gb-url-format "https://www.gutenberg.org/cache/epub/%d/pg%d.txt")
 
 (defvar speed-type-explaining-message "
@@ -394,12 +418,13 @@ Median Non-consecutive errors: %d")
 
 It's the point within speed-type-buffer.")
 (defvar-local speed-type--time-register nil
-  "Used to calculate duration of a speed-type session.")
+  "Holds timestamps and used to calculate duration of a speed-type session.")
 (defvar-local speed-type--last-modified-tick nil
-  "Used to determine if there was only a property change between before- and after-functions.")
+  "Detect property-only-changes between before- and after-functions.
 
+It's a property-only-change when modified-tick is the same in before and after.")
 (defvar-local speed-type--last-changed-text nil
-  "Used to store characters which are going be compared against.
+  "Store characters which are going be compared against actual.
 
 It's used in the before-change-hook.")
 (defvar-local speed-type--buffer nil)
@@ -525,7 +550,9 @@ unwise, unless you know what you are doing.")
 
 (defconst speed-type-file-format-version 1
   "The current version of the format used by speed-type statistic files.
-You should never need to change this.")
+You should never need to change this.
+- 0 = initial version.
+- 1 = fix by maybe adding a newline")
 
 (defun speed-type-statistic-variables ()
   "Define the structure of raw-data used for calculating the median-stats.
@@ -1083,7 +1110,6 @@ Whitespace is determined using `char-syntax'."
       (setq i (1+ i)))
     still-correct))
 
-
 (defun speed-type--check-same (pos a b)
   "Return non-nil if A[POS] and B[POS] are identical or both whitespace.
 
@@ -1186,7 +1212,7 @@ Expects CURRENT-BUFFER to be buffer of speed-type session."
 
 (defun speed-type-format-stats (entries errors non-consecutive-errors corrections best-correct-streak seconds)
   "Format statistic data using given arguments:
-ENTRIES ERRORS NON-CONSECUTIVE-ERRORS CORRECTIONS SECONDS."
+ENTRIES ERRORS NON-CONSECUTIVE-ERRORS CORRECTIONS BEST-CORRECT-STREAK SECONDS."
   (format speed-type-stats-format
           (speed-type--skill (speed-type--net-wpm entries errors corrections seconds))
           (speed-type--net-wpm entries errors corrections seconds)
@@ -1304,7 +1330,6 @@ value return nil."
             (setq-local speed-type--last-position new-last-pos))
         (read-only-mode)))))
 
-
 (defvar current-correct-streak 0 "Tracks the correct streak since last error or beginning.")
 (defun speed-type--diff (orig new start end)
   "Synchronise local buffer state with buffer-content by comparing ORIG and NEW.
@@ -1355,11 +1380,18 @@ END is a point where the check stops to scan for diff."
       (message "Wrong key"))
     (not any-error)))
 
-(defun speed-type--update-overlay (start end)
-  "Undo does not track overlay changes but it does update text-properties.
-Undo has finished it's job and we now update the overlay to the new
-text-property value."
-  (when-let ((orig-end (cdr (get-text-property (1- (point-max)) 'speed-type-orig-pos))))
+(defun speed-type--sync-after-undo (start end)
+  "Sync overlay between START and END with whatever text-properties appear there.
+
+Undo does not track overlay changes but it does update text-properties.
+
+This function should be called after undo has finished it's job and the
+region got new text-property values.
+
+`buffer-undo-list' is per buffer which is why point is synced in
+content-buffer manually if there is a add-extra-word-function."
+  (when-let ((add-word-fn speed-type--add-extra-word-content-fn)
+             (orig-end (cdr (get-text-property (1- (point-max)) 'speed-type-orig-pos))))
     (with-current-buffer speed-type--content-buffer (goto-char orig-end)))
   (remove-overlays start end 'face 'speed-type-correct-face)
   (remove-overlays start end 'face 'speed-type-error-face)
@@ -1384,12 +1416,12 @@ text-property value."
 LENGTH is ignored. Used for hook AFTER-CHANGE-FUNCTIONS.
 Make sure that the contents don't actually change, but rather the contents
 are color coded and stats are gathered about the typing performance."
-  (cond (undo-in-progress (speed-type--update-overlay start end))
+  (cond (undo-in-progress (speed-type--sync-after-undo start end))
         ((or (member this-command '(fill-paragraph))
              (= speed-type--last-modified-tick (buffer-chars-modified-tick)))
          nil)
         (t (progn
-             (unless speed-type--idle-pause-timer (speed-type--resume))
+             (speed-type--resume)
              (let ((new-text (buffer-substring start end))
                    (old-text speed-type--last-changed-text))
                (speed-type--handle-del start end)
@@ -1542,30 +1574,20 @@ CALLBACK is called when the setup process has been completed."
       (when (null (boundp 'speed-type--extra-word-quote))
         (setq-local speed-type--extra-word-quote nil)))
     (when speed-type-provide-preview-option (speed-type--connect-preview-buffer buf content-buffer))
-    (let ((b-inhibit-read-only inhibit-read-only)
-          (b-buffer-undo-list buffer-undo-list)
-          (b-inhibit-modification-hooks inhibit-modification-hooks)
-          (b-inhibit-field-text-motion inhibit-field-text-motion))
-      (unwind-protect
-          (progn
-            (setq-local inhibit-read-only t
-                        buffer-undo-list t
-                        inhibit-modification-hooks t
-                        inhibit-field-text-motion t)
-            (insert (if (speed-type--code-buffer-p speed-type--content-buffer) (speed-type--trim text) (string-trim text)))
-            (speed-type--replace-map-adjust-properties speed-type-replace-strings 'speed-type-orig-pos)
-            (when speed-type-downcase (downcase-region (point-min) (point-max)))
-            (unless (speed-type--code-buffer-p speed-type--content-buffer)
-              (fill-region (point-min) (point-max) 'none t))
-            (when speed-type-ignore-whitespace-for-complete
-              (save-excursion
-                (goto-char (point-min))
-                (while (search-forward-regexp "[[:blank:]\n]+" nil t 1)
-                  (add-text-properties (match-beginning 0) (match-end 0) '(speed-type-char-status ignore))))))
-        (setq-local inhibit-read-only b-inhibit-read-only
-                    buffer-undo-list b-buffer-undo-list
-                    inhibit-modification-hooks b-inhibit-modification-hooks
-                    inhibit-field-text-motion b-inhibit-field-text-motion)))
+    (let ((inhibit-read-only t)
+          (buffer-undo-list t)
+          (inhibit-modification-hooks t)
+          (inhibit-field-text-motion t))
+      (insert (if (speed-type--code-buffer-p speed-type--content-buffer) (speed-type--trim text) (string-trim text)))
+      (speed-type--replace-map-adjust-properties speed-type-replace-strings 'speed-type-orig-pos)
+      (when speed-type-downcase (downcase-region (point-min) (point-max)))
+      (unless (speed-type--code-buffer-p speed-type--content-buffer)
+        (fill-region (point-min) (point-max) 'none t))
+      (when speed-type-ignore-whitespace-for-complete
+        (save-excursion
+          (goto-char (point-min))
+          (while (search-forward-regexp "[[:blank:]\n]+" nil t 1)
+            (add-text-properties (match-beginning 0) (match-end 0) '(speed-type-char-status ignore))))))
     (set-buffer-modified-p nil)
     (switch-to-buffer buf)
     (when (eq speed-type-provide-preview-option t)
@@ -1661,7 +1683,7 @@ If IGNORE is non-nil, will ignore whitespace which will not account to
 the approximated length.
 
 If START and END are the same and TOLERANCE is zero will just return
-'(START END).
+\(START END).
 
 Use `save-excursion' to prevent point-movement."
   (dolist (arg `((START . ,start) (END . ,end) (MIN . ,min) (MAX . ,max) (TOLERANCE . ,tolerance)))
@@ -2151,7 +2173,7 @@ will be used.  Else some text will be picked randomly."
                         (forward-line -1)
                         (point))))
                (text (with-current-buffer buf
-                         (let ((bounds (speed-type--pick-random-text-bounds (point-min) (point-max) speed-type-min-chars speed-type-max-chars speed-type-text-picker-tolerance t)))
+                         (let ((bounds (speed-type--pick-random-text-bounds start end speed-type-min-chars speed-type-max-chars speed-type-text-picker-tolerance t)))
                            (speed-type--put-text-property-orig-pos (car bounds) (cadr bounds))
                            (buffer-substring (car bounds) (cadr bounds))))))
           (speed-type--setup buf
@@ -2211,6 +2233,9 @@ If ARG is given will prompt for a specific quote-URL."
 ;;;###autoload
 (defun speed-type-continue (go-next-fn &optional file-name)
   "Will continue where user left of in given FILE-NAME.
+
+GO-NEXT-FN is supplied to the setup-functions, to provide the
+next-action (random) in the complete-menu.
 
 Find last speed-type--continue-at-point of FILE-NAME and setup a speed-type
 session continuing at that last found position. If nothing is found,
