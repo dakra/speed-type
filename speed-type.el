@@ -368,20 +368,22 @@ Total non-consecutive errors: %d
 %s")
 
 (defvar speed-type-previous-saved-stats-format  "\n
-Num of records:                %d
+Num of records: %d
+From: -- To: --
 Note: 'nil' values are excluded from the median calculations.
-Median Skill:                  %s
-Median Net WPM:                %d
-Median Net CPM:                %d
-Median Gross WPM:              %d
-Median Gross CPM:              %d
-Median Accuracy:               %.2f%%
-Median Total time:             %d
-Median Total chars:            %d
-Median Corrections:            %d
-Median Best correct streak:    %d
-Median Total errors:           %d
-Median Non-consecutive errors: %d")
+|                         | Median  | Avg     | SD      | Min     | Max     |
+| Skill:                  | %-7s | %-7s | ------- | %-7s | %-7s |
+| Net WPM:                | %-7d | %-7d | %-7d | %-7d | %-7d |
+| Net CPM:                | %-7d | %-7d | %-7d | %-7d | %-7d |
+| Gross WPM:              | %-7d | %-7d | %-7d | %-7d | %-7d |
+| Gross CPM:              | %-7d | %-7d | %-7d | %-7d | %-7d |
+| Accuracy:               | %-6.2f%% | %-6.2f%% | %-6.2f%% | %-6.2f%% | %-6.2f%% |
+| Total time:             | %-7d | %-7d | %-7d | %-7d | %-7d |
+| Total chars:            | %-7d | %-7d | %-7d | %-7d | %-7d |
+| Corrections:            | %-7d | %-7d | %-7d | %-7d | %-7d |
+| Best correct streak:    | %-7d | %-7d | %-7d | %-7d | %-7d |
+| Total errors:           | %-7d | %-7d | %-7d | %-7d | %-7d |
+| Non-consecutive errors: | %-7d | %-7d | %-7d | %-7d | %-7d |")
 
 (defvar-keymap speed-type-mode-completed-map
   :doc "Key when speed-type session is completed (menu)."
@@ -780,6 +782,40 @@ Point is irrelevant and unaffected."
                    (error "Buffer is not in speed-type statistic format")))))
     stats))
 
+(defun speed-type--calc-standard-deviation (symbol stats)
+  (unless (symbolp symbol) (error "Given SYMBOL(%s) is not a symbol" symbol))
+  (unless (listp stats) (error "Given STATS(%s) is not an list" stats))
+  (let* ((numbers (sort (remove nil (mapcar (lambda (e) (cdr (assoc symbol e))) stats)) '<))
+         (avg (speed-type--calc-avg symbol stats))
+         (sum-of-variance (apply '+ (mapcar (lambda (n) (expt (- n avg) 2)) numbers)))
+         (num-of-records (length numbers))
+         (standard-deviation (sqrt (/ sum-of-variance num-of-records))))
+    standard-deviation))
+
+(defun speed-type--calc-max (symbol stats)
+  (unless (symbolp symbol) (error "Given SYMBOL(%s) is not a symbol" symbol))
+  (unless (listp stats) (error "Given STATS(%s) is not an list" stats))
+  (let* ((numbers (sort (remove nil (mapcar (lambda (e) (cdr (assoc symbol e))) stats)) '>=))
+         (max (nth 0 numbers)))
+    max))
+
+(defun speed-type--calc-min (symbol stats)
+  (unless (symbolp symbol) (error "Given SYMBOL(%s) is not a symbol" symbol))
+  (unless (listp stats) (error "Given STATS(%s) is not an list" stats))
+  (let* ((numbers (sort (remove nil (mapcar (lambda (e) (cdr (assoc symbol e))) stats)) '<))
+         (min (nth 0 numbers)))
+    min))
+
+(defun speed-type--calc-avg (symbol stats)
+  "Calculate the average of given SYMBOL in STATS."
+  (unless (symbolp symbol) (error "Given SYMBOL(%s) is not a symbol" symbol))
+  (unless (listp stats) (error "Given STATS(%s) is not an list" stats))
+  (let* ((numbers (remove nil (mapcar (lambda (e) (cdr (assoc symbol e))) stats)))
+         (sum-of-records (apply '+ numbers))
+         (num-of-records (length numbers))
+         (avg (/ sum-of-records num-of-records)))
+    avg))
+
 (defun speed-type--calc-median (symbol stats)
   "Calculate the median of given SYMBOL in STATS."
   (unless (symbolp symbol) (error "Given SYMBOL(%s) is not a symbol" symbol))
@@ -796,21 +832,24 @@ Point is irrelevant and unaffected."
 (defun speed-type--calc-stats (stats)
   "Calculate the median of each numerical value in STATS.
 Additional provide length and skill-value."
-  (let ((median-gross-wpm (speed-type--calc-median 'speed-type--gross-wpm stats)))
+  (let ((median-gross-wpm (speed-type--calc-median 'speed-type--gross-wpm stats))
+        (avg-gross-wpm (speed-type--calc-avg 'speed-type--gross-wpm stats))
+        (min-gross-wpm (speed-type--calc-min 'speed-type--gross-wpm stats))
+        (max-gross-wpm (speed-type--calc-max 'speed-type--gross-wpm stats)))
     (list
-     (length stats)
-     (speed-type--skill median-gross-wpm)
-     (speed-type--calc-median 'speed-type--net-wpm stats)
-     (speed-type--calc-median 'speed-type--net-cpm stats)
-     median-gross-wpm
-     (speed-type--calc-median 'speed-type--gross-cpm stats)
-     (speed-type--calc-median 'speed-type--accuracy stats)
-     (speed-type--calc-median 'speed-type--elapsed-time stats)
-     (speed-type--calc-median 'speed-type--entries stats)
-     (speed-type--calc-median 'speed-type--corrections stats)
-     (speed-type--calc-median 'speed-type--best-correct-streak stats)
-     (speed-type--calc-median 'speed-type--errors stats)
-     (speed-type--calc-median 'speed-type--non-consecutive-errors stats))))
+     (length stats) ;(speed-type--calc-min 'speed-type--create-time stats) (speed-type--calc-max 'speed-type--create-time stats)
+     (speed-type--skill median-gross-wpm) (speed-type--skill avg-gross-wpm) (speed-type--skill min-gross-wpm) (speed-type--skill max-gross-wpm)
+     (speed-type--calc-median 'speed-type--net-wpm stats) (speed-type--calc-avg 'speed-type--net-wpm stats) (speed-type--calc-standard-deviation 'speed-type--net-wpm stats) (speed-type--calc-min 'speed-type--net-wpm stats) (speed-type--calc-max 'speed-type--net-wpm stats)
+     (speed-type--calc-median 'speed-type--net-cpm stats) (speed-type--calc-avg 'speed-type--net-cpm stats) (speed-type--calc-standard-deviation 'speed-type--net-cpm stats) (speed-type--calc-min 'speed-type--net-cpm stats) (speed-type--calc-max 'speed-type--net-cpm stats)
+     median-gross-wpm avg-gross-wpm (speed-type--calc-standard-deviation 'speed-type--gross-wpm stats) min-gross-wpm max-gross-wpm
+     (speed-type--calc-median 'speed-type--gross-cpm stats) (speed-type--calc-avg 'speed-type--gross-cpm stats) (speed-type--calc-standard-deviation 'speed-type--gross-cpm stats) (speed-type--calc-min 'speed-type--gross-cpm stats) (speed-type--calc-max 'speed-type--gross-cpm stats)
+     (speed-type--calc-median 'speed-type--accuracy stats) (speed-type--calc-avg 'speed-type--accuracy stats) (speed-type--calc-standard-deviation 'speed-type--accuracy stats) (speed-type--calc-min 'speed-type--accuracy stats) (speed-type--calc-max 'speed-type--accuracy stats)
+     (speed-type--calc-median 'speed-type--elapsed-time stats) (speed-type--calc-avg 'speed-type--elapsed-time stats) (speed-type--calc-standard-deviation 'speed-type--elapsed-time stats) (speed-type--calc-min 'speed-type--elapsed-time stats) (speed-type--calc-max 'speed-type--elapsed-time stats)
+     (speed-type--calc-median 'speed-type--entries stats) (speed-type--calc-avg 'speed-type--entries stats) (speed-type--calc-standard-deviation 'speed-type--entries stats) (speed-type--calc-min 'speed-type--entries stats) (speed-type--calc-max 'speed-type--entries stats)
+     (speed-type--calc-median 'speed-type--corrections stats) (speed-type--calc-avg 'speed-type--corrections stats) (speed-type--calc-standard-deviation 'speed-type--corrections stats) (speed-type--calc-min 'speed-type--corrections stats) (speed-type--calc-max 'speed-type--corrections stats)
+     (speed-type--calc-median 'speed-type--best-correct-streak stats) (speed-type--calc-avg 'speed-type--best-correct-streak stats) (speed-type--calc-standard-deviation 'speed-type--best-correct-streak stats) (speed-type--calc-min 'speed-type--best-correct-streak stats) (speed-type--calc-max 'speed-type--best-correct-streak stats)
+     (speed-type--calc-median 'speed-type--errors stats) (speed-type--calc-avg 'speed-type--errors stats) (speed-type--calc-standard-deviation 'speed-type--errors stats) (speed-type--calc-min 'speed-type--errors stats) (speed-type--calc-max 'speed-type--errors stats)
+     (speed-type--calc-median 'speed-type--non-consecutive-errors stats) (speed-type--calc-avg 'speed-type--non-consecutive-errors stats) (speed-type--calc-standard-deviation 'speed-type--non-consecutive-errors stats) (speed-type--calc-min 'speed-type--non-consecutive-errors stats) (speed-type--calc-max 'speed-type--non-consecutive-errors stats))))
 
 (defun speed-type-display-menu ()
   "Display and set controls the user can make in this speed-type session.
