@@ -158,15 +158,15 @@ A little diagram because [uniline](https://github.com/tbanel/uniline) is fun:
                            │  │     │   │           │         │
                            │  ▽     │   ▽ resume    │         ▽
   ╭─────╮   ╭─────╮       ╭┴──┴─────┴───┴────╮    ╭─┴─────────┴─╮     ╭────╮
-  │start├──▷┤setup├──────▷┤speed-type session├───▷┤complete/menu├────▷┤quit│
-  ╰─────╯   ╰─┬───╯       ╰─┬──────────────┬─╯   │╰───┬───┬───┬─╯     ╰────╯
-              △             │              △   save   │   │   △
-              │             ▽              │          │   ▽   │
-              │           ╭─┴──────────────┴─╮        │   ├───┴──────────╮
-              │           │add words on error│        │   │toggle preview│
-              │           ╰──────────────────╯        │   ╰──────────────╯
+  │start├──▷┤setup├──────▷┤speed-type session├───▷┤complete menu├────▷┤quit│
+  ╰─────╯   ╰─┬───╯       ╰─┬──────────┬─────╯   │╰───┬──┬──────┤     ╰────╯
+              △             │          △       save   │  ▽toggle△
+              │             ▽ add      │              │  │      │
+              │           ╭─┴──────────┴─╮            │  ├──────┴╮
+              │           │words on error│            │  │preview│
+              │           ╰──────────────╯            │  ╰───────╯
               │                                       │
-              │          ╭────────────────────╮       │
+              │          ╭─────play-action────╮       │
               ╰──────────┤replay/next/continue├─-◁────╯
                          ╰────────────────────╯
 ```
@@ -236,8 +236,8 @@ To color the characters a overlay is used:
   - error
 
 ### Undo
-There is the possibility to undo but it currently doesn't work very
-well... :(
+Undo already modifies the text-properties. We therefore only need to
+sync the overlay with whaterever just has been changed by undo.
 ### Pause
 An idle-timer (`speed-type--idle-pause-timer`) is used in case the
 user leaves his speed-type session untouched for a configured delay
@@ -273,7 +273,7 @@ stats-file (when customized).
 
 At this point, the `speed-type-buffer` becomes read-only and only the
 menu-control keys remain active. The user has the choice to either
-quit trigger an action which creates a new speed-type session.
+quit or trigger an action.
 
 ### Replay / Continue / Next
 

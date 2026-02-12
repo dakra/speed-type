@@ -125,21 +125,16 @@
 
 TEST-IN-BUF is a lambda which is executed within the speed-type-buffer."
   (let ((content text)
-        (speed-type-save-statistic-option-b speed-type-save-statistic-option)
+        (speed-type-save-statistic-option 'never)
         (speed-type-statistic-filename (concat (temporary-file-directory) "speed-type-statistic.el"))
-        (speed-type-randomize-b speed-type-randomize))
+        (speed-type-randomize t))
     (with-temp-buffer
       (insert content)
       (funcall 'fundamental-mode)
-      (setq speed-type-save-statistic-option 'never
-            speed-type-randomize t)
       (let ((buf (speed-type-buffer nil)))
-        (unwind-protect
-            (with-current-buffer buf
-              (funcall test-in-buf))
-          (setq speed-type-save-statistic-option speed-type-save-statistic-option-b
-                speed-type-randomize speed-type-randomize-b)
-          (kill-buffer buf))))))
+        (with-current-buffer buf
+          (funcall test-in-buf))
+        (kill-buffer buf)))))
 
 (defun speed-type-test-region (test-in-buf)
   "Setup a speed-type-region for testing.
@@ -153,10 +148,9 @@ TEST-IN-BUF is a lambda which is executed within the speed-type-buffer."
       (insert content)
       (funcall mode)
       (let ((buf (speed-type-region (point-min) (point-max))))
-        (unwind-protect
-            (with-current-buffer buf
-              (funcall test-in-buf))
-          (kill-buffer buf))))))
+        (with-current-buffer buf
+          (funcall test-in-buf))
+        (kill-buffer buf)))))
 
 (ert-deftest speed-type-test/times-is-empty-when-no-input ()
   "Test the time-register-variable is empty for flow: session-start -> complete."
@@ -271,25 +265,18 @@ TEST-IN-BUF is a lambda which is executed within the speed-type-buffer."
   "Test if text is downcased when speed-type-downcase is t.
 
 Also assure when that added words are downcased too."
-  (let ((b-speed-type-downcase speed-type-downcase)
-        (b-speed-type-add-extra-words-on-error speed-type-add-extra-words-on-error)
-        (b-speed-type-add-extra-words-on-non-consecutive-errors speed-type-add-extra-words-on-non-consecutive-errors))
-    (setq speed-type-downcase t
-          speed-type-add-extra-words-on-error 1
-          speed-type-add-extra-words-on-non-consecutive-errors 0)
-    (unwind-protect
-        (speed-type-test-buffer
-         "ASDF"
-         (lambda ()
-           (should (string= "asdf" (buffer-string)))
-           (insert "b")
-           (sleep-for 0.1)
-           (should (string= "asdf asdf" (buffer-string)))
-           (with-current-buffer speed-type--content-buffer
-             (should (string= "ASDF" (buffer-string))))))
-      (setq speed-type-downcase b-speed-type-downcase
-            speed-type-add-extra-words-on-error b-speed-type-add-extra-words-on-error
-            speed-type-add-extra-words-on-non-consecutive-errors b-speed-type-add-extra-words-on-non-consecutive-errors))))
+  (let ((speed-type-downcase t)
+        (speed-type-add-extra-words-on-error 1)
+        (speed-type-add-extra-words-on-non-consecutive-errors 0))
+    (speed-type-test-buffer
+     "ASDF"
+     (lambda ()
+       (should (string= "asdf" (buffer-string)))
+       (insert "b")
+       (sleep-for 0.3)
+       (should (string= "asdf asdf" (buffer-string)))
+       (with-current-buffer speed-type--content-buffer
+         (should (string= "ASDF" (buffer-string))))))))
 
                                         ; assure preview buffer in general region
                                         ; test continue feature
@@ -393,9 +380,9 @@ Also assure when that added words are downcased too."
   (should (= 30 (speed-type--gross-wpm 450 180)))
   (should (= 15 (speed-type--net-wpm 450 50 5 180)))
   (should (= 85 (speed-type--accuracy 100 90 5)))
-  (should (string= "Beginner" (speed-type--skill 10)))
-  (should (string= "Pro" (speed-type--skill 45)))
-  (should (string= "Racer" (speed-type--skill 400))))
+  (should (string= "Rookie" (speed-type--skill 10)))
+  (should (string= "Expert" (speed-type--skill 45)))
+  (should (string= "Legend" (speed-type--skill 400))))
 
 (ert-deftest speed-type--url-test ()
   (should (string= "https://www.gutenberg.org/cache/epub/1/pg1.txt"
