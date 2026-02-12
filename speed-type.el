@@ -433,6 +433,7 @@ It's used in the before-change-hook.")
 (defvar-local speed-type--content-buffer nil)
 (defvar-local speed-type--entries 0 "Counts the number of keystrokes typed.")
 (defvar-local speed-type--errors 0 "Counts mistyped characters.")
+(defvar-local speed-type--current-correct-streak 0 "Tracks the correct streak since last error or beginning.")
 (defvar-local speed-type--best-correct-streak 0 "The highest count of consecutively correct typed characters.")
 (defvar-local speed-type--non-consecutive-errors 0 "Counts mistyped characters but only if previous was correct.")
 (defvar-local speed-type--corrections 0
@@ -1377,7 +1378,6 @@ value return nil."
             (setq-local speed-type--last-position new-last-pos))
         (read-only-mode)))))
 
-(defvar current-correct-streak 0 "Tracks the correct streak since last error or beginning.")
 (defun speed-type--diff (orig new start end)
   "Synchronise local buffer state with buffer-content by comparing ORIG and NEW.
 ORIG is the original text. NEW is the new text.
@@ -1399,15 +1399,15 @@ END is a point where the check stops to scan for diff."
 
         (if (speed-type--check-same i orig new)
             (progn (setq is-same t)
-                   (cl-incf current-correct-streak)
-                   (when (> current-correct-streak speed-type--best-correct-streak)
-                     (setq speed-type--best-correct-streak current-correct-streak))
+                   (cl-incf speed-type--current-correct-streak)
+                   (when (> speed-type--current-correct-streak speed-type--best-correct-streak)
+                     (setq speed-type--best-correct-streak speed-type--current-correct-streak))
                    (let ((char-status (get-text-property i 'speed-type-char-status orig)))
                      (when (eq char-status 'error) (cl-incf speed-type--corrections))
                      (add-text-properties pos (1+ pos) '(speed-type-char-status correct))))
           (progn (unless any-error (setq any-error t))
                  (cl-incf speed-type--errors)
-                 (setq current-correct-streak 0)
+                 (setq speed-type--current-correct-streak 0)
                  (when non-consecutive-error-p (cl-incf speed-type--non-consecutive-errors))
                  (add-text-properties pos (1+ pos) '(speed-type-char-status error))
                  (speed-type-add-extra-words (+ (or speed-type-add-extra-words-on-error 0)
