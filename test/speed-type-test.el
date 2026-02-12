@@ -380,9 +380,9 @@ Also assure when that added words are downcased too."
   (should (= 30 (speed-type--gross-wpm 450 180)))
   (should (= 15 (speed-type--net-wpm 450 50 5 180)))
   (should (= 85 (speed-type--accuracy 100 90 5)))
-  (should (string= "Beginner" (speed-type--skill 10)))
-  (should (string= "Pro" (speed-type--skill 45)))
-  (should (string= "Racer" (speed-type--skill 400))))
+  (should (string= "Rookie" (speed-type--skill 10)))
+  (should (string= "Expert" (speed-type--skill 45)))
+  (should (string= "Legend" (speed-type--skill 400))))
 
 (ert-deftest speed-type--url-test ()
   (should (string= "https://www.gutenberg.org/cache/epub/1/pg1.txt"
