@@ -1687,7 +1687,10 @@ START and END are supplied to `insert-buffer-substring'."
       (add-hook 'kill-buffer-hook #'speed-type--kill-content-buffer-hook nil t)
       (insert-buffer-substring buffer start end)
       (when (speed-type--code-buffer-p buffer)
-        (prog-mode)
+        (condition-case nil
+            (funcall (buffer-local-value 'major-mode buffer))
+          (prog-mode)
+          (message "speed-type: could not call major-mode, fallback prog-mode"))
         (set-syntax-table (with-current-buffer buffer (syntax-table)))
         (setq font-lock-defaults (with-current-buffer buffer font-lock-defaults))
         (ignore-errors (font-lock-ensure)))
@@ -2409,7 +2412,9 @@ The file-name of the content is a converted form of URL."
                    :replay-fn #'speed-type--get-replay-fn
                    :go-next-fn go-next-fn
                    :continue-fn (lambda () (speed-type--get-continue-fn end))
-                   :add-extra-word-content-fn (lambda () (speed-type--get-next-word-rolling buf))))
+                   :add-extra-word-content-fn (lambda () (speed-type--get-next-word-rolling buf))
+                   :syntax-table (with-current-buffer buf (syntax-table))
+                   :fldf (with-current-buffer buf font-lock-defaults)))
       (speed-type-continue go-next-fn fn))
     (kill-buffer buffer) ;; buffer is retrieved, remove it again to not clutter the buffer-list
     ))
