@@ -108,6 +108,27 @@
     (should (= (speed-type--find-last-continue-at-point-in-stats "/tmp/404.txt") 9))
     (should (null (speed-type--find-last-continue-at-point-in-stats "/tmp/909.txt")))))
 
+(ert-deftest speed-type-test/url-to-filename-supply-garbage ()
+  (should (null (speed-type--url-to-filename nil)))
+  (should (string= "" (speed-type--url-to-filename "")))
+  (should (string= " " (speed-type--url-to-filename " ")))
+  (should (string= (speed-type--url-to-filename "  a") (speed-type--url-to-filename " a"))))
+
+(ert-deftest speed-type-test/url-to-filename-standard-cases ()
+  (should (string= (speed-type--url-to-filename "https://github.com/dakra/speed-type") "https-github-com-dakra-speed-type-12b56e4"))
+  (should (string= (speed-type--url-to-filename "https://en.wikipedia.org/wiki/John_von_Neumann") "https-en-wikipedia-org-wiki-John-von-Neumann-d9bd43e"))
+  ;; hash-edge-case: `secure-hash-algorithms' is nil use \"no-hash\" for standard cases
+  (cl-letf (((symbol-function 'secure-hash-algorithms) (lambda (&rest args) nil)))
+    (should (string= (speed-type--url-to-filename "https://en.wikipedia.org/wiki/John_von_Neumann") "https-en-wikipedia-org-wiki-John-von-Neumann-no-hash"))))
+
+(ert-deftest speed-type-test/url-to-filename-dash-logic ()
+  "Rules:
+- dash (-) are removed at begin and end
+- multiples of dash(-) are replaced by single dash(-)"
+  (should (string= (speed-type--url-to-filename "/path/to/file.sql") "path-to-file-sql-eacd04b"))
+  (should (string= (speed-type--url-to-filename "https://github.com/dakra/speed-type///////////") "https-github-com-dakra-speed-type-244e51d"))
+  (should (string= (speed-type--url-to-filename "https://github.com/dakra/speed-type///////////asdf") "https-github-com-dakra-speed-type-asdf-5e9d751")))
+
 (ert-deftest speed-type-test/calc-median-supply-garbage ()
   (should-error (speed-type--calc-median "" '()))
   (should-error (speed-type--calc-median 1 '()))

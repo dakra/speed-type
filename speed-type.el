@@ -919,40 +919,59 @@ speed-type files that were created using the speed-type functions."
 (defun speed-type--url-to-filename (url)
   "Convert URL to a POSIX-standard compatible form.
 
-The returned value can be used as filename. We use a shorten hash to
-make the filename more unique.
+The return value has no file-extension, it has to be appended
+separately. When URL contains a file-extension it will become part
+of the filename.
 
-If `secure-hash-algorithms' should provide sha1 or md5 else the fixed
-string \"no-hash\" is used as a prefix instead of a real hash."
-  (concat
-   (let ((posix-str (replace-regexp-in-string "-\\." "." (replace-regexp-in-string "-+" "-" (replace-regexp-in-string "[^A-Za-z0-9-]" "-" url)))))
-     (substring posix-str 0 (min 64 (length posix-str))))
-   "-"
-   (let* ((hash-func (or (car (member 'sha1 (secure-hash-algorithms)))
-                         (car (member 'md5 (secure-hash-algorithms)))))
-          (hash-str (or (when hash-func (funcall hash-func url)) "no-hash"))
-          (short-hash-str (substring hash-str 0 (min 7 (length hash-str)))))
-     short-hash-str)))
+Return value can be used as filename except URL is nil or blank-string
+in such a case return URL as is.
+
+URL with different whitespace at end and/or begin result in the same
+return value.
+
+A shorten hash is appended to make the filename more unique.
+
+Therefore `secure-hash-algorithms' should provide sha1 or md5 else
+\"no-hash\" is appended instead of a real hash."
+  (if (or (null url) (string-blank-p url))
+      url
+    (let ((url (string-trim url)))
+      (concat
+       (let ((posix-str (replace-regexp-in-string "^-\\|-$" "" (replace-regexp-in-string "-\\." "." (replace-regexp-in-string "-+" "-" (replace-regexp-in-string "[^A-Za-z0-9-]" "-" url))))))
+         (substring posix-str 0 (min 64 (length posix-str))))
+       "-"
+       (let* ((hash-func (or (car (member 'sha1 (secure-hash-algorithms)))
+                             (car (member 'md5 (secure-hash-algorithms)))))
+              (hash-str (or (when hash-func (funcall hash-func url)) "no-hash"))
+              (short-hash-str (substring hash-str 0 (min 7 (length hash-str)))))
+         short-hash-str)))))
 
 (defconst speed-type-pandoc-request-header "\"User-Agent:Emacs: speed-type/1.4 https://github.com/dakra/speed-type\""
   "This const is used when pandoc is retrieving content from an url.")
 
 (defun speed-type--pandoc-top-filename (url)
   "Create a filename using URL for a top-x-file."
-  (expand-file-name (replace-regexp-in-string "-\\." "." (replace-regexp-in-string "-+" "-" (format "%s-top-x.txt" (speed-type--url-to-filename url)))) speed-type-directory))
+  (expand-file-name (format "%s-top-x.txt" (speed-type--url-to-filename url)) speed-type-directory))
 
 (defun speed-type-retrieve-pandoc (url)
   "Retrieve URL and process it through pandoc.
 
 If the file is already retrieved, will return file-location."
   (unless (executable-find "pandoc") (error "Executable: pandoc not installed"))
-  (let ((fn (expand-file-name (format "%s.txt" (speed-type--url-to-filename url)) speed-type-directory)))
+  (let* ((fe (file-name-extension url))
+         (fn (expand-file-name (format "%s.%s"
+                                       (speed-type--url-to-filename (file-name-sans-extension url))
+                                       (cond
+                                        ((string= fe "html") "txt")
+                                        ((not (null fe)) fe)
+                                        (t "txt")))
+                               speed-type-directory)))
     (unless (file-readable-p fn)
       (let* ((default-directory speed-type-directory)
              (cmd "pandoc")
              (url-opts (format "-s -r html \"%s\"" url))
              (request-header (format "--request-header %s" speed-type-pandoc-request-header))
-             (text-opts "-t plain")
+             (text-opts "-t plain --wrap preserve")
              (output (format "-o %s" fn))
              (full-pandoc-cmd (mapconcat #'identity (list cmd url-opts request-header text-opts output) " ")))
         (message "Speed-type: Retrieving content with pandoc...")
