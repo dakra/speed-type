@@ -1668,7 +1668,14 @@ CALLBACK is called when the setup process has been completed."
       (electric-pair-mode -1)
       (when syntax-table (set-syntax-table syntax-table))
       (when fldf
-        (let ((font-lock-defaults fldf))
+        (let ((font-lock-defaults fldf)
+              (major-mode-value (buffer-local-value 'major-mode speed-type--content-buffer)))
+          (with-current-buffer speed-type--content-buffer
+            (dolist (bl-var (seq-filter
+                             (lambda (var) (string-prefix-p (symbol-name major-mode-value) (symbol-name (car var))))
+                             (buffer-local-variables)))
+              (with-current-buffer speed-type--buffer
+                (set (make-local-variable (car bl-var)) (cdr bl-var)))))
           ;; Fontify buffer
           (ignore-errors (font-lock-ensure)))))
     (message "Timer will start when you type the first character.")
