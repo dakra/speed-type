@@ -4,7 +4,7 @@
 
 ;; Author: Gunther Hagleitner
 ;; Maintainer: Daniel Kraus <daniel@kraus.my>, lordnik22
-;; Version: 1.5
+;; Version: 1.6
 ;; Keywords: games
 ;; URL: https://github.com/dakra/speed-type
 ;; Package-Requires: ((emacs "27.1") (compat "29.1.3"))
@@ -37,6 +37,7 @@
 ;;; Code:
 (require 'text-property-search)
 (require 'cl-lib)
+(require 'cl-macs)
 (require 'compat)
 (require 'url)
 (require 'url-handlers)
@@ -139,7 +140,9 @@ Can be a list or a path to a file which contains words newline separated."
   :type '(alist :key-type symbol :value-type string))
 
 (defcustom speed-type-wordlist-transform nil
-  "Function to transform wordlist before starting the exercise.
+  "OBSOLETE: Better use `speed-type-transform-hook'.
+
+Function to transform wordlist before starting the exercise.
 The function should take the `buffer-string' as argument and return
 the transformed string that is used for the speed type exercise.
 
@@ -217,8 +220,18 @@ E.g. if you always want lowercase words, set:
                  (const :tag "Telugu" te)
                  (const :tag "Welsh" cy)))
 
+(defcustom speed-type-replace-regexs '()
+  "Alist of regex to replace and their replacement, in the form:
+`(bad-regex . good-regex)'
+To remove without replacement, use the form: `(bad-regex . \"\")'.
+
+It's possible to reference capture groups in good-regex.
+
+Keep in mind the escaping hell."
+  :type '(alist :key-type string :value-type string))
+
 (defcustom speed-type-replace-strings '(("“" . "\"") ("”" . "\"") ("‘" . "'") ("’" . "'") ("—" . "-") ("–" . "-") ("Æ" . "Ae") ("æ" . "ae") ("»" . "\"") ("«" . "\"") ("„" . "\"") ("…" . "..."))
-  "Alist of strings to replace and their replacement, in the form:
+  "Alist of literal strings to replace and their replacement, in the form:
 `(bad-string . good-string)'
 To remove without replacement, use the form: `(bad-string . \"\")'"
   :type '(alist :key-type string :value-type string))
@@ -324,6 +337,17 @@ there are untyped blank-characters.
 If nil, the completion is only triggered if all characters are typed."
   :type 'boolean)
 
+(defcustom speed-type-transform-hook
+  '(speed-type--replace-string-hook
+    speed-type--replace-regex-hook
+    speed-type--filter-stop-word-hook
+    speed-type--left-align-hook
+    speed-type--delete-trailing-whitespace-hook
+    speed-type--downcase-hook
+    speed-type--fill-region-hook)
+  "Hook run when text is inserted to speed-type-buffer."
+  :type 'hook)
+
 (defface speed-type-default
   '()
   "Default face for `speed-type'.")
@@ -406,6 +430,15 @@ Note: 'nil' values are excluded from the calculations.
   :group "speed-type")
 
 ;; buffer local internal variables
+(defvar-local speed-type--text-type nil
+  "Symbol indicating what text-picker is used.
+
+It can be one of following symbol:
+- continue-text-section
+- random-text-section
+- random-wordlist
+- transform-text
+- quote")
 (defvar-local speed-type--preview-buffer nil)
 (defvar-local speed-type--last-position 0
   "Used in preview-buffer to detect unusual point-movement in speed-type-buffer.")
@@ -1039,7 +1072,7 @@ If the file is already retrieved, will return file-location."
 Only the words which are in the boundaries START and END are considered."
   (let ((word-counts (make-hash-table :test 'equal)))
     (with-current-buffer buffer
-      ;; Step 1: Count word frequencies using generator
+      ;; Step 1: Count word frequencies using hash-table
       (save-excursion
         (goto-char start)
         (let ((word-start nil)
@@ -1069,13 +1102,14 @@ Only the words which are in the boundaries START and END are considered."
             (setq word-start nil
                   first-word-in-sentence-p nil))))
 
-      ;; Step 2: Transfer hash map table to file
       (let ((top-words '()))
+        ;; Step 2: Transfer hash map table to a sortable list
         (maphash (lambda (k v)
-                   ;; Step 2.1: Transfer hash map table to a sortable list
+
                    (push (cons k v) top-words))
                  word-counts)
         (setq top-words (sort top-words (lambda (a b) (> (cadr a) (cadr b)))))
+        ;; Step 2: Transfer sorted list to file
         (with-current-buffer (generate-new-buffer "*temp*" t)
           (dolist (pair top-words)
             (insert (format "%s\n" (or (caddr pair) (car pair)))))
@@ -1246,10 +1280,10 @@ Expects CURRENT-BUFFER to be buffer of speed-type session."
   "ACTION-FN is a function which setups a new speed-type session."
   (unless (derived-mode-p 'speed-type-mode) (user-error "Not in a speed-type buffer: cannot execute action"))
   (if action-fn
-    (let ((cb (current-buffer)))
-      (unless speed-type--max-point-on-complete (save-excursion (speed-type-complete)))
-      (funcall action-fn)
-      (kill-buffer cb))
+      (let ((cb (current-buffer)))
+        (unless speed-type--max-point-on-complete (save-excursion (speed-type-complete)))
+        (funcall action-fn)
+        (kill-buffer cb))
     (user-error "Action not available")))
 
 (defun speed-type-replay ()
@@ -1267,10 +1301,9 @@ Expects CURRENT-BUFFER to be buffer of speed-type session."
   (interactive)
   (speed-type--execute-action speed-type--go-next-fn))
 
-(defun speed-type--code-buffer-p (buf)
+(defun speed-type--code-buffer-p (mode)
   "Check BUF if we should use code-with-highlighting or treat it as text."
-  (with-current-buffer buf
-    (cl-find-if #'derived-mode-p speed-type-code-modes)))
+  (provided-mode-derived-p mode speed-type-code-modes))
 
 (defun speed-type--before-change (start end)
   "Store the region between START and END which is going to be modified."
@@ -1452,7 +1485,8 @@ END is a point where the check stops to scan for diff."
 Undo does not track overlay changes but it does update text-properties.
 
 This function should be called after undo has finished it's job and the
-region got new text-property values.
+region got new text-property values. This function should not modify the
+buffer, else undo ends up in an infinite loop.
 
 `buffer-undo-list' is per buffer which is why point is synced in
 content-buffer manually if there is a add-extra-word-function."
@@ -1477,6 +1511,19 @@ content-buffer manually if there is a add-extra-word-function."
           (overlay-put overlay 'priority 1)
           (overlay-put overlay 'face f))))))
 
+(defun speed-type-complete-p ()
+  "Check if speed-type buffer is complete."
+  (or speed-type--max-point-on-complete
+      (and (not (save-excursion (text-property-search-forward 'speed-type-char-status 'nil t)))
+           (not (save-excursion (text-property-search-backward 'speed-type-char-status 'nil t)))
+           (null speed-type--extra-words-queue)
+           (not (text-property-any (point-min) (point-max) 'speed-type-char-status 'nil))
+           (or (not speed-type-complete-all-correct)
+               (and speed-type-complete-all-correct
+                    (not (save-excursion (text-property-search-forward 'speed-type-char-status 'error t)))
+                    (not (save-excursion (text-property-search-backward 'speed-type-char-status 'error t)))
+                    (not (text-property-any (point-min) (point-max) 'speed-type-char-status 'error)))))))
+
 (defun speed-type--change (start end _length)
   "Handle buffer change between START and END.
 LENGTH is ignored. Used for hook AFTER-CHANGE-FUNCTIONS.
@@ -1499,70 +1546,91 @@ are color coded and stats are gathered about the typing performance."
                                                (car (overlays-at end)))))
                        (move-overlay overlay (1- (overlay-end overlay)) (overlay-end overlay)) (current-buffer))
                      (speed-type--diff orig new-text start end)
-                     (when
-                         (and (not (save-excursion (text-property-search-forward 'speed-type-char-status 'nil t)))
-                              (not (save-excursion (text-property-search-backward 'speed-type-char-status 'nil t)))
-                              (null speed-type--extra-words-queue)
-                              (not (text-property-any (point-min) (point-max) 'speed-type-char-status 'nil))
-                              (or (not speed-type-complete-all-correct)
-                                  (and speed-type-complete-all-correct
-                                       (not (save-excursion (text-property-search-forward 'speed-type-char-status 'error t)))
-                                       (not (save-excursion (text-property-search-backward 'speed-type-char-status 'error t)))
-                                       (not (text-property-any (point-min) (point-max) 'speed-type-char-status 'error)))))
-                       (speed-type-complete)))
+                     (when (speed-type-complete-p) (speed-type-complete)))
                  (beep)
                  (message "End of buffer")))))))
 
-(defun speed-type--trim (str)
-  "Trim leading and tailing whitespace from STR."
-  (replace-regexp-in-string (rx (or (: bos (* (any "\n")))
-                                    (: (* (any " \t\n")) eos)))
-                            ""
-                            str))
-
-(defun speed-type--replace-map-adjust-properties (map property &optional object)
+(defun speed-type-forward-replace-map-adjust-properties (map property end)
   "Replace each FROM/TO pair in MAP while adjusting PROPERTY regions.
 MAP is a list of (FROM . TO) string pairs.
 PROPERTY is the text property to preserve/adjust around the replaced region.
 
+Bounds search to END.
+
 Optional OBJECT can be a string. It will be inserted into a temp-buffer
 and property adjusted. A new string is returned with adjusted
 properties."
-  (save-excursion
-    (eval `(,(or (and object 'with-temp-buffer) 'with-current-buffer)
-            (unless ,object (current-buffer))
-            (progn
-              (when ,object (insert ,object))
-              (dolist (pair ',map)
-                (let ((from (car pair))
-                      (to   (cdr pair)))
-                  (goto-char (point-min))
-                  (while (search-forward from nil t)
-                    (let* ((start (match-beginning 0))
-                           (end   (match-end 0))
-                           (prop-start (previous-single-property-change start ',property speed-type--buffer (point-min)))
-                           (prop-end   (next-single-property-change end ',property speed-type--buffer (point-max)))
-                           (len-from (length from))
-                           (len-to   (length to))
-                           (old-property-value (get-text-property start ',property)))
-                      (replace-match to t t)
+  (dolist (pair map)
+    (let ((from (car pair))
+          (to   (cdr pair)))
+      (while (search-forward from end t 1)
+        (let* ((mstart (match-beginning 0))
+               (mend   (match-end 0))
+               (prop-start (previous-single-property-change mstart property speed-type--buffer (point-min)))
+               (prop-end   (next-single-property-change mend property speed-type--buffer (point-max)))
+               (len-from (- mend mstart))
+               (len-to   (length to))
+               (old-property-value (get-text-property mstart property)))
+          (replace-match to t t)
 
-                      (cond
-                       ;; TO longer → extend property region
-                       ((> len-to len-from)
-                        (put-text-property
-                         prop-start (+ prop-end (- len-to len-from))
-                         ',property old-property-value))
+          (cond
+           ;; TO longer → extend property region
+           ((> len-to len-from)
+            (setq end (+ end (- len-to len-from)))
+            (put-text-property
+             prop-start (+ prop-end (- len-to len-from))
+             property old-property-value))
+           ;; FROM longer → shrink property region
+           ((< len-to len-from)
+            (setq end (- end (- len-from len-to)))
+            (let ((new-prop-end (- prop-end (- len-from len-to))))
+              (when (and (> len-to 0) (> new-prop-end prop-start))
+                (put-text-property
+                 prop-start new-prop-end
+                 property old-property-value))))
+           (t (put-text-property prop-start prop-end property old-property-value))))))))
 
-                       ;; FROM longer → shrink property region
-                       ((< len-to len-from)
-                        (let ((new-prop-end (- prop-end (- len-from len-to))))
-                          (when (> new-prop-end prop-start)
-                            (put-text-property
-                             prop-start new-prop-end
-                             ',property old-property-value))))
-                       (t (put-text-property prop-start prop-end ',property old-property-value)))))))
-              (when ,object (buffer-string)))))))
+(defun speed-type-re-forward-replace-map-adjust-properties (map property end)
+  "Replace each FROM/TO pair in MAP while adjusting PROPERTY regions.
+MAP is a list of (FROM . TO) string pairs.
+PROPERTY is the text property to preserve/adjust around the replaced region.
+
+Bounds search to END.
+
+Optional OBJECT can be a string. It will be inserted into a temp-buffer
+and property adjusted. A new string is returned with adjusted
+properties."
+  (dolist (pair map)
+    (let ((from (car pair))
+          (to   (cdr pair)))
+      (while (re-search-forward from end t 1)
+        (let* ((mstart (match-beginning 0))
+               (mend   (match-end 0))
+               (prop-start (previous-single-property-change mstart property speed-type--buffer (point-min)))
+               (prop-end   (next-single-property-change mend property speed-type--buffer (point-max)))
+               (len-from (- mend mstart))
+               (replacement (match-substitute-replacement to t))
+               (len-to   (length replacement))
+               (old-property-value (get-text-property mstart property)))
+          (replace-match replacement t t)
+
+          (cond
+           ;; TO longer → extend property region
+           ((> len-to len-from)
+            (setq end (+ end (- len-to len-from)))
+            (put-text-property
+             prop-start (+ prop-end (- len-to len-from))
+             property old-property-value))
+
+           ;; FROM longer → shrink property region
+           ((< len-to len-from)
+            (setq end (- end (- len-from len-to)))
+            (let ((new-prop-end (- prop-end (- len-from len-to))))
+              (when (and (> len-to 0) (> new-prop-end prop-start))
+                (put-text-property
+                 prop-start new-prop-end
+                 property old-property-value))))
+           (t (put-text-property prop-start prop-end ',property old-property-value))))))))
 
 (defun speed-type--connect-preview-buffer (s-buf c-buf)
   "Create preview-buffer and connect it to S-BUF and C-BUF.
@@ -1592,7 +1660,7 @@ Returns the preview-buffer."
     p-buf))
 
 (cl-defun speed-type--setup
-    (content-buffer text &key file-name title author lang n-words randomize continue-fn add-extra-word-content-fn replay-fn go-next-fn syntax-table fldf)
+    (content-buffer start end text-type &key file-name title author lang n-words randomize continue-fn add-extra-word-content-fn replay-fn go-next-fn syntax-table fldf)
   "Set up a new buffer for the typing exercise on TEXT.
 
 TITLE and AUTHOR can be given, this happen when the text to type comes
@@ -1629,8 +1697,9 @@ CALLBACK is called when the setup process has been completed."
                 speed-type--randomize randomize
                 speed-type--continue-fn continue-fn
                 speed-type--go-next-fn go-next-fn
-                speed-type--replay-fn replay-fn)
-    (unless (speed-type--code-buffer-p content-buffer)
+                speed-type--replay-fn replay-fn
+                speed-type--text-type text-type)
+    (unless (speed-type--code-buffer-p (with-current-buffer content-buffer major-mode))
       (setq-local speed-type--add-extra-word-content-fn add-extra-word-content-fn))
     (when content-buffer
       (setq-local speed-type--content-buffer content-buffer
@@ -1643,17 +1712,32 @@ CALLBACK is called when the setup process has been completed."
     (let ((inhibit-read-only t)
           (buffer-undo-list t)
           (inhibit-modification-hooks t)
-          (inhibit-field-text-motion t))
-      (insert (if (speed-type--code-buffer-p speed-type--content-buffer) (speed-type--trim text) (string-trim text)))
-      (speed-type--replace-map-adjust-properties speed-type-replace-strings 'speed-type-orig-pos)
-      (when speed-type-downcase (downcase-region (point-min) (point-max)))
-      (unless (speed-type--code-buffer-p speed-type--content-buffer)
-        (fill-region (point-min) (point-max) 'none t))
-      (when speed-type-ignore-whitespace-for-complete
-        (save-excursion
-          (goto-char (point-min))
-          (while (search-forward-regexp "[[:blank:]\n]+" nil t 1)
-            (add-text-properties (match-beginning 0) (match-end 0) '(speed-type-char-status ignore))))))
+          (inhibit-field-text-motion t)
+          (transform-context (make-speed-type-transform-context :major-mode (with-current-buffer content-buffer major-mode)
+                                                                :text-type speed-type--text-type
+                                                                :start nil
+                                                                :end nil
+                                                                :file-name speed-type--file-name
+                                                                :entries speed-type--entries
+                                                                :errors speed-type--errors
+                                                                :non-consecutive-errors speed-type--non-consecutive-errors
+                                                                :corrections speed-type--corrections
+                                                                :best-correct-streak speed-type--best-correct-streak)))
+      (cond ((eq text-type 'transform-text)
+             (speed-type-insert-text content-buffer start end speed-type-ignore-whitespace-for-complete speed-type-transform-hook transform-context))
+            ((eq text-type 'random-wordlist)
+             (speed-type-insert-wordlist content-buffer start end speed-type-min-chars speed-type-max-chars speed-type-text-picker-tolerance speed-type-ignore-whitespace-for-complete speed-type-transform-hook transform-context))
+            ((eq text-type 'random-text-section)
+             (speed-type-insert-text-section
+              content-buffer
+              (with-current-buffer content-buffer
+                (goto-char (random (+ start (- end start))))
+                (skip-syntax-backward "^\s" start) (point))
+              end speed-type-min-chars speed-type-max-chars speed-type-text-picker-tolerance speed-type-ignore-whitespace-for-complete speed-type-transform-hook transform-context))
+            ((eq text-type 'quote)
+             (speed-type-insert-quote content-buffer speed-type-min-chars speed-type-max-chars speed-type-ignore-whitespace-for-complete speed-type-transform-hook transform-context))
+            ((eq text-type 'continue-text-section)
+             (speed-type-insert-text-section content-buffer start end speed-type-min-chars speed-type-max-chars speed-type-text-picker-tolerance speed-type-ignore-whitespace-for-complete speed-type-transform-hook transform-context))))
     (set-buffer-modified-p nil)
     (switch-to-buffer buf)
     (when (eq speed-type-provide-preview-option t)
@@ -1664,7 +1748,7 @@ CALLBACK is called when the setup process has been completed."
     (add-hook 'after-change-functions #'speed-type--change nil t)
     (add-hook 'kill-buffer-hook #'speed-type--kill-buffer-hook nil t)
     (setq-local post-self-insert-hook nil)
-    (when (speed-type--code-buffer-p content-buffer)
+    (when (speed-type--code-buffer-p (with-current-buffer content-buffer major-mode))
       (electric-pair-mode -1)
       (when syntax-table (set-syntax-table syntax-table))
       (when fldf
@@ -1679,6 +1763,9 @@ CALLBACK is called when the setup process has been completed."
           ;; Fontify buffer
           (ignore-errors (font-lock-ensure)))))
     (message "Timer will start when you type the first character.")
+    (when (speed-type-complete-p)
+      (speed-type-complete)
+      (message "Speed-type: Completed speed-type session because buffer is empty"))
     buf))
 
 (defun speed-type-prepare-content-buffer-from-buffer (buffer &optional start end)
@@ -1693,7 +1780,7 @@ START and END are supplied to `insert-buffer-substring'."
                   inhibit-field-text-motion t)
       (add-hook 'kill-buffer-hook #'speed-type--kill-content-buffer-hook nil t)
       (insert-buffer-substring buffer start end)
-      (when (speed-type--code-buffer-p buffer)
+      (when (speed-type--code-buffer-p (with-current-buffer buffer major-mode))
         (condition-case nil
             (funcall (buffer-local-value 'major-mode buffer))
           (prog-mode)
@@ -1740,6 +1827,284 @@ START and END are supplied to `insert-buffer-substring'."
     (let ((cbuf speed-type--content-buffer))
       (setq-local speed-type--content-buffer nil)
       (kill-buffer cbuf))))
+
+(cl-defstruct speed-type-transform-context
+  "Define what context-variable are present when running transform-hook.
+
+See also `speed-type-transform-hook'."
+  major-mode
+  text-type
+  start
+  end
+  file-name
+  (entries 0)
+  (errors 0)
+  (non-consecutive-errors 0)
+  (corrections 0)
+  (best-correct-streak 0))
+
+(defun speed-type--filter-stop-word-hook (transform-context &rest _)
+  "Remove words from an random-wordlist which are on the stop-list.
+
+TRANSFORM-CONTEXT is used to detect the text-type."
+  (when (eq 'random-wordlist (speed-type-transform-context-text-type transform-context))
+    (goto-char (point-min))
+    (while (not (eobp))
+      (skip-syntax-forward "\s")
+      (let* ((word-start (point))
+             (word-end (progn (skip-syntax-forward "^\s") (point)))
+             (word (buffer-substring word-start word-end)))
+        (when (or (string-blank-p word) (speed-type--stop-word-p word))
+          ;; we need to delete the space with it so no double space are left
+          (delete-region (- word-start (if (or (= 1 word-start) (bobp)) 0 1)) word-end))))))
+
+(defun speed-type--delete-trailing-whitespace-hook (transform-context &rest _)
+  "Deletes trailing whitespace if ignore is active."
+  (when (and speed-type-ignore-whitespace-for-complete
+             (<= (speed-type-transform-context-errors transform-context) 0) ;; add word triggered this hook, exclude
+             )
+    (delete-trailing-whitespace (point) (point-max))))
+
+(defun speed-type--left-align-hook (transform-context &rest _)
+  "Deletes any space that appears on the left side.
+
+TRANSFORM-CONTEXT is used to determine if code buffer."
+  (when (and (not (speed-type--code-buffer-p (speed-type-transform-context-major-mode transform-context)))
+             (<= (speed-type-transform-context-errors transform-context) 0) ;; add word triggered this hook, exclude
+             )
+    (speed-type-re-forward-replace-map-adjust-properties '(("^[[:blank:]]+" . "")) 'speed-type-orig-pos (speed-type-transform-context-end transform-context))))
+
+(defun speed-type--fill-region-hook (transform-context &rest _)
+  "Apply `fill-region' to the whole text.
+
+TRANSFORM-CONTEXT is used to determine if code buffer."
+  (unless (speed-type--code-buffer-p (speed-type-transform-context-major-mode transform-context))
+    (fill-region (speed-type-transform-context-start transform-context) (speed-type-transform-context-end transform-context) 'none t)))
+
+(defun speed-type--downcase-hook (transform-context &rest _)
+  "Make text downcase.
+
+TRANSFORM-CONTEXT is used to specify the region."
+  (when speed-type-downcase (downcase-region (speed-type-transform-context-start transform-context) (speed-type-transform-context-end transform-context))))
+
+(defun speed-type--replace-regex-hook (transform-context &rest _)
+  "Apply `speed-type-replace-strings' replacing regex with other.
+
+TRANSFORM-CONTEXT is used to bound search to end.
+
+See also `speed-type-replace-regexs'."
+  (speed-type-re-forward-replace-map-adjust-properties speed-type-replace-regexs 'speed-type-orig-pos (speed-type-transform-context-end transform-context)))
+
+(defun speed-type--replace-string-hook (transform-context &rest _)
+  "Apply `speed-type-replace-strings' replacing strings with other.
+
+TRANSFORM-CONTEXT is used to bound search to end.
+
+See also `speed-type-replace-strings'"
+  (speed-type-forward-replace-map-adjust-properties speed-type-replace-strings 'speed-type-orig-pos (speed-type-transform-context-end transform-context)))
+
+(defun speed-type-prepare-string (str ignore trim transform-hook transform-context)
+  "Prepare STR with `speed-type-prepare-buffer'.
+
+IGNORE TRIM TRANSFORM-HOOK TRANSFORM-CONTEXT are supplied to
+`speed-type-prepare-buffer'."
+  (with-temp-buffer
+    (let ((point-before-insert (point)))
+      (insert str)
+      (speed-type-prepare-buffer point-before-insert (point) trim ignore transform-hook transform-context))
+    (buffer-string)))
+
+(defun speed-type-prepare-buffer (start end trim ignore transform-hook transform-context)
+  "Prepare `current-buffer' so it can be used for speed-type session.
+
+It first applies all TRANSFORM-HOOK with TRANSFORM-CONTEXT. See also
+`speed-type-transform-context'. After each hook-function point is moved back to
+start. Due to TRANSFORM-HOOK can arbitrary function this function does
+not guarantee what the resulting `buffer-size' will be. See also
+`speed-type-transform-hook'.
+
+If there are still wordlist-transform-functions they are executed
+afterwards. They are obsolete and TRANSFORM-HOOK should be used.
+
+If TRIM is non-nil, will trim the beginning and end of buffer.
+
+If IGNORE is non-nil, will add text-property `(speed-type-char-status ignore) to
+all whitespace characters from START to END.
+
+To prevent point-movement use `save-excurison'.
+
+This function returns a triple: `(START END IGNORE-COUNT). If IGNORE is nil,
+IGNORE-COUNT will always be 0.
+
+END may be modified if TRANSFORM-HOOK extended the region."
+  (when (and (null transform-context) transform-hook)
+    (error "TRANSFORM-CONTEXT can't be nil if TRANSFORM-HOOK supplied"))
+  (when transform-context
+    (setf (speed-type-transform-context-start transform-context) start
+          (speed-type-transform-context-end transform-context) end))
+  (when (and transform-hook (sequencep transform-hook))
+    (dolist (fn transform-hook)
+      (when (functionp fn)
+        (goto-char start)
+        (let ((before-point-max (point-max)))
+          (funcall fn transform-context)
+          (when (not (= before-point-max (point-max))) ;; extend or shrink end, if transform-function added/removed text
+            (setq end
+                  (if (< before-point-max (point-max))
+                      (+ end (- (point-max) before-point-max))
+                    (- end (- before-point-max (point-max)))))
+            (setf (speed-type-transform-context-end transform-context) end))))))
+  (when speed-type-wordlist-transform ;; obsolete, stay compatible, better us transform-hook instead
+    (let ((wordlist-transform-result (funcall speed-type-wordlist-transform (buffer-string))))
+      (delete-region (point-min) (point-max))
+      (insert wordlist-transform-result)))
+  (when trim
+    (if (and transform-context (speed-type--code-buffer-p (speed-type-transform-context-major-mode transform-context)))
+        (progn
+          (goto-char start)
+          (delete-region (point)
+                         (progn (skip-chars-forward "\n") (point)))
+          (goto-char end)
+          (delete-region (save-excursion (skip-syntax-backward "\s") (point)) (point)))
+      (goto-char start)
+      (delete-region (point) (progn (skip-syntax-forward "\s") (point)))
+      (goto-char end)
+      (delete-region (save-excursion (skip-syntax-backward "\s") (point)) (point))))
+  (let ((whitespace-count 0))
+    (when ignore
+      (goto-char start)
+      (while (search-forward-regexp "[[:blank:]\n]+" end t 1)
+        (let ((match-start (match-beginning 0))
+              (match-end (match-end 0)))
+          (add-text-properties match-start match-end '(speed-type-char-status ignore))
+          (setq whitespace-count (+ whitespace-count (- match-end match-start))))))
+    (goto-char end)
+    (list start end whitespace-count)))
+
+(defun speed-type-insert-wordlist (cbuf start end min max tolerance ignore &optional transform-hook transform-context)
+  "Generate a random word-list with words between START and END in CBUF.
+
+The resulting word-list will have a random-length between MIN and MAX.
+
+The resulting length will not exceed MAX + TOLERANCE.
+
+IGNORE TRANSFORM-HOOK TRANSFORM-CONTEXT are supplied to
+`speed-type-prepare-buffer'."
+  (unless (= end start)
+    (let ((target (+ min (if (< min max) (random (- max min)) 0))))
+      (let* ((bounds)
+             (hard-upper-limit (+ max tolerance))
+             (chars 0)
+             (empty-content-escape-counter 0))
+        (while (and (< chars target)
+                    (< empty-content-escape-counter 25))
+          (let ((point-before-insert (point)))
+            (when (= (point) point-before-insert)
+              (setq empty-content-escape-counter (1+ empty-content-escape-counter)))
+            (while (< (- (point) point-before-insert) (- target chars))
+              (setq bounds
+                    (with-current-buffer cbuf
+                      (goto-char (+ start (random (- end start))))
+                      ;; we use skip-syntax-forward because we don't expect
+                      ;; that the words are actually newline-separated
+                      ;; we don't use bounds-of-thing-at-point because
+                      ;; 'word doesn't include quotes (like e.g. don't => don)
+                      (skip-syntax-backward "^\s") ;; if random-point is in the middle of a word, jump back at start of word
+                      (skip-syntax-forward "\s") ;; if in the middle of whitespace, jump to start of next word
+                      (list (point) (progn (skip-syntax-forward "^\s") (point)))))
+              (unless (or (bobp) (= (car bounds) (cadr bounds))) (insert " "))
+              (with-current-buffer cbuf (speed-type--put-text-property-orig-pos (car bounds) (cadr bounds)))
+              (insert-buffer-substring cbuf (car bounds) (cadr bounds)))
+            (let ((r (speed-type-prepare-buffer point-before-insert (point) nil ignore transform-hook transform-context)))
+              (setq chars (+ chars (- (cadr r) (car r) (caddr r)))))))
+        (when (> chars hard-upper-limit)
+          (let ((back-chars (save-excursion (skip-syntax-backward "^\s" start))))
+            (setq chars (+ chars back-chars)))
+          (and-let* ((ignore-flag (not ignore))
+                     (whitespace-back-chars (save-excursion (skip-syntax-backward "\s" start))))
+            (setq chars (+ chars whitespace-back-chars)))
+          (if (< chars min)
+              (delete-char (- (- (point) (- (point) min)) (point)))
+            (let ((back-chars (save-excursion (skip-syntax-backward "^\s" start))))
+              (delete-char back-chars))
+            (and-let* ((ignore-flag ignore)
+                       (whitespace-back-chars (save-excursion (skip-syntax-backward "\s" start))))
+              (delete-char whitespace-back-chars))))
+        (when (> empty-content-escape-counter 20)
+          (message "Speed-type: Found no fitting content after 20+ iterations"))))))
+
+(defun speed-type-insert-text (cbuf start end ignore &optional transform-hook transform-context)
+  "Insert text between START and END from CBUF into `current-buffer'.
+
+The inserted text will have text-property
+`(speed-type-orig-pos (WORD-START . WORD-END)) on all characters.
+
+IGNORE TRANSFORM-HOOK TRANSFORM-CONTEXT are supplied to
+`speed-type-prepare-buffer'."
+  (with-current-buffer cbuf (speed-type--put-text-property-orig-pos start end))
+  (let ((point-before-insert (point)))
+    (insert-buffer-substring cbuf start end)
+    (speed-type-prepare-buffer point-before-insert (point) nil ignore transform-hook transform-context)))
+
+(defun speed-type-insert-quote (cbuf min max ignore &optional transform-hook transform-context)
+  "Insert quotes from CBUF into `current-buffer'.
+
+Expects CBUF to contain the html-result one of `speed-type-quote-urls'.
+
+The random-target-length is picked between MIN and MAX.
+
+Each call picks a random-target-length and inserts as many
+quotes as possible that fit into the random-target-length.
+
+IGNORE TRANSFORM-HOOK TRANSFORM-CONTEXT are supplied to
+`speed-type-prepare-buffer'."
+  (let ((target (+ min (if (< min max) (random (- max min)) 0)))
+        (dom-quotes (with-current-buffer cbuf
+                      (dom-by-class (dom-by-class (libxml-parse-html-region (point-min) (point-max) nil) "list-quotes") "title"))))
+    (let* ((chars 0))
+      (while (< chars target)
+        (let ((point-before-insert (point))
+              (random-quote (dom-text (nth (random (length dom-quotes)) dom-quotes))))
+          (unless (bobp) (insert " "))
+          (insert random-quote)
+          (let ((r (speed-type-prepare-buffer point-before-insert (point) nil ignore transform-hook transform-context)))
+            (setq chars (+ chars (- (cadr r) (car r) (caddr r))))))))))
+
+(defun speed-type-insert-text-section (cbuf start end min max tolerance ignore &optional transform-hook transform-context)
+  "Insert text-section into `current-buffer' where `point' is currently at.
+
+CBUF defines the content-buffer from which to pick the text-section. To
+prevent inconsistent behaviour it's discouraged to use `current-buffer'
+as CBUF. MIN MAX START END MIN MAX TOLERANCE IGNORE are supplied to
+`speed-type--pick-continue-text-bounds' and act on CBUF.
+
+For each call this function uses a random-target-length which is between
+MIN and MAX. In general it's undefined what the actual length will be.
+You can supply no TRANSFORM-HOOK than length <= MAX + TOLERANCE.
+
+TRANSFORM-HOOK are called with TRANSFORM-CONTEXT after picking text. If
+the resulting text-section shrinks under the random-target-length, will
+continue to pick text and apply the TRANSFORM-HOOK until
+random-target-length or end is reached.
+
+The picked text-section are prepared using `speed-type-prepare-buffer'."
+  (setq start (if (= start 0) 1 start))
+  (with-current-buffer cbuf (goto-char start))
+  (let* ((bounds)
+         (target (+ min (if (< min max) (random (- max min)) 0)))
+         (chars 0)
+         (point-before-insert (point)))
+    (while (and (< chars target)
+                (or (null bounds) (not (= (car bounds) (cadr bounds))))
+                (not (= (max (- max chars) 0) 0))
+                (not (with-current-buffer cbuf (eobp))))
+      (let ((min-remaining (max (- min chars) 0))
+            (max-remaining (max (- max chars) 0)))
+        (setq bounds (with-current-buffer cbuf (speed-type--pick-continue-text-bounds (point) end min-remaining max-remaining tolerance ignore)))
+        (with-current-buffer cbuf (speed-type--put-text-property-orig-pos (car bounds) (cadr bounds)))
+        (insert-buffer-substring cbuf (car bounds) (cadr bounds))
+        (let ((r (speed-type-prepare-buffer point-before-insert (point) t ignore transform-hook transform-context)))
+          (setq chars (+ chars (- (cadr r) (car r) (caddr r)))))))))
 
 (defun speed-type--pick-continue-text-bounds (start end min max tolerance ignore)
   "Pick bounds for text with an approximated length between MIN and MAX.
@@ -1792,8 +2157,8 @@ Use `save-excursion' to prevent point-movement."
              (when (< count min)
                (if (<= end (+ (point) (- min count)))
                    (goto-char end)
-                 (forward-char (- hard-upper-limit count)))))
-           (list start (point)))))
+                 (forward-char (- hard-upper-limit count))))
+             (list start (point))))))
 
 (defun speed-type--put-text-property-orig-pos (start end)
   "Propertize the given region from START to END with orig-pos."
@@ -1838,11 +2203,7 @@ END is where the content in content-buffer ends. It's not always
 `point-max', e.g. in a gutenberg-buffer. This prevents continuing over
 actual content."
   (let* ((content-buffer speed-type--content-buffer)
-         (start (speed-type--get-continue-point))
-         (text (with-current-buffer content-buffer
-                 (let ((bounds (speed-type--pick-continue-text-bounds start end speed-type-min-chars speed-type-max-chars speed-type-text-picker-tolerance t)))
-                   (speed-type--put-text-property-orig-pos (car bounds) (cadr bounds))
-                   (buffer-substring (car bounds) (cadr bounds))))))
+         (start (or (speed-type--get-continue-point) 1)))
     (when (and speed-type--preview-buffer (get-buffer-window speed-type--preview-buffer))
       (delete-window (get-buffer-window speed-type--preview-buffer)))
     (when speed-type--preview-buffer
@@ -1850,7 +2211,9 @@ actual content."
         (setq-local speed-type--content-buffer nil)))
     (setq-local speed-type--content-buffer nil)
     (speed-type--setup content-buffer
-             text
+             start
+             end
+             'continue-text-section
              :file-name speed-type--file-name
              :title speed-type--title
              :author speed-type--author
@@ -1867,16 +2230,7 @@ actual content."
 
 X is the user-picked limit for the random-function."
   (let* ((content-buffer speed-type--content-buffer)
-         (char-length (+ speed-type-min-chars (random (- speed-type-max-chars speed-type-min-chars))))
-         (n (min x (with-current-buffer speed-type--content-buffer (count-words (point-min) (point-max)))))
-         (text (with-temp-buffer
-                 (while (< (buffer-size) char-length)
-                   (let ((random-word (speed-type--get-random-word-rolling content-buffer n)))
-                     (unless (or (string-blank-p random-word) (speed-type--stop-word-p random-word)) (insert random-word " "))))
-                 (fill-region (point-min) (point-max) 'none t)
-                 (if speed-type-wordlist-transform
-                     (funcall speed-type-wordlist-transform (buffer-string))
-                   (buffer-string)))))
+         (n (min x (with-current-buffer speed-type--content-buffer (count-words (point-min) (point-max))))))
     (when (and speed-type--preview-buffer (get-buffer-window speed-type--preview-buffer))
       (delete-window (get-buffer-window speed-type--preview-buffer)))
     (setq-local speed-type--content-buffer nil)
@@ -1884,7 +2238,9 @@ X is the user-picked limit for the random-function."
       (with-current-buffer speed-type--preview-buffer
         (setq-local speed-type--content-buffer nil)))
     (speed-type--setup content-buffer
-             text
+             (point-min)
+             (with-current-buffer content-buffer (save-excursion (goto-char (point-min)) (beginning-of-line (+ 1 n)) (point)))
+             'random-wordlist
              :file-name speed-type--file-name
              :title speed-type--title
              :randomize speed-type--randomize
@@ -1906,10 +2262,9 @@ X is the user-picked limit for the random-function."
       (with-current-buffer speed-type--preview-buffer
         (setq-local speed-type--content-buffer nil)))
     (speed-type--setup content-buffer
-             (progn
-               (read-only-mode -1)
-               (remove-text-properties (point-min) speed-type--max-point-on-complete '(speed-type-char-status nil))
-               (buffer-substring (point-min) speed-type--max-point-on-complete))
+             (car (get-text-property (point-min) 'speed-type-orig-pos))
+             (cdr (get-text-property (1- speed-type--max-point-on-complete) 'speed-type-orig-pos))
+             'transform-text
              :lang speed-type--lang
              :file-name speed-type--file-name
              :title speed-type--title
@@ -1959,16 +2314,26 @@ LIMIT is supplied to the random-function."
   (when (and (> x 0) speed-type--add-extra-word-content-fn)
     (let ((words nil))
       (dotimes (_ x)
-        (let ((word (string-trim (funcall speed-type--add-extra-word-content-fn))))
+        (let ((word (funcall speed-type--add-extra-word-content-fn)))
           (if (string-blank-p word)
               (message "You got lucky! Extra word function resulted in empty string.")
-            (push (speed-type--replace-map-adjust-properties speed-type-replace-strings 'speed-type-orig-pos word) words))))
+            (push word words))))
       (when words
-        (let ((words-as-string
-               (concat (propertize " " 'speed-type-char-status (when speed-type-ignore-whitespace-for-complete 'ignore))
-                       (string-trim (mapconcat (if speed-type-downcase #'downcase #'identity) (nreverse words)
-                                               (propertize " " 'speed-type-char-status (when speed-type-ignore-whitespace-for-complete 'ignore)))))))
-          (setq speed-type--extra-words-queue (append speed-type--extra-words-queue (split-string words-as-string "" t))))
+        (let ((prepared-words-as-string
+               (speed-type-prepare-string (concat " " (string-trim (mapconcat #'identity (nreverse words) " ")))
+                                speed-type-ignore-whitespace-for-complete
+                                nil
+                                speed-type-transform-hook
+                                (make-speed-type-transform-context :major-mode (with-current-buffer speed-type--content-buffer major-mode)
+                                                                   :text-type speed-type--text-type
+                                                                   :start nil
+                                                                   :end nil
+                                                                   :entries speed-type--entries
+                                                                   :errors speed-type--errors
+                                                                   :non-consecutive-errors speed-type--non-consecutive-errors
+                                                                   :corrections speed-type--corrections
+                                                                   :best-correct-streak speed-type--best-correct-streak))))
+          (setq speed-type--extra-words-queue (append speed-type--extra-words-queue (split-string prepared-words-as-string "" t))))
         (when (not (timerp speed-type--extra-words-animation-timer))
           (setq speed-type--extra-words-animation-timer (run-at-time nil 0.01 #'speed-type-animate-extra-word-inseration speed-type--buffer)))))))
 
@@ -1983,7 +2348,7 @@ LIMIT is supplied to the random-function."
       (when speed-type--extra-words-queue
         (goto-char (point-max))
         (insert (mapconcat #'identity speed-type--extra-words-queue ""))
-        (unless (speed-type--code-buffer-p speed-type--content-buffer)
+        (unless (speed-type--code-buffer-p (with-current-buffer  speed-type--content-buffer major-mode))
           (fill-region (point-min) (point-max) 'none t))
         (setq speed-type--extra-words-queue nil))
       (add-hook 'after-change-functions #'speed-type--change nil t))))
@@ -1999,7 +2364,7 @@ LIMIT is supplied to the random-function."
             (let ((token (pop speed-type--extra-words-queue)))
               (goto-char (point-max))
               (insert token))
-          (unless (speed-type--code-buffer-p speed-type--content-buffer)
+          (unless (speed-type--code-buffer-p (with-current-buffer speed-type--content-buffer major-mode))
             (fill-region (point-min) (point-max) 'none t))
           (cancel-timer speed-type--extra-words-animation-timer)
           (setq speed-type--extra-words-animation-timer nil))
@@ -2049,7 +2414,6 @@ If `speed-type-default-lang' is set, will pick a random book of that language."
          (gb-buffer (speed-type--gb-retrieve book-num))
          (buffer (speed-type--gb-top-retrieve book-num))
          (fn (buffer-file-name buffer))
-         (char-length (+ speed-type-min-chars (random (- speed-type-max-chars speed-type-min-chars))))
          (n (min x (with-current-buffer buffer (count-words (point-min) (point-max)))))
          (buf (speed-type-prepare-content-buffer-from-buffer buffer))
          (title (format "Top %s words of book %s" n book-num))
@@ -2057,20 +2421,14 @@ If `speed-type-default-lang' is set, will pick a random book of that language."
                    (save-excursion
                      (when (re-search-forward "^Author: " nil t)
                        (buffer-substring (point) (line-end-position))))))
-         (text (with-temp-buffer
-                 (while (< (buffer-size) char-length)
-                   (let ((random-word (speed-type--get-random-word-rolling buf n)))
-                     (unless (or (string-blank-p random-word) (speed-type--stop-word-p random-word)) (insert random-word " "))))
-                 (fill-region (point-min) (point-max) 'none t)
-                 (if speed-type-wordlist-transform
-                     (funcall speed-type-wordlist-transform (buffer-string))
-                   (buffer-string))))
          (add-extra-word-content-fn (lambda () (speed-type--get-random-word-rolling buf n)))
          (go-next-fn (lambda () (speed-type--get-next-top-fn x))))
     (kill-buffer gb-buffer) ;; buffer is retrieved, remove it again to not clutter the buffer-list
     (kill-buffer buffer) ;; buffer is retrieved, remove it again to not clutter the buffer-list
     (speed-type--setup buf
-             text
+             (point-min)
+             (with-current-buffer buf (save-excursion (goto-char (point-min)) (beginning-of-line (+ 1 n)) (point)))
+             'random-wordlist
              :file-name fn
              :title title
              :author author
@@ -2090,26 +2448,17 @@ The frequency list is stored at `speed-type-directory' ([lang].txt)."
   (let* ((lang (or speed-type-default-lang
                    (intern (completing-read "Language: " (mapcar #'car speed-type-wordlist-urls)))))
          (buffer (speed-type--wordlist-retrieve lang))
-         (char-length (+ speed-type-min-chars
-                         (random (- speed-type-max-chars speed-type-min-chars))))
          (n (min x (with-current-buffer buffer (count-words (point-min) (point-max)))))
          (buf (speed-type-prepare-content-buffer-from-buffer buffer))
          (fn (buffer-file-name buffer))
          (title (format "Top %s %s words" n lang))
-         (text (with-temp-buffer
-                 (while (< (buffer-size) char-length)
-                   (let ((random-word (speed-type--get-random-word-rolling buf n)))
-                     (unless (or (string-blank-p random-word) (speed-type--stop-word-p random-word)) (insert random-word " "))))
-                 (fill-region (point-min) (point-max) 'none t)
-                 (when speed-type-downcase (downcase-region (point-min) (point-max)))
-                 (if speed-type-wordlist-transform
-                     (funcall speed-type-wordlist-transform (buffer-string))
-                   (buffer-string))))
          (add-extra-word-content-fn (lambda () (speed-type--get-random-word-rolling buf n)))
          (go-next-fn (lambda () (speed-type--get-next-top-fn x))))
     (kill-buffer buffer) ;; buffer is retrieved, remove it again to not clutter the buffer-list
     (speed-type--setup buf
-             text
+             (point-min)
+             (with-current-buffer buf (save-excursion (goto-char (point-min)) (beginning-of-line (+ 1 n)) (point)))
+             'random-wordlist
              :file-name fn
              :title title
              :author "Uni Leipzig"
@@ -2146,9 +2495,12 @@ More details see `speed-type-top-x'."
                         (when (and start end) " Region: ")
                         (when start (int-to-string start))
                         (when end (concat ":" (int-to-string end)))))
-         (text (with-current-buffer buf (buffer-substring-no-properties (point-min) (point-max)))))
+         (start (with-current-buffer buf (point-min)))
+         (end (with-current-buffer buf (point-max))))
     (speed-type--setup buf
-             text
+             start
+             end
+             'transform-text
              :file-name fn
              :title title
              :author (user-full-name)
@@ -2166,22 +2518,15 @@ speed-type session with the assembled text."
   (interactive "nTrain X most common words: ")
   (let* ((buffer (speed-type--calculate-word-frequency (current-buffer) (point-min) (point-max)))
          (fn (buffer-file-name (current-buffer)))
-         (char-length (+ speed-type-min-chars (random (- speed-type-max-chars speed-type-min-chars))))
          (n (min x (with-current-buffer buffer (count-words (point-min) (point-max)))))
          (buf (speed-type-prepare-content-buffer-from-buffer buffer))
          (title (format "Top %s words of buffer %s" n (buffer-name (current-buffer))))
-         (text (with-temp-buffer
-                 (while (< (buffer-size) char-length)
-                   (let ((random-word (speed-type--get-random-word-rolling buf n)))
-                     (unless (or (string-blank-p random-word) (speed-type--stop-word-p random-word)) (insert random-word " "))))
-                 (fill-region (point-min) (point-max) 'none t)
-                 (if speed-type-wordlist-transform
-                     (funcall speed-type-wordlist-transform (buffer-string))
-                   (buffer-string))))
          (add-extra-word-content-fn (lambda () (speed-type--get-random-word-rolling buf n))))
     (kill-buffer buffer) ;; buffer is retrieved, remove it again to not clutter the buffer-list
     (speed-type--setup buf
-             text
+             (point-min)
+             (with-current-buffer buf (save-excursion (goto-char (point-min)) (beginning-of-line (+ 1 n)) (point)))
+             'random-wordlist
              :file-name fn
              :title title
              :randomize t
@@ -2202,13 +2547,13 @@ will be used.  Else some text will be picked randomly."
         (speed-type-region (point-min) (point-max))
       (if speed-type-randomize
           (let* ((buf (speed-type-prepare-content-buffer-from-buffer (current-buffer)))
-                 (text (with-current-buffer buf
-                         (let ((bounds (speed-type--pick-random-text-bounds (point-min) (point-max) speed-type-min-chars speed-type-max-chars speed-type-text-picker-tolerance t)))
-                           (speed-type--put-text-property-orig-pos (car bounds) (cadr bounds))
-                           (buffer-substring (car bounds) (cadr bounds)))))
+                 (start (with-current-buffer buf (point-min)))
+                 (end (with-current-buffer buf (point-max)))
                  (go-next-fn (lambda () (with-current-buffer buf (speed-type-buffer full)))))
             (speed-type--setup buf
-                     text
+                     start
+                     end
+                     'random-text-section
                      :file-name (buffer-file-name (current-buffer))
                      :title (buffer-name)
                      :author (user-full-name)
@@ -2247,13 +2592,11 @@ will be used.  Else some text will be picked randomly."
                       (when (re-search-forward "***.END.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
                         (beginning-of-line 1)
                         (forward-line -1)
-                        (point))))
-               (text (with-current-buffer buf
-                         (let ((bounds (speed-type--pick-random-text-bounds start end speed-type-min-chars speed-type-max-chars speed-type-text-picker-tolerance t)))
-                           (speed-type--put-text-property-orig-pos (car bounds) (cadr bounds))
-                           (buffer-substring (car bounds) (cadr bounds))))))
+                        (point)))))
           (speed-type--setup buf
-                   text
+                   start
+                   end
+                   'random-text-section
                    :file-name (buffer-file-name buffer)
                    :title title
                    :author author
@@ -2280,11 +2623,6 @@ If ARG is given will prompt for a specific quote-URL."
          (title (with-current-buffer buf
                   (save-excursion (search-forward-regexp "<title>\\(.*\\)</title>")
                                   (match-string 1))))
-         (dom-quotes (with-current-buffer buf
-                       (dom-by-class (dom-by-class (libxml-parse-html-region (point-min) (point-max) nil) "list-quotes") "title")))
-         (random-quote (nth (random (length dom-quotes)) dom-quotes))
-         (author (dom-attr random-quote 'data-author))
-         (text (dom-text random-quote))
          (add-extra-word-content-fn
           (lambda ()
             (with-current-buffer speed-type--content-buffer
@@ -2297,10 +2635,11 @@ If ARG is given will prompt for a specific quote-URL."
          (go-next-fn (lambda () (speed-type-quotes arg))))
     (kill-buffer buffer)
     (speed-type--setup buf
-             text
+             (point-min)
+             (point-max)
+             'quote
              :file-name fn
              :title title
-             :author author
              :randomize t
              :replay-fn #'speed-type--get-replay-fn
              :go-next-fn go-next-fn
@@ -2357,27 +2696,21 @@ If FILE-NAME is nil, will use file-name of CURRENT-BUFFER."
                           (beginning-of-line 1)
                           (forward-line -1)
                           (point))
-                        (point-max)))
-               (text (let ((bounds
-                            (speed-type--pick-continue-text-bounds
-                             (if (>= start (1- end))
-                                 (if (y-or-n-p "You completed this file, would you start over again?")
-                                     (or (save-excursion
-                                           (goto-char (point-min))
-                                           (when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
-                                             (end-of-line 1)
-                                             (forward-line 1)
-                                             (point)))
-                                         (point-min))
-                                   (user-error "Aborted speed-type-continue because file completed"))
-                               start)
-                             end speed-type-min-chars speed-type-max-chars speed-type-text-picker-tolerance t)))
-                       (speed-type--put-text-property-orig-pos (car bounds) (cadr bounds))
-                       (buffer-substring (car bounds) (cadr bounds)))
-
-))
+                        (point-max))))
           (speed-type--setup buf
-                   text
+                   (if (>= start (1- end))
+                       (if (y-or-n-p "You completed this file, would you start over again?")
+                           (or (save-excursion
+                                 (goto-char (point-min))
+                                 (when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+                                   (end-of-line 1)
+                                   (forward-line 1)
+                                   (point)))
+                               (point-min))
+                         (user-error "Aborted speed-type-continue because file completed"))
+                     start)
+                   end
+                   'continue-text-section
                    :file-name fn
                    :title title
                    :author author
@@ -2406,13 +2739,11 @@ The file-name of the content is a converted form of URL."
         (let* ((buf (speed-type-prepare-content-buffer-from-buffer buffer))
                (title (format "Text section of url %s" url))
                (start (with-current-buffer buf (point-min)))
-               (end (with-current-buffer buf (point-max)))
-               (text (with-current-buffer buf
-                       (let ((bounds (speed-type--pick-random-text-bounds start end speed-type-min-chars speed-type-max-chars speed-type-text-picker-tolerance t)))
-                         (speed-type--put-text-property-orig-pos (car bounds) (cadr bounds))
-                         (buffer-substring (car bounds) (cadr bounds))))))
+               (end (with-current-buffer buf (point-max))))
           (speed-type--setup buf
-                   text
+                   start
+                   end
+                   'random-text-section
                    :file-name fn
                    :title title
                    :randomize t
@@ -2444,22 +2775,15 @@ stored content in `speed-type-directory'."
   (let* ((x (if x x (string-to-number (completing-read "Train X most common words: " obarray 'numberp nil "100"))))
          (buffer (speed-type-retrieve-pandoc-top-retrieve url))
          (fn (buffer-file-name buffer))
-         (char-length (+ speed-type-min-chars (random (- speed-type-max-chars speed-type-min-chars))))
          (n (min x (with-current-buffer buffer (count-words (point-min) (point-max)))))
          (buf (speed-type-prepare-content-buffer-from-buffer buffer))
          (title (format "Top %s words of url %s" n url))
-         (text (with-temp-buffer
-                 (while (< (buffer-size) char-length)
-                   (let ((random-word (speed-type--get-random-word-rolling buf n)))
-                     (unless (or (string-blank-p random-word) (speed-type--stop-word-p random-word)) (insert random-word " "))))
-                 (fill-region (point-min) (point-max) 'none t)
-                 (if speed-type-wordlist-transform
-                     (funcall speed-type-wordlist-transform (buffer-string))
-                   (buffer-string))))
          (add-extra-word-content-fn (lambda () (speed-type--get-random-word-rolling buf n))))
     (kill-buffer buffer) ;; buffer is retrieved, remove it again to not clutter the buffer-list
     (speed-type--setup buf
-             text
+             (point-min)
+             (with-current-buffer buf (save-excursion (goto-char (point-min)) (beginning-of-line (+ 1 n)) (point)))
+             'random-wordlist
              :file-name fn
              :title title
              :n-words n

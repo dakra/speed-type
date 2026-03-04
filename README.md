@@ -202,6 +202,47 @@ every typing session.
 - `speed-type-content-buffer`: Contains the original content from which the flow was started. It's used for adding words and "continue" the content.
 - `speed-type-preview-buffer`: Buffer which "records" typed characters and "unusual" point movement
 
+#### Text-Inserter / Text-Picker
+
+Speed-type uses `speed-type-min-chars`, `speed-type-max-chars` and
+`speed-type-text-picker-tolerance` to gather an optimal amount of
+typing material.
+
+There are different types of text-inserter (see `speed-type--text-type`):
+- continue-text-section => `speed-type-insert-text-section`
+- random-text-section => `speed-type-insert-text-section`
+- random-wordlist => `speed-type-insert-wordlist`
+- transform-text => `speed-type-insert-text`
+- quote => `speed-type-insert-quote`
+
+Depending on the command or play-action a different text-inserter is
+choosen to get the job done.
+
+Each text-inserter runs in a loop, with each iteration they gather
+more typing material while respecting the boundaries of the given
+custom variables.
+
+After every iteration the text-inserter executes the supplied
+transform-hook with the transform-context (see
+`speed-type-transform-context`).
+
+A user can define there own function and add it to the hook. A user
+may also remove some hook-function from the default set provided. With
+the `speed-type-transform-context` a user can formulate exact rules
+when the transform-function apply.
+
+Due to the fact that the text-inserter run in a loop, a
+transform-function can also act as a "filter". For example replacing
+regexs with empty-strings making room for better typing material
+gathered from a given buffer (usually `speed-type-content-buffer`).
+
+All text-inserter rely on `speed-type-prepare-buffer` which ensures
+the correct order of transforming, trimming and ignoring the
+characters in `current-buffer`.
+
+It's also possible to propertize and apply the transform-hooks to a
+given string, see `speed-type-prepare-string`. This is used for adding
+words to the speed-type session.
 
 ### Speed-type session
 
