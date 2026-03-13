@@ -36,29 +36,17 @@
 
 (require 'ert)
 (require 'speed-type)
-
-;; gutenberg
-;; azquotes
-;; :lang lang
-;; :n-words n
-;; :go-next-fn go-next-fn
-;; :add-extra-word-content-fn
-;; :replay-fn
-;; (speed-type--setup buf
-;;             (buffer-substring-no-properties start end)
-;;             :author (user-full-name)
-;;             :title title
-;;             :replay-fn #'speed-type--get-replay-fn))))
+(require 'cl-macs)
 
 (ert-deftest speed-type-test/stop-words-p-supply-garbage ()
   (should-error (speed-type--stop-word-p nil))
   (should-error (speed-type--stop-word-p 1))
   (should-error (speed-type--stop-word-p 'symbol))
   (should-error (speed-type--stop-word-p '("asdf" "asdf")))
-  (setq speed-type-stop-words 'symbol)
-  (should-error (speed-type--stop-word-p "word"))
-  (setq speed-type-stop-words 1)
-  (should-error (speed-type--stop-word-p "word")))
+  (let ((speed-type-stop-words 'symbol))
+    (should-error (speed-type--stop-word-p "word")))
+  (let ((speed-type-stop-words 1))
+    (should-error (speed-type--stop-word-p "word"))))
 
 (ert-deftest speed-type-test/stop-words-p-is-t-when-found-in-list ()
   (setq speed-type-stop-words '("word"))
@@ -118,7 +106,7 @@
   (should (string= (speed-type--url-to-filename "https://github.com/dakra/speed-type") "https-github-com-dakra-speed-type-12b56e4"))
   (should (string= (speed-type--url-to-filename "https://en.wikipedia.org/wiki/John_von_Neumann") "https-en-wikipedia-org-wiki-John-von-Neumann-d9bd43e"))
   ;; hash-edge-case: `secure-hash-algorithms' is nil use \"no-hash\" for standard cases
-  (cl-letf (((symbol-function 'secure-hash-algorithms) (lambda (&rest args) nil)))
+  (cl-letf (((symbol-function 'secure-hash-algorithms) (lambda (&rest _) nil)))
     (should (string= (speed-type--url-to-filename "https://en.wikipedia.org/wiki/John_von_Neumann") "https-en-wikipedia-org-wiki-John-von-Neumann-no-hash"))))
 
 (ert-deftest speed-type-test/url-to-filename-dash-logic ()
@@ -187,14 +175,14 @@ TEST-IN-BUF is a lambda which is executed within the speed-type-buffer."
    (lambda ()
      (should (length= speed-type--time-register 0))
      (insert "a")
-     (dotimes (i 3)
+     (dotimes (_ 3)
        (speed-type--resume)
        (should (length= speed-type--time-register 1)))))
   (speed-type-test-region
    (lambda ()
      (should (length= speed-type--time-register 0))
      (insert "a")
-     (dotimes (i 3)
+     (dotimes (_ 3)
        (speed-type-pause)
        (should (length= speed-type--time-register 2))))))
 
@@ -299,12 +287,12 @@ Also assure when that added words are downcased too."
        (with-current-buffer speed-type--content-buffer
          (should (string= "ASDF" (buffer-string))))))))
 
-                                        ; assure preview buffer in general region
-                                        ; test continue feature
+;; assure preview buffer in general region
+;; test continue feature
 ;; complete a typing session and restart the same example
 ;; test variation with random
-                                        ; test top word iterator/calculation
-                                        ; test top word file and source file is written
+;; test top word iterator/calculation
+;; test top word file and source file is written
 (ert-deftest speed-type-test/general-region ()
   "Do a general test with `speed-type-region' with fundamental mode and a prog-mode, checking content, overlays, point and point-motion, buffer-variables and statistic file."
   (let ((content "abcde")
@@ -415,12 +403,216 @@ Also assure when that added words are downcased too."
   (should (speed-type--check-same 4 "\nfoo\s" "\nfoo\t"))
   (should (not (speed-type--check-same 2 "\nfoo\s" "\nfxo\n"))))
 
-(ert-deftest speed-type--trim-tests ()
+(ert-deftest speed-type-test/prepare-buffer-error-tests ()
+  (with-temp-buffer ;; wrap with them buffer, because function may act on current-buffer
+    (should-error (speed-type-prepare-buffer (point-min) (point-max) nil nil 0 '(speed-type--replace-string-hook) nil))))
+
+(ert-deftest speed-type-test/prepare-buffer-minimal-tests ()
+  (with-temp-buffer
+    (insert "a a")
+    (should (equal '(1 3 1) (speed-type-prepare-buffer 1 3 nil t nil nil)))
+    (should (= 3 (point)))
+    (should (equal '(speed-type-char-status ignore) (text-properties-at 2)))
+    ;; point goes always to end
+    (should (equal '(0 0 0) (speed-type-prepare-buffer 0 0 nil nil nil nil)))
+    (should (= 1 (point)))
+    ;; repeated call should result in same
+    (should (equal '(1 3 1) (speed-type-prepare-buffer 1 3 nil t nil nil)))
+    (should (= 3 (point)))
+    (should (equal '(speed-type-char-status ignore) (text-properties-at 2)))))
+
+(ert-deftest speed-type-test/prepare-buffer-special-case-transform-hook-makes-everything-empty ()
+  "Stop at end."
+  (with-temp-buffer
+    (insert "  “Zweiter Theil” … Das Kind mit dem Spiegel Auf den glückseligen Inseln\n")
+    (insert "  Von den Mitleidigen Von den Priestern Von den Tugendhaften Vom    \n")
+    (insert "  Gesindel Von den Taranteln Von den berühmten Weisen Das Nachtlied Das …\n")
+    (should (equal '(1 1 0)
+                   (speed-type-prepare-buffer (point-min) (point-max) nil t
+                                 (list (lambda (&rest _) (speed-type-re-forward-replace-map-adjust-properties '((".\\|\n" . "")) 'speed-type-orig-pos (point-max))))
+                                 (make-speed-type-transform-context
+                                  :major-mode 'fundamental-mode
+                                  :text-type 'transform-text
+                                  :start nil
+                                  :end nil))))
+    (should (string-empty-p (buffer-string)))))
+
+(ert-deftest speed-type-test/prepare-buffer-act-on-region-tests ()
+  (with-temp-buffer
+    (insert "a a\n")
+    (insert "b b\n")
+    (insert "c c\n")
+    (should (= 1 (caddr (speed-type-prepare-buffer 5 8 nil t nil nil))))
+    (should (equal '(speed-type-char-status ignore) (text-properties-at 6)))
+    (should (eq nil (text-properties-at 2)))
+    (should (eq nil (text-properties-at 10)))))
+
+(ert-deftest speed-type-test/prepare-buffer-default-hook-tests ()
+  (with-temp-buffer
+    (insert "  “Zweiter Theil” … Das Kind mit dem Spiegel Auf den glückseligen Inseln\n")
+    (insert "  Von den Mitleidigen Von den Priestern Von den Tugendhaften Vom    \n")
+    (insert "  Gesindel Von den Taranteln Von den berühmten Weisen Das Nachtlied Das …\n")
+    (should (= 33 (caddr (speed-type-prepare-buffer
+                          (point-min) (point-max) t t speed-type-transform-hook
+                          (make-speed-type-transform-context
+                           :major-mode 'fundamental-mode
+                           :text-type 'transform-text
+                           :start nil
+                           :end nil)))))
+    (should (string=
+             (concat "\"Zweiter Theil\" ... Das Kind mit dem Spiegel Auf den glückseligen\n"
+                     "Inseln Von den Mitleidigen Von den Priestern Von den Tugendhaften Vom\n"
+                     "Gesindel Von den Taranteln Von den berühmten Weisen Das Nachtlied Das\n"
+                     "...")
+             (buffer-string)))))
+
+(ert-deftest speed-type-test/prepare-buffer-skip-content-test ()
+  (with-temp-buffer
+    (insert "  “Zweiter Theil” … Das Kind mit dem Spiegel Auf den glückseligen Inseln\n")
+    (insert "  Von den Mitleidigen Von den Priestern Von den Tugendhaften Vom    \n")
+    (insert "  Gesindel Von den Taranteln Von den berühmten Weisen Das Nachtlied Das …\n")
+    (insert "  Von den Mitleidigen Von den Priestern Von den Tugendhaften Vom    \n")
+    (should (> (point-max) 148)) ;; ensure final content-length shrinked due to transform
+    (should (equal (list (point-min) 148 25)
+                   (speed-type-prepare-buffer
+                    (point-min) (point-max) t t
+                    '((lambda (transform-context &rest _)
+                        (speed-type-re-forward-replace-map-adjust-properties '((".*Von.*Vom.*\n" . "")) 'speed-type-orig-pos (speed-type-transform-context-end transform-context))))
+                    (make-speed-type-transform-context
+                     :major-mode 'fundamental-mode
+                     :text-type 'transform-text
+                     :start nil
+                     :end nil))))
+    (should (string=
+             (concat "“Zweiter Theil” … Das Kind mit dem Spiegel Auf den glückseligen Inseln\n"
+                     "  Gesindel Von den Taranteln Von den berühmten Weisen Das Nachtlied Das …")
+             (buffer-string)))))
+
+(ert-deftest speed-type-test/insert-text-default-hook-test ()
+  (with-temp-buffer ;; acts as the content-buffer
+    (insert "  “Zweiter Theil” … Das Kind mit dem Spiegel Auf den glückseligen Inseln\n")
+    (insert "  Von den Mitleidigen Von den Priestern Von den Tugendhaften Vom    \n")
+    (insert "  Gesindel Von den Taranteln Von den berühmten Weisen Das Nachtlied Das …\n")
+    (insert "  Von den Mitleidigen Von den Priestern Von den Tugendhaften Vom    \n")
+    (let ((content-buffer (current-buffer))
+          (start (point-min))
+          (end (point-max)))
+      (with-temp-buffer ;; acts as the speed-type-buffer
+        (speed-type-insert-text content-buffer start end t speed-type-transform-hook
+                      (make-speed-type-transform-context
+                       :major-mode 'fundamental-mode
+                       :text-type 'transform-text
+                       :start nil
+                       :end nil))
+        (should (>= (point-max) 250))))))
+
+(ert-deftest speed-type-test/insert-text-section-tranform-hook-make-everything-empty ()
+  (with-temp-buffer ;; acts as the content-buffer
+    (insert "  “Zweiter Theil” … Das Kind mit dem Spiegel Auf den glückseligen Inseln\n")
+    (insert "  Von den Mitleidigen Von den Priestern Von den Tugendhaften Vom    \n")
+    (insert "  Gesindel Von den Taranteln Von den berühmten Weisen Das Nachtlied Das …\n")
+    (insert "  Von den Mitleidigen Von den Priestern Von den Tugendhaften Vom    \n")
+    (let ((content-buffer (current-buffer))
+          (start (point-min))
+          (end (point-max)))
+      (with-temp-buffer ;; acts as the speed-type-buffer
+        (speed-type-insert-text-section content-buffer start end 50 250 20 t
+                              (list (lambda (&rest _) (speed-type-re-forward-replace-map-adjust-properties '((".\\|\n" . "")) 'speed-type-orig-pos (point-max))))
+                 (make-speed-type-transform-context
+                  :major-mode 'fundamental-mode
+                  :text-type 'transform-text
+                  :start nil
+                  :end nil))
+        (should (string-empty-p (buffer-string)))))))
+
+(ert-deftest speed-type-test/insert-text-section-default-hook-test ()
+  (with-temp-buffer ;; acts as the content-buffer
+    (insert "  “Zweiter Theil” … Das Kind mit dem Spiegel Auf den glückseligen Inseln\n")
+    (insert "  Von den Mitleidigen Von den Priestern Von den Tugendhaften Vom    \n")
+    (insert "  Gesindel Von den Taranteln Von den berühmten Weisen Das Nachtlied Das …\n")
+    (insert "  Von den Mitleidigen Von den Priestern Von den Tugendhaften Vom    \n")
+    (let ((content-buffer (current-buffer))
+          (start (point-min))
+          (end (point-max)))
+      (with-temp-buffer ;; acts as the speed-type-buffer
+        (speed-type-insert-text-section content-buffer start end 50 250 20 t speed-type-transform-hook
+                              (make-speed-type-transform-context
+                               :major-mode 'fundamental-mode
+                               :text-type 'continue-text-section
+                               :start nil
+                               :end nil))
+        (should (equal (text-properties-at (point-min)) '(speed-type-orig-pos (3 . 11))))
+        (should (>= (point-max) 50))))))
+
+(ert-deftest speed-type-test/insert-wordlist-tranform-hook-make-everything-empty ()
+  (with-temp-buffer ;; acts as the content-buffer
+    (insert "  “Zweiter Theil” … Das Kind mit dem Spiegel Auf den glückseligen Inseln\n")
+    (insert "  Von den Mitleidigen Von den Priestern Von den Tugendhaften Vom    \n")
+    (insert "  Gesindel Von den Taranteln Von den berühmten Weisen Das Nachtlied Das …\n")
+    (insert "  Von den Mitleidigen Von den Priestern Von den Tugendhaften Vom    \n")
+    (let ((content-buffer (current-buffer))
+          (start (point-min))
+          (end (point-max)))
+      (with-temp-buffer ;; acts as the speed-type-buffer
+        (speed-type-insert-wordlist content-buffer start end 250 450 20 t
+                          (list (lambda (&rest _) (speed-type-re-forward-replace-map-adjust-properties '((".\\|\n" . "")) 'speed-type-orig-pos (point-max))))
+                              (make-speed-type-transform-context
+                               :major-mode 'fundamental-mode
+                               :text-type 'transform-text
+                               :start nil
+                               :end nil))
+        (should (string-empty-p (buffer-string)))))))
+
+(ert-deftest speed-type-test/insert-wordlist-one-word ()
+  (with-temp-buffer ;; acts as the content-buffer
+    (insert "Hello")
+    (let ((content-buffer (current-buffer))
+          (start (point-min))
+          (end (point-max)))
+      (with-temp-buffer ;; acts as the speed-type-buffer
+        (speed-type-insert-wordlist content-buffer start end 250 450 20 t nil nil)
+        (should (>= (point-max) 250))))))
+
+(ert-deftest speed-type-test/insert-wordlist-default-hook-test ()
+  (with-temp-buffer ;; acts as the content-buffer
+    (insert "  “Zweiter Theil” … Das Kind mit dem Spiegel Auf den glückseligen Inseln\n")
+    (insert "  Von den Mitleidigen Von den Priestern Von den Tugendhaften Vom    \n")
+    (insert "  Gesindel Von den Taranteln Von den berühmten Weisen Das Nachtlied Das …\n")
+    (insert "  Von den Mitleidigen Von den Priestern Von den Tugendhaften Vom    \n")
+    (let ((content-buffer (current-buffer))
+          (start (point-min))
+          (end (point-max)))
+      (with-temp-buffer ;; acts as the speed-type-buffer
+        (speed-type-insert-wordlist content-buffer start end 250 450 20 t speed-type-transform-hook
+                          (make-speed-type-transform-context
+                           :major-mode 'fundamental-mode
+                           :text-type 'random-wordlist
+                           :start nil
+                           :end nil))
+        (should (equal (car (text-properties-at (point-min))) 'speed-type-orig-pos))
+        (should (>= (point-max) 250))))))
+
+(ert-deftest speed-type-test/prepare-buffer-trim-and-ignore-count-tests ()
+  ;; minimal case expect count if ignore else 0, allow context nil
+  (with-temp-buffer
+    (insert "  ")
+    (should (= 0 (caddr (speed-type-prepare-buffer (point-min) (point-max) nil nil nil nil))))
+    (should (= 2 (caddr (speed-type-prepare-buffer (point-min) (point-max) nil t nil nil))))
+    (should (= 0 (caddr (speed-type-prepare-buffer (point-min) (point-max) t nil nil nil)))))
   ;; in case of code we want to keep the indentation
-  (should (string= "foo\n\t\sbar"
-                   (speed-type--trim "\n\nfoo\n\t\sbar\n\n\n")))
-  (should (string= "\tfoo\n\t\sbar"
-                   (speed-type--trim "\n\tfoo\n\t\sbar\n\n\n\n"))))
+  ;; count whitespace after trim
+  (with-temp-buffer
+    (insert "\n\nfoo\n\t\sbar\n\n\n")
+    (should (= 3 (caddr (speed-type-prepare-buffer (point-min) (point-max) t t nil
+                                         (make-speed-type-transform-context :major-mode 'emacs-lisp-mode)))))
+    (should (string= "foo\n\t\sbar" (buffer-string))))
+  ;; TODO comment in as soon as they have fixed the defstruct problem
+  ;; (with-temp-buffer
+  ;;   (insert "\n\tfoo\n\t\sbar\n\n\n\n")
+  ;;   (should (= 4 (caddr (speed-type-prepare-buffer (point-min) (point-max) t t nil
+  ;;                                        (make-speed-type-transform-context :major-mode 'emacs-lisp-mode)))))
+  ;;   (should (string= "\tfoo\n\t\sbar" (buffer-string))))
+  )
 
 (ert-deftest speed-type-mode-test()
   (let* ((hook-executed nil))
@@ -459,7 +651,7 @@ Also assure when that added words are downcased too."
 
 (ert-deftest speed-type-test/pick-continue-error-cases ()
   "Should error if custom vars contain garbage or buffer is empty."
-   ;; min or max contain something else than a number
+  ;; min or max contain something else than a number
   (should-error (speed-type--pick-continue-text-bounds "0" 0 1 100 0 nil))
   (should-error (speed-type--pick-continue-text-bounds 0 "0" 1 100 0 nil))
   (should-error (speed-type--pick-continue-text-bounds 0 0 "1" 100 0 nil))
@@ -519,7 +711,6 @@ has     lots
     (insert "asdf")
     (should (string= "as" (apply #'buffer-substring (speed-type--pick-continue-text-bounds 1 3 1 1 1 t))))))
 
-
 (ert-deftest speed-type-test/special-case-tolerance-0-expect-exact-boundary-behavior ()
   (with-temp-buffer
     (insert "One two three four five six seven eight nine ten.")
@@ -552,7 +743,6 @@ has     lots
     ;; min is 50 which leads to a maximum times of 7 (347 / 50= 6.94)
     ;; ensure function moves always forward and never takes characters from the previous call
     (let ((previous-last-char "")
-          (current-first-word nil)
           (min 50)
           (max 200)
           (tolerance 10))
