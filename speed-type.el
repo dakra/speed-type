@@ -382,6 +382,8 @@ Net WPM:                      %d
 Net CPM:                      %d
 Gross WPM:                    %d
 Gross CPM:                    %d
+APM:                          %d
+APC:                          %.3f
 Accuracy:                     %.2f%%
 Total time:                   %s
 Total chars:                  %d
@@ -401,6 +403,8 @@ Note: 'nil' values are excluded from the calculations.
 | Net CPM:                | %7d | %7d | %7d | %7d | %7d |
 | Gross WPM:              | %7d | %7d | %7d | %7d | %7d |
 | Gross CPM:              | %7d | %7d | %7d | %7d | %7d |
+| APM:                    | %7d | %7d | %7d | %7d | %7d |
+| APC:                    | %7.3f | %7.3f | %7.3f | %7.3f | %7.3f |
 | Accuracy:               | %6.2f%% | %6.2f%% | %6.2f%% | %6.2f%% | %6.2f%% |
 | Total time:             | %6.1fs | %6.1fs | %6.1fs | %6.1fs | %6.1fs |
 | Total chars:            | %7d | %7d | %7d | %7d | %7d |
@@ -464,7 +468,9 @@ It's a property-only-change when modified-tick is the same in before and after."
 It's used in the before-change-hook.")
 (defvar-local speed-type--buffer nil)
 (defvar-local speed-type--content-buffer nil)
-(defvar-local speed-type--entries 0 "Counts the number of keystrokes typed.")
+(defvar-local speed-type--entries 0 "Count the number of inserted characters typed (but each only ones).")
+(defvar-local speed-type--actions 0 "Count the number of key typed (which are bound to a command).")
+
 (defvar-local speed-type--errors 0 "Counts mistyped characters.")
 (defvar-local speed-type--current-correct-streak 0 "Tracks the correct streak since last error or beginning.")
 (defvar-local speed-type--best-correct-streak 0 "The highest count of consecutively correct typed characters.")
@@ -532,7 +538,7 @@ Computes words-per-minute as (ENTRIES/5) / (SECONDS/60)."
   (round (speed-type--/ (/ entries 5.0)
               (speed-type--seconds-to-minutes seconds))))
 
-(defun speed-type--gross-cpm (entries seconds)
+(defun speed-type--gross-Xpm (entries seconds)
   "Return gross characters-per-minute.
 
 Computes characters-per-minute as ENTRIES / (SECONDS/60)."
@@ -555,7 +561,7 @@ UNCORRECTED-ERRORS = ERRORS - CORRECTIONS
 Computes net characters-per-minute as:
 UNCORRECTED-ERRORS = ERRORS - CORRECTIONS
   (ENTRIES - UNCORRECTED-ERRORS) / (SECONDS/60)."
-  (let ((net-cpm (round (- (speed-type--gross-cpm entries seconds)
+  (let ((net-cpm (round (- (speed-type--gross-Xpm entries seconds)
                            (speed-type--/ (- errors corrections)
                                 (speed-type--seconds-to-minutes seconds))))))
     (if (> 0 net-cpm) 0 net-cpm)))
@@ -597,6 +603,7 @@ If the structure is changed, SPEED-TYPE-FILE-FORMAT-VERSION must
 be incremented and a migration must be coded in
 SPEED-TYPE-MAYBE-UPGRADE-FILE-FORMAT."
   (let ((entries speed-type--entries)
+        (actions speed-type--actions)
         (errors speed-type--errors)
         (corrections speed-type--corrections)
         (seconds (speed-type--elapsed-time speed-type--time-register)))
@@ -612,7 +619,9 @@ SPEED-TYPE-MAYBE-UPGRADE-FILE-FORMAT."
           (cons 'speed-type--elapsed-time seconds)
           (cons 'speed-type--time-register speed-type--time-register)
           (cons 'speed-type--gross-wpm (speed-type--gross-wpm entries seconds))
-          (cons 'speed-type--gross-cpm (speed-type--gross-cpm entries seconds))
+          (cons 'speed-type--gross-cpm (speed-type--gross-Xpm entries seconds))
+          (cons 'speed-type--gross-apm (speed-type--gross-Xpm actions seconds))
+          (cons 'speed-type--apc (speed-type--/ (float actions) entries))
           (cons 'speed-type--net-wpm (speed-type--net-wpm entries errors corrections seconds))
           (cons 'speed-type--net-cpm (speed-type--net-cpm entries errors corrections seconds))
           (cons 'speed-type--accuracy (speed-type--accuracy entries (- entries errors) corrections))
@@ -883,6 +892,8 @@ Additional provide length and skill-value."
          (speed-type--calc-median 'speed-type--net-cpm stats) (speed-type--calc-avg 'speed-type--net-cpm stats) (speed-type--calc-standard-deviation 'speed-type--net-cpm stats) (speed-type--calc-min 'speed-type--net-cpm stats) (speed-type--calc-max 'speed-type--net-cpm stats)
          median-gross-wpm avg-gross-wpm (speed-type--calc-standard-deviation 'speed-type--gross-wpm stats) min-gross-wpm max-gross-wpm
          (speed-type--calc-median 'speed-type--gross-cpm stats) (speed-type--calc-avg 'speed-type--gross-cpm stats) (speed-type--calc-standard-deviation 'speed-type--gross-cpm stats) (speed-type--calc-min 'speed-type--gross-cpm stats) (speed-type--calc-max 'speed-type--gross-cpm stats)
+         (speed-type--calc-median 'speed-type--gross-apm stats) (speed-type--calc-avg 'speed-type--gross-apm stats) (speed-type--calc-standard-deviation 'speed-type--gross-apm stats) (speed-type--calc-min 'speed-type--gross-apm stats) (speed-type--calc-max 'speed-type--gross-apm stats)
+         (speed-type--calc-median 'speed-type--apc stats) (speed-type--calc-avg 'speed-type--apc stats) (speed-type--calc-standard-deviation 'speed-type--apc stats) (speed-type--calc-min 'speed-type--apc stats) (speed-type--calc-max 'speed-type--apc stats)
          (speed-type--calc-median 'speed-type--accuracy stats) (speed-type--calc-avg 'speed-type--accuracy stats) (speed-type--calc-standard-deviation 'speed-type--accuracy stats) (speed-type--calc-min 'speed-type--accuracy stats) (speed-type--calc-max 'speed-type--accuracy stats)
          (speed-type--calc-median 'speed-type--elapsed-time stats) (speed-type--calc-avg 'speed-type--elapsed-time stats) (speed-type--calc-standard-deviation 'speed-type--elapsed-time stats) (speed-type--calc-min 'speed-type--elapsed-time stats) (speed-type--calc-max 'speed-type--elapsed-time stats)
          (speed-type--calc-median 'speed-type--entries stats) (speed-type--calc-avg 'speed-type--entries stats) (speed-type--calc-standard-deviation 'speed-type--entries stats) (speed-type--calc-min 'speed-type--entries stats) (speed-type--calc-max 'speed-type--entries stats)
@@ -890,7 +901,7 @@ Additional provide length and skill-value."
          (speed-type--calc-median 'speed-type--best-correct-streak stats) (speed-type--calc-avg 'speed-type--best-correct-streak stats) (speed-type--calc-standard-deviation 'speed-type--best-correct-streak stats) (speed-type--calc-min 'speed-type--best-correct-streak stats) (speed-type--calc-max 'speed-type--best-correct-streak stats)
          (speed-type--calc-median 'speed-type--errors stats) (speed-type--calc-avg 'speed-type--errors stats) (speed-type--calc-standard-deviation 'speed-type--errors stats) (speed-type--calc-min 'speed-type--errors stats) (speed-type--calc-max 'speed-type--errors stats)
          (speed-type--calc-median 'speed-type--non-consecutive-errors stats) (speed-type--calc-avg 'speed-type--non-consecutive-errors stats) (speed-type--calc-standard-deviation 'speed-type--non-consecutive-errors stats) (speed-type--calc-min 'speed-type--non-consecutive-errors stats) (speed-type--calc-max 'speed-type--non-consecutive-errors stats)))
-    '(0 "empty" "empty" "empty" "empty" "empty" 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)))
+    '(0 "empty" "empty" "empty" "empty" "empty" 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)))
 
 (defun speed-type-display-menu ()
   "Display and set controls the user can make in this speed-type session.
@@ -1310,15 +1321,17 @@ Expects CURRENT-BUFFER to be buffer of speed-type session."
   (setq speed-type--last-changed-text (buffer-substring start end)
         speed-type--last-modified-tick (buffer-chars-modified-tick)))
 
-(defun speed-type-format-stats (entries errors non-consecutive-errors corrections best-correct-streak seconds)
+(defun speed-type-format-stats (entries actions errors non-consecutive-errors corrections best-correct-streak seconds)
   "Format statistic data using given arguments:
-ENTRIES ERRORS NON-CONSECUTIVE-ERRORS CORRECTIONS BEST-CORRECT-STREAK SECONDS."
+ENTRIES ACTIONS ERRORS NON-CONSECUTIVE-ERRORS CORRECTIONS BEST-CORRECT-STREAK SECONDS."
   (format speed-type-stats-format
           (speed-type--skill (speed-type--net-wpm entries errors corrections seconds))
           (speed-type--net-wpm entries errors corrections seconds)
           (speed-type--net-cpm entries errors corrections seconds)
           (speed-type--gross-wpm entries seconds)
-          (speed-type--gross-cpm entries seconds)
+          (speed-type--gross-Xpm entries seconds)
+          (speed-type--gross-Xpm actions seconds)
+          (speed-type--/ (float actions) entries)
           (speed-type--accuracy entries (- entries errors) corrections)
           (format-seconds "%M %z%S" seconds)
           entries
@@ -1332,6 +1345,7 @@ ENTRIES ERRORS NON-CONSECUTIVE-ERRORS CORRECTIONS BEST-CORRECT-STREAK SECONDS."
   "Remove typing hooks from the buffer and print statistics."
   (interactive)
   (unless (derived-mode-p 'speed-type-mode) (user-error "Not in a speed-type buffer: cannot complete session"))
+  (remove-hook 'pre-command-hook #'speed-type--action-counter-hook t)
   (remove-hook 'post-command-hook #'speed-type-preview-logger t)
   (speed-type-finish-animation speed-type--buffer)
   (remove-hook 'before-change-functions #'speed-type--before-change t)
@@ -1349,6 +1363,7 @@ ENTRIES ERRORS NON-CONSECUTIVE-ERRORS CORRECTIONS BEST-CORRECT-STREAK SECONDS."
       (when speed-type--author (insert (propertize (format ", by %s" speed-type--author) 'face 'italic)))
       (insert (speed-type-format-stats
                speed-type--entries
+               speed-type--actions
                speed-type--errors
                speed-type--non-consecutive-errors
                speed-type--corrections
@@ -1362,6 +1377,7 @@ ENTRIES ERRORS NON-CONSECUTIVE-ERRORS CORRECTIONS BEST-CORRECT-STREAK SECONDS."
            (not (boundp 'speed-type--preview-buffer))
            (null speed-type--preview-buffer)
            (null speed-type--time-register)
+           (null speed-type--idle-pause-timer)
            (member this-command '(self-insert-command speed-type-code-ret speed-type-code-tab))
            (null this-command))
     (let ((new-last-pos (point)))
@@ -1463,7 +1479,7 @@ END is a point where the check stops to scan for diff."
                  (when non-consecutive-error-p (cl-incf speed-type--non-consecutive-errors))
                  (add-text-properties pos (1+ pos) '(speed-type-char-status error))
                  (speed-type-add-extra-words (+ (or speed-type-add-extra-words-on-error 0)
-                                      (or (and non-consecutive-error-p speed-type-add-extra-words-on-non-consecutive-errors) 0)))))
+                                                (or (and non-consecutive-error-p speed-type-add-extra-words-on-non-consecutive-errors) 0)))))
         (cl-incf speed-type--entries)
         (let ((f (if is-same 'speed-type-correct-face (if non-consecutive-error-p 'speed-type-error-face 'speed-type-consecutive-error-face))))
           (let ((overlay (make-overlay pos (1+ pos))))
@@ -1745,6 +1761,7 @@ CALLBACK is called when the setup process has been completed."
     (goto-char 0)
     (add-hook 'before-change-functions #'speed-type--before-change nil t)
     (add-hook 'post-command-hook #'speed-type-preview-logger nil t)
+    (add-hook 'pre-command-hook #'speed-type--action-counter-hook nil t)
     (add-hook 'after-change-functions #'speed-type--change nil t)
     (add-hook 'kill-buffer-hook #'speed-type--kill-buffer-hook nil t)
     (setq-local post-self-insert-hook nil)
@@ -1827,6 +1844,11 @@ START and END are supplied to `insert-buffer-substring'."
     (let ((cbuf speed-type--content-buffer))
       (setq-local speed-type--content-buffer nil)
       (kill-buffer cbuf))))
+
+(defun speed-type--action-counter-hook ()
+  "Count actions on `pre-command-hook'."
+  (unless (or (null speed-type--time-register) (null speed-type--idle-pause-timer) (null this-command))
+    (setq speed-type--actions (+ speed-type--actions 1))))
 
 (cl-defstruct speed-type-transform-context
   "Define what context-variable are present when running transform-hook.
