@@ -1715,21 +1715,21 @@ CALLBACK is called when the setup process has been completed."
                 speed-type--go-next-fn go-next-fn
                 speed-type--replay-fn replay-fn
                 speed-type--text-type text-type)
-    (unless (speed-type--code-buffer-p (with-current-buffer content-buffer major-mode))
-      (setq-local speed-type--add-extra-word-content-fn add-extra-word-content-fn))
     (when content-buffer
-      (setq-local speed-type--content-buffer content-buffer
+      (setq-local speed-type--content-buffer (or (with-current-buffer content-buffer (when (boundp 'speed-type--content-buffer) speed-type--content-buffer)) content-buffer)
                   speed-type--buffer buf))
+    (unless (speed-type--code-buffer-p (with-current-buffer speed-type--content-buffer major-mode))
+      (setq-local speed-type--add-extra-word-content-fn add-extra-word-content-fn))
     (with-current-buffer speed-type--content-buffer
       (setq-local speed-type--buffer buf)
       (when (null (boundp 'speed-type--extra-word-quote))
         (setq-local speed-type--extra-word-quote nil)))
-    (when speed-type-provide-preview-option (speed-type--connect-preview-buffer buf content-buffer))
+    (when speed-type-provide-preview-option (speed-type--connect-preview-buffer buf speed-type--content-buffer))
     (let ((inhibit-read-only t)
           (buffer-undo-list t)
           (inhibit-modification-hooks t)
           (inhibit-field-text-motion t)
-          (transform-context (make-speed-type-transform-context :major-mode (with-current-buffer content-buffer major-mode)
+          (transform-context (make-speed-type-transform-context :major-mode (with-current-buffer speed-type--content-buffer major-mode)
                                                                 :text-type speed-type--text-type
                                                                 :start nil
                                                                 :end nil
@@ -1765,7 +1765,7 @@ CALLBACK is called when the setup process has been completed."
     (add-hook 'after-change-functions #'speed-type--change nil t)
     (add-hook 'kill-buffer-hook #'speed-type--kill-buffer-hook nil t)
     (setq-local post-self-insert-hook nil)
-    (when (speed-type--code-buffer-p (with-current-buffer content-buffer major-mode))
+    (when (speed-type--code-buffer-p (with-current-buffer speed-type--content-buffer major-mode))
       (electric-pair-mode -1)
       (when syntax-table (set-syntax-table syntax-table))
       (when fldf
@@ -2279,26 +2279,30 @@ X is the user-picked limit for the random-function."
   (let ((content-buffer speed-type--content-buffer))
     (when (and speed-type--preview-buffer (get-buffer-window speed-type--preview-buffer))
       (delete-window (get-buffer-window speed-type--preview-buffer)))
-    (setq-local speed-type--content-buffer nil)
     (when speed-type--preview-buffer
       (with-current-buffer speed-type--preview-buffer
         (setq-local speed-type--content-buffer nil)))
-    (speed-type--setup content-buffer
-             (car (get-text-property (point-min) 'speed-type-orig-pos))
-             (cdr (get-text-property (1- speed-type--max-point-on-complete) 'speed-type-orig-pos))
-             'transform-text
-             :lang speed-type--lang
-             :file-name speed-type--file-name
-             :title speed-type--title
-             :author speed-type--author
-             :n-words speed-type--n-words
-             :randomize speed-type--randomize
-             :replay-fn #'speed-type--get-replay-fn
-             :go-next-fn speed-type--go-next-fn
-             :continue-fn speed-type--continue-fn
-             :add-extra-word-content-fn speed-type--add-extra-word-content-fn
-             :syntax-table (with-current-buffer content-buffer (syntax-table))
-             :fldf (with-current-buffer content-buffer font-lock-defaults))))
+    (read-only-mode -1)
+    (remove-text-properties (point-min) speed-type--max-point-on-complete '(speed-type-char-status nil))
+    (let ((cb (current-buffer))
+          (buf (speed-type--setup (current-buffer)
+                        (point-min)
+                        speed-type--max-point-on-complete
+                        'transform-text
+                        :lang speed-type--lang
+                        :file-name speed-type--file-name
+                        :title speed-type--title
+                        :author speed-type--author
+                        :n-words speed-type--n-words
+                        :randomize speed-type--randomize
+                        :replay-fn #'speed-type--get-replay-fn
+                        :go-next-fn speed-type--go-next-fn
+                        :continue-fn speed-type--continue-fn
+                        :add-extra-word-content-fn speed-type--add-extra-word-content-fn
+                        :syntax-table (with-current-buffer content-buffer (syntax-table))
+                        :fldf (with-current-buffer content-buffer font-lock-defaults))))
+      (with-current-buffer cb (setq-local speed-type--content-buffer nil))
+      buf)))
 
 (defun speed-type--get-next-word-rolling (content-buffer)
   "Get next word from point in CONTENT-BUFFER.

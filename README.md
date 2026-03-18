@@ -170,29 +170,6 @@ A little diagram because [uniline](https://github.com/tbanel/uniline) is fun:
               ╰──────────┤replay/next/continue├─-◁────╯
                          ╰────────────────────╯
 ```
-### Glossary
-There are certain words which in day-to-day use have a very general
-meaning or have synonyms with very similar meaning. Speed-type uses
-certain general words or synoynms with very specific meaning /
-definition (filtering isn't the same as ignoring even though in
-general they would both imply exclusion from something).
-
-If a word is highlighted with quotes the specialized meaning is
-certainly used from this glossary. Sometimes the specialized meaning
-is used but the quotes were forgotten.
-
-- ignoring
-- filtering
-- transforming
-- trimming
-- error
-- play-action
-- apm
-- speed-type session
-- speed-type-buffer
-- speed-type-content-buffer
-- speed-type-preview-buffer
-- word
 ### Start
 The flow is started by calling one of the autoloaded commands:
 - `speed-type-text`
