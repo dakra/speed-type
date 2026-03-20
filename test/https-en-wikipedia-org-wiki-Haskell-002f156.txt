@@ -1,0 +1,807 @@
+Haskell - Wikipedia
+
+Jump to content
+
+Main menu
+
+Main menu
+
+move to sidebar
+
+hide
+
+Navigation
+
+-   Main page
+-   Contents
+-   Current events
+-   Random article
+-   About Wikipedia
+-   Contact us
+
+Contribute
+
+-   Help
+-   Learn to edit
+-   Community portal
+-   Recent changes
+-   Upload file
+-   Special pages
+
+[] [Wikipedia] [The Free Encyclopedia]
+
+Search
+
+Search
+
+Appearance
+
+-   Donate
+-   Create account
+-   Log in
+
+Personal tools
+
+-   Donate
+-    Create account
+-    Log in
+
+Contents
+
+move to sidebar
+
+hide
+
+-
+    (Top)
+-
+    1 History
+
+    Toggle History subsection
+    -
+        1.1 Haskell 1.0 to 1.4
+    -
+        1.2 Haskell 98
+    -
+        1.3 Haskell 2010
+    -
+        1.4 Future standards
+-
+    2 Features
+-
+    3 Code examples
+-
+    4 Implementations
+-
+    5 Notable applications
+
+    Toggle Notable applications subsection
+    -
+        5.1 Industry
+    -
+        5.2 Web
+-
+    6 Criticism
+-
+    7 Related languages
+-
+    8 Conferences and workshops
+-
+    9 See also
+-
+    10 References
+-
+    11 Bibliography
+-
+    12 External links
+
+Toggle the table of contents
+
+Haskell
+
+55 languages
+
+-   العربية
+-   Azərbaycanca
+-   বাংলা
+-   Беларуская
+-   Български
+-   Català
+-   Čeština
+-   Dansk
+-   Deutsch
+-   Eesti
+-   Ελληνικά
+-   Español
+-   Esperanto
+-   Euskara
+-   فارسی
+-   Français
+-   Galego
+-   한국어
+-   Հայերեն
+-   हिन्दी
+-   Hrvatski
+-   Ido
+-   Bahasa Indonesia
+-   Íslenska
+-   Italiano
+-   עברית
+-   Қазақша
+-   Latina
+-   Latviešu
+-   Lëtzebuergesch
+-   Magyar
+-   മലയാളം
+-   मराठी
+-   Bahasa Melayu
+-   Nederlands
+-   日本語
+-   Norsk bokmål
+-   ਪੰਜਾਬੀ
+-   Polski
+-   Português
+-   Română
+-   Русский
+-   Shqip
+-   Simple English
+-   Slovenčina
+-   Slovenščina
+-   Српски / srpski
+-   Suomi
+-   Svenska
+-   ไทย
+-   Türkçe
+-   Українська
+-   Tiếng Việt
+-   中文
+-   Toki pona
+
+Edit links
+
+-   Article
+-   Talk
+
+English
+
+-   Read
+-   Edit
+-   View history
+
+Tools
+
+Tools
+
+move to sidebar
+
+hide
+
+Actions
+
+-   Read
+-   Edit
+-   View history
+
+General
+
+-   What links here
+-   Related changes
+-   Upload file
+-   Permanent link
+-   Page information
+-   Cite this page
+-   Get shortened URL
+-   Download QR code
+
+Print/export
+
+-   Download as PDF
+-   Printable version
+
+In other projects
+
+-   Wikimedia Commons
+-   Wikibooks
+-   Wikiquote
+-   Wikiversity
+-   Wikidata item
+
+Appearance
+
+move to sidebar
+
+hide
+
+From Wikipedia, the free encyclopedia
+
+Functional programming language
+
+For other uses, see Haskell (disambiguation).
+
+Haskell (/ˈhæskəl/^([25])) is a general-purpose, statically typed,
+purely functional programming language with type inference and lazy
+evaluation.^([26][27]) Haskell pioneered several programming language
+features including type classes for type-safe operator overloading and
+monadic input/output (IO). It is named after logician Haskell
+Curry.^([1]) Haskell's main implementation is the Glasgow Haskell
+Compiler (GHC).
+
+Haskell's semantics are historically based on those of the Miranda
+programming language, which served to focus the efforts of the initial
+Haskell working group.^([28]) The last formal specification of the
+language was made in July 2010, while the development of GHC continues
+to expand Haskell via language extensions.
+
+Haskell is used in academia and industry.^([29][30][31]) As of
+May 2021^([update]), Haskell was the 28th most popular programming
+language by Google searches for tutorials,^([32]) and made up less than
+1% of active users on the GitHub source code repository.^([33])
+
+History
+
+[edit]
+
+After the release of Miranda by Research Software Ltd. in 1985, interest
+in lazy functional languages grew. By 1987, more than a dozen
+non-strict, purely functional programming languages existed. Miranda was
+the most widely used, but it was proprietary software. At the conference
+on Functional Programming Languages and Computer Architecture (FPCA '87)
+in Portland, Oregon, there was a strong consensus that a committee be
+formed to define an open standard for such languages. The committee's
+purpose was to consolidate existing functional languages into a common
+one to serve as a basis for future research in functional-language
+design.^([34])
+
+Haskell 1.0 to 1.4
+
+[edit]
+
+Haskell was developed by a committee, attempting to bring together
+off-the-shelf solutions where possible.
+
+Type classes were first proposed by Philip Wadler and Stephen Blott to
+address the ad hoc handling of equality types and arithmetic overloading
+in languages at the time.^([35])
+
+In early versions of Haskell up until and including version 1.2, user
+interaction and input/output (IO) were handled by both streams-based and
+continuation-based mechanisms, which were widely considered
+unsatisfactory.^([36]) In version 1.3, monadic IO was introduced, along
+with the generalisation of type classes to higher kinds (type
+constructors). Along with "do notation", which provides syntactic sugar
+for the Monad type class, this gave Haskell an effect system that
+maintained referential transparency and was convenient.
+
+[]
+
+Hierarchy of type classes in the Haskell Prelude as of GHC 7.10. The
+inclusion of Foldable and Traversable (with corresponding changes to the
+type signatures of some functions), and of Applicative as intermediate
+between Functor and Monad, are deviations from the Haskell 2010
+standard.
+
+Haskell 98
+
+[edit]
+
+In late 1997, the series culminated in Haskell 98, intended to specify a
+stable, minimal, portable version of the language and an accompanying
+standard library for teaching, and as a base for future extensions. The
+committee expressly welcomed creating extensions and variants of Haskell
+98 via adding and incorporating experimental features.^([34])
+
+Haskell 2010
+
+[edit]
+
+In early 2006, the process of defining a successor to the Haskell 98
+standard, informally named Haskell Prime, began.^([38]) This was
+intended to be an ongoing incremental process to revise the language
+definition, producing a new revision up to once per year. The first
+revision, named Haskell 2010, was announced in November 2009^([2]) and
+published in July 2010.
+
+Haskell 2010 added several well-used and uncontroversial features
+previously enabled via compiler-specific flags.^([citation needed])
+
+-   Hierarchical module names. Module names are allowed to consist of
+    dot-separated sequences of capitalized identifiers, rather than only
+    one such identifier. This lets modules be named in a hierarchical
+    manner (e.g., Data.List instead of List), although technically
+    modules are still in a single monolithic namespace. This extension
+    was specified in an addendum to Haskell 98 and was in practice
+    universally used.
+-   The foreign function interface (FFI) allows bindings to other
+    programming languages. Only bindings to C are specified in the
+    Report, but the design allows for other language bindings. To
+    support this, data type declarations were permitted to contain no
+    constructors, enabling robust nonce types for foreign data that
+    could not be constructed in Haskell. This extension was also
+    previously specified in an Addendum to the Haskell 98 Report and
+    widely used.
+-   So-called n+k patterns (definitions of the form
+    fact (n+1) = (n+1) * fact n) were no longer allowed. This syntactic
+    sugar had misleading semantics, in which the code looked like it
+    used the (+) operator, but in fact desugared to code using (-) and
+    (>=).
+
+Future standards
+
+[edit]
+
+The next formal specification had been planned for 2020.^([3]) On 29
+October 2021, with GHC version 9.2.1, the GHC2021 extension was
+released. While this is not a formal language spec, it combines several
+stable, widely used GHC extensions to Haskell 2010.^([39][40])
+
+Features
+
+[edit]
+
+Main article: Haskell features
+
+See also: Glasgow Haskell Compiler § Extensions to Haskell
+
+Haskell features lazy evaluation, lambda expressions, pattern matching,
+list comprehension, type classes and type polymorphism. It is a purely
+functional programming language, which means that functions generally
+have no side effects. A distinct construct exists to represent side
+effects, orthogonal to the type of functions. A pure function can return
+a side effect that is subsequently executed, modeling the impure
+functions of other languages.
+
+Haskell has a strong, static type system based on Hindley–Milner type
+inference. Its principal innovation in this area is type classes,
+originally conceived as a principled way to add overloading to the
+language,^([41]) but since finding many more uses.^([42])
+
+Code examples
+
+[edit]
+
+See also: Haskell features § Examples
+
+A "Hello, World!" program in Haskell (only the last line is strictly
+necessary):
+
+    module Main (main) where          -- not needed in interpreter, is the default in a module file
+
+    main :: IO ()                     -- the compiler can infer this type definition
+    main = putStrLn "Hello, World!"
+
+The factorial function in Haskell, defined in a few different ways (the
+first line is the type annotation, which is optional and is the same for
+each implementation):
+
+    factorial :: (Integral a) => a -> a
+
+    -- Using recursion (with the "ifthenelse" expression)
+    factorial n = if n < 2
+                  then 1
+                  else n * factorial (n - 1)
+
+    -- Using recursion (with pattern matching)
+    factorial 0 = 1
+    factorial n = n * factorial (n - 1)
+
+    -- Using recursion (with guards)
+    factorial n
+       | n < 2     = 1
+       | otherwise = n * factorial (n - 1)
+
+    -- Using a list and the "product" function
+    factorial n = product [1..n]
+
+    -- Using fold (implements "product")
+    factorial n = foldl (*) 1 [1..n]
+
+    -- Point-free style
+    factorial = foldr (*) 1 . enumFromTo 1
+
+Using Haskell's Fixed-point combinator allows this function to be
+written without any explicit recursion.
+
+    import Data.Function (fix)
+
+    factorial = fix fac
+      where fac f x
+              | x < 2     = 1
+              | otherwise = x * f (x - 1)
+
+As the Integer type has arbitrary-precision, this code will compute
+values such as factorial 100000 (a 456,574-digit number), with no loss
+of precision.
+
+An implementation of an algorithm similar to quick sort over lists,
+where the first element is taken as the pivot:
+
+    -- Type annotation (optional, same for each implementation)
+    quickSort :: Ord a => [a] -> [a]
+
+    -- Using list comprehensions
+    quickSort []     = []                               -- The empty list is already sorted
+    quickSort (x:xs) = quickSort [a | a <- xs, a < x]   -- Sort the left part of the list
+                       ++ [x] ++                        -- Insert pivot between two sorted parts
+                       quickSort [a | a <- xs, a >= x]  -- Sort the right part of the list
+
+    -- Using filter
+    quickSort []     = []
+    quickSort (x:xs) = quickSort (filter (<x) xs)
+                       ++ [x] ++
+                       quickSort (filter (>=x) xs)
+
+Implementations
+
+[edit]
+
+All listed implementations are distributed under open source
+licenses.^([45])
+
+Implementations that fully or nearly comply with the Haskell 98 standard
+include:
+
+-   The Glasgow Haskell Compiler (GHC) compiles to native code on many
+    different processor architectures, and to ANSI C, via one of two
+    intermediate languages: C--, or in more recent versions, LLVM
+    (formerly Low Level Virtual Machine) bitcode.^([46][47]) GHC has
+    become the de facto standard Haskell dialect.^([48]) There are
+    libraries (e.g., bindings to OpenGL) that work only with GHC. GHC
+    was also distributed with the Haskell platform. GHC features an
+    asynchronous runtime that also schedules threads across multiple CPU
+    cores similar to the Go runtime.
+-   Jhc, a Haskell compiler written by John Meacham, emphasizes speed
+    and efficiency of generated programs and exploring new program
+    transformations.
+    -   Ajhc is a fork of Jhc.
+-   The Utrecht Haskell Compiler (UHC) is a Haskell implementation from
+    Utrecht University.^([49]) It supports almost all Haskell 98
+    features plus many experimental extensions. It is implemented using
+    attribute grammars and is primarily used for research on generated
+    type systems and language extensions.
+
+Implementations no longer actively maintained include:
+
+-   The Haskell User's Gofer System (Hugs) is a bytecode interpreter. It
+    was once one of the implementations used most widely, alongside the
+    GHC compiler,^([50]) but has now been mostly replaced by GHCi. It
+    also comes with a graphics library.
+-   HBC is an early implementation supporting Haskell 1.4. It was
+    implemented by Lennart Augustsson in, and based on, Lazy ML. It has
+    not been actively developed for some time.
+-   nhc98 is a bytecode compiler focusing on minimizing memory use.
+    -   The York Haskell Compiler (Yhc) was a fork of nhc98, with the
+        goals of being simpler, more portable and efficient, and
+        integrating support for Hat, the Haskell tracer. It also had a
+        JavaScript backend, allowing users to run Haskell programs in
+        web browsers.
+
+Implementations not fully Haskell 98 compliant, and using a variant
+Haskell language, include:
+
+-   Eta and Frege are dialects of Haskell targeting the Java virtual
+    machine.
+-   Gofer is an educational dialect of Haskell, with a feature called
+    constructor classes, developed by Mark Jones. It is supplanted by
+    Haskell User's Gofer System (Hugs).
+-   Helium, a newer dialect of Haskell. The focus is on making learning
+    easier via clearer error messages by disabling type classes as a
+    default.
+
+Notable applications
+
+[edit]
+
+-   Agda is a proof assistant written in Haskell.^([51])
+-   Cabal is a tool for building and packaging Haskell libraries and
+    programs.^([52])
+-   Darcs is a revision control system written in Haskell, with several
+    innovative features, such as more precise control of patches to
+    apply.
+-   Glasgow Haskell Compiler (GHC) is also often a testbed for advanced
+    functional programming features and optimizations in other
+    programming languages.
+-   Git-annex is a tool to manage (big) data files under Git version
+    control. It also provides a distributed file synchronization system
+    (git-annex assistant).
+-   Linspire Linux chose Haskell for system tools development.^([53])
+-   Pandoc is a tool to convert one markup format into another.
+-   Pugs is a compiler and interpreter for the programming language then
+    named Perl 6, but since renamed Raku.
+-   TidalCycles is a domain special language for live coding musical
+    patterns, embedded in Haskell.^([54])
+-   Xmonad is a window manager for the X Window System, written fully in
+    Haskell.^([55])
+-   GarganText^([56]) is a collaborative tool to map through semantic
+    analysis texts on any web browser, written fully in Haskell and
+    PureScript, which is used for instance in the research community to
+    draw up state-of-the-art reports and roadmaps.^([57])
+
+Industry
+
+[edit]
+
+-   Bluespec SystemVerilog (BSV) is a language extension of Haskell, for
+    designing electronics. It is an example of a domain-specific
+    language embedded into Haskell. Further, Bluespec, Inc.'s tools are
+    implemented in Haskell.
+-   Cryptol, a language and toolchain for developing and verifying
+    cryptography algorithms, is implemented in Haskell.
+-   Facebook implements its anti-spam programs^([58]) in Haskell,
+    maintaining the underlying data access library as open-source
+    software.^([59])
+-   The Cardano blockchain platform is implemented in Haskell.^([60])
+-   GitHub implemented Semantic, an open-source library to analyze,
+    diff, and interpret untrusted source code for many languages, in
+    Haskell.^([61])
+-   Standard Chartered's financial modelling language Mu is syntactic
+    Haskell running on a strict runtime.^([62])
+-   seL4, the first formally verified microkernel,^([63]) used Haskell
+    as a prototyping language for the OS developer.^([63]: p.2 ) At the
+    same time, the Haskell code defined an executable specification with
+    which to reason, for automatic translation by the theorem-proving
+    tool.^([63]: p.3 ) The Haskell code thus served as an intermediate
+    prototype before final C refinement.^([63]: p.3 )
+-   Target stores' supply chain optimization software is written in
+    Haskell.^([64])
+-   Co–Star^([65])
+-   Mercury Technologies' back end is written in Haskell.^([66])
+
+Web
+
+[edit]
+
+Notable web frameworks written for Haskell include:^([67])
+
+-   IHP
+-   Servant
+-   Snap
+-   Yesod
+
+Criticism
+
+[edit]
+
+Jan-Willem Maessen, in 2002, and Simon Peyton Jones, in 2003, discussed
+problems associated with lazy evaluation while also acknowledging the
+theoretical motives for it.^([68][69]) In addition to purely practical
+considerations such as improved performance,^([70]) they note that lazy
+evaluation makes it more difficult for programmers to reason about the
+performance of their code (particularly its space use).
+
+Bastiaan Heeren, Daan Leijen, and Arjan van IJzendoorn in 2003 also
+observed some stumbling blocks for Haskell learners: "The subtle syntax
+and sophisticated type system of Haskell are a double edged sword—highly
+appreciated by experienced programmers but also a source of frustration
+among beginners, since the generality of Haskell often leads to cryptic
+error messages."^([71]) To address the error messages researchers from
+Utrecht University developed an advanced interpreter called Helium,
+which improved the user-friendliness of error messages by limiting the
+generality of some Haskell features. In particular it disables type
+classes by default.^([72])
+
+Ben Lippmeier designed Disciple^([73]) as a strict-by-default (lazy by
+explicit annotation) dialect of Haskell with a type-and-effect system,
+to address Haskell's difficulties in reasoning about lazy evaluation and
+in using traditional data structures such as mutable arrays.^([74]) He
+argues (p. 20) that "destructive update furnishes the programmer with
+two important and powerful tools ... a set of efficient array-like data
+structures for managing collections of objects, and ... the ability to
+broadcast a new value to all parts of a program with minimal burden on
+the programmer."
+
+Robert Harper, one of the authors of Standard ML, has given his reasons
+for not using Haskell to teach introductory programming. Among these are
+the difficulty of reasoning about resource use with non-strict
+evaluation, that lazy evaluation complicates the definition of datatypes
+and inductive reasoning,^([75]) and the "inferiority" of Haskell's (old)
+class system compared to ML's module system.^([76])
+
+Haskell's build tool, Cabal, has historically been criticized for poorly
+handling multiple versions of the same library, a problem known as
+"Cabal hell". The Stackage server and Stack build tool were made in
+response to these criticisms.^([77]) Cabal has since addressed this
+problem by borrowing ideas from the package manager Nix,^([78]) with the
+new approach becoming the default in 2019.
+
+Related languages
+
+[edit]
+
+Clean is a close, slightly older relative of Haskell. Its biggest
+deviation from Haskell is in the use of uniqueness types instead of
+monads for input/output (I/O) and side effects.
+
+A series of languages inspired by Haskell, but with different type
+systems, have been developed, including:
+
+-   Agda, a functional language with dependent types.
+-   Cayenne, with dependent types.
+-   Elm, a functional language to create web front-end apps, no support
+    for user-defined or higher-kinded type classes or instances.
+-   Epigram, a functional language with dependent types suitable for
+    proving properties of programs.
+-   Idris, a general purpose functional language with dependent types,
+    developed at the University of St Andrews.
+-   PureScript transpiles to JavaScript.
+-   Ωmega, a strict language that allows introduction of new kinds, and
+    programming at the type level.
+
+Other related languages include:
+
+-   Curry, a functional/logic programming language based on Haskell.
+
+Notable Haskell variants include:
+
+-   Generic Haskell, a version of Haskell with type system support for
+    generic programming.
+-   Hume, a strict functional language for embedded systems based on
+    processes as stateless automata over a sort of tuples of one element
+    mailbox channels where the state is kept by feedback into the
+    mailboxes, and a mapping description from outputs to channels as box
+    wiring, with a Haskell-like expression language and syntax.
+
+Conferences and workshops
+
+[edit]
+
+Haskell events have been regularly held concurrent with the
+International Conference on Functional Programming (ICFP) including
+workshops such as the Haskell Symposium (formerly the Haskell Workshop)
+and Commercial Users of Functional Programming.^([79]) Other events
+include the Haskell Implementors Workshop,^([80]) ZuriHac in
+Zurich,^([81]) and Hac: The Haskell Hackathon.^([82])
+
+See also
+
+[edit]
+
+-   Rosetta-lang
+
+References
+
+[edit]
+
+1.  ^ ^(a) ^(b) ^(c) Hudak et al. 2007.
+2.  ^ ^(a) ^(b)
+    Marlow, Simon (24 November 2009). "Announcing Haskell 2010". Haskell
+    (Mailing list). Retrieved 12 March 2011.
+3.  ^ ^(a) ^(b) Riedel, Herbert (28 April 2016). "ANN: Haskell Prime
+    2020 committee has formed". Haskell-prime (Mailing list). Retrieved
+    6 May 2017.
+4.  ^ ^(a) ^(b) ^(c) ^(d) ^(e) ^(f) ^(g) ^(h) ^(i) ^(j) ^(k) ^(l) ^(m)
+    Peyton Jones 2003, p. xi
+5.  ^ Norell, Ulf (2008). "Dependently Typed Programming in Agda" (PDF).
+    Gothenburg: Chalmers University. Retrieved 9 February 2012.
+6.  ^ Hudak et al. 2007, pp. 12–38, 43.
+7.  ^ Stroustrup, Bjarne; Sutton, Andrew (2011). "Design of Concept
+    Libraries for C++" (PDF). Software Language Engineering. Archived
+    from the original (PDF) on 10 February 2012.
+8.  ^ ^(a) ^(b) ^(c) ^(d) ^(e) ^(f) ^(g) ^(h) ^(i) ^(j) Hudak et al.
+    2007, pp. 12-45–46.
+9.  ^ ^(a) ^(b) Meijer, Erik (2006). "Confessions of a Used Programming
+    Language Salesman: Getting the Masses Hooked on Haskell". Oopsla
+    2007. CiteSeerX 10.1.1.72.868.
+10. ^ Meijer, Erik (1 October 2009). "C9 Lectures: Dr. Erik Meijer –
+    Functional Programming Fundamentals, Chapter 1 of 13". Channel 9.
+    Microsoft. Archived from the original on 16 June 2012. Retrieved 9
+    February 2012.
+11. ^ Drobi, Sadek (4 March 2009). "Erik Meijer on LINQ". InfoQ. QCon SF
+    2008: C4Media Inc. Retrieved 9 February 2012.{{cite news}}: CS1
+    maint: location (link)
+
+Bibliography
+
+[edit]
+
+Reports
+
+-   Peyton Jones, Simon, ed. (2003). Haskell 98 Language and Libraries:
+    The Revised Report. Cambridge University Press. ISBN 978-0521826143.
+-   Marlow, Simon, ed. (2010). Haskell 2010 Language Report (PDF).
+    Haskell.org.
+
+Textbooks
+
+-   Davie, Antony (1992). An Introduction to Functional Programming
+    Systems Using Haskell. Cambridge University Press.
+    ISBN 978-0-521-25830-2.
+-   Bird, Richard (1998). Introduction to Functional Programming using
+    Haskell (2nd ed.). Prentice Hall Press. ISBN 978-0-13-484346-9.
+
+Tutorials
+
+-   Hudak, Paul; Peterson, John; Fasel, Joseph (June 2000). "A Gentle
+    Introduction To Haskell, Version 98". Haskell.org.
+-   Learn You a Haskell for Great Good! - A community version
+    (learnyouahaskell.github.io). An up-to-date community maintained
+    version of the renowned "Learn You a Haskell" (LYAH) guide.
+
+History
+
+-   Hudak, Paul; Hughes, John; Peyton Jones, Simon; Wadler, Philip
+    (2007). "A history of Haskell" (PDF). Proceedings of the third ACM
+    SIGPLAN conference on History of programming languages. pp. 12–1–55.
+    doi:10.1145/1238844.1238856. ISBN 978-1-59593-766-7. S2CID 52847907.
+-   Hamilton, Naomi (19 September 2008). "The A-Z of Programming
+    Languages: Haskell". Computerworld.
+
+External links
+
+[edit]
+
+[]
+
+Wikibooks has a book on the topic of: Haskell
+
+[]
+
+Wikibooks has a book on the topic of: Write Yourself a Scheme in 48
+Hours
+
+[]
+
+Wikiversity has learning resources about Haskell programming in plain
+view
+
+-   Official website [Edit this at Wikidata]
+
+Portal:
+
+-   [icon] Computer programming
+
+[]
+
+Retrieved from
+"https://en.wikipedia.org/w/index.php?title=Haskell&oldid=1333155217"
+
+Categories:
+
+-   Academic programming languages
+-   Compiled programming languages
+-   Educational programming languages
+-   Functional languages
+-   Haskell programming language family
+-   Literate programming
+-   Pattern matching programming languages
+-   Programming languages created in 1990
+-   Statically typed programming languages
+
+Hidden categories:
+
+-   CS1 maint: location
+-   All articles with dead external links
+-   Articles with dead external links from May 2022
+-   Articles with short description
+
+-   This page was last edited on 16 January 2026, at 01:19 (UTC).
+-   Text is available under the Creative Commons Attribution-ShareAlike
+    4.0 License; additional terms may apply. By using this site, you
+    agree to the Terms of Use and Privacy Policy. Wikipedia® is a
+    registered trademark of the Wikimedia Foundation, Inc., a non-profit
+    organization.
+
+-   Privacy policy
+-   About Wikipedia
+-   Disclaimers
+-   Contact Wikipedia
+-   Legal & safety contacts
+-   Code of Conduct
+-   Developers
+-   Statistics
+-   Cookie statement
+-   Mobile view
+
+-   [Wikimedia Foundation]
+-   [Powered by MediaWiki]
+
+Search
+
+Search
+
+Toggle the table of contents
+
+Haskell
+
+55 languages
+
+Add topic

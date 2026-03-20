@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<!--
+
+    DON'T USE THIS PAGE FOR SCRAPING.
+
+    Seriously. You'll only get your IP blocked.
+
+    Download https://www.gutenberg.org/feeds/catalog.rdf.bz2 instead,
+    which contains *all* Project Gutenberg metadata in one RDF/XML file.
+
+  --><html lang="en">
+
+
+
+
+  <head>
+    <style>
+      .icon   { background: transparent url(/pics/sprite.png) 0 0 no-repeat; }
+      .page_content a.subtle_link:link {color:currentColor; text-decoration: none;}
+      .page_content a.subtle_link:hover {color:#003366}
+    </style>
+    <link rel="stylesheet" type="text/css" href="/gutenberg/pg-desktop-one.css?v=1.1">
+    <link rel="stylesheet" type="text/css" href="/gutenberg/style2.css?v=1.8">
+    <link rel="stylesheet" type="text/css" href="/gutenberg/new_nav.css?v=1.6">
+    <link rel="stylesheet" type="text/css" href="/gutenberg/search_options.css?v=1">
+    <script>//
+      var canonical_url   = "http://www.gutenberg.org/ebooks/search/?query=l.de";
+      var lang            = "en";
+      var msg_load_more   = "Load More Results…";
+      var page_mode       = "screen";
+      var dialog_title    = "";
+      var dialog_message  = "";
+      //</script>
+    <script src="/js/pg-two.js"></script>
+    <link rel="shortcut icon" href="/gutenberg/favicon.ico">
+    <link rel="canonical" href="http://www.gutenberg.org/ebooks/search/?query=l.de">
+    <link rel="search" type="application/opensearchdescription+xml" title="Search Project Gutenberg" href="https://www.gutenberg.org/catalog/osd-books.xml">
+    <link rel="alternate nofollow" type="application/atom+xml;profile=opds-catalog" title="OPDS feed" href="/ebooks/search.opds/?query=l.de">
+    <link rel="apple-touch-icon" href="/gutenberg/apple-icon.png">
+    <meta name="viewport" content="width=device-width">
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta http-equiv="default-style" content="text/css">
+    <meta name="title" content="Books:  Language: German ">
+    <meta name="description" content="Project Gutenberg offers 77,165 free eBooks for Kindle, iPad, Nook, Android, and iPhone.">
+    <meta name="keywords" content="ebook, ebooks, free ebooks, free books, book, books, audio books">
+    <meta name="classification" content="public">
+    <meta property="og:title" content="Books:  Language: German ">
+    <meta property="og:description" content="Project Gutenberg offers 77,165 free eBooks for Kindle, iPad, Nook, Android, and iPhone.">
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="http://www.gutenberg.org/pics/logo-144x144.png">
+    <meta property="og:url" content="http://www.gutenberg.org/ebooks/search/?query=l.de">
+    <meta property="og:site_name" content="Project Gutenberg">
+    <meta property="fb:app_id" content="115319388529183">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:site" content="@gutenberg_new">
+    <meta name="twitter:image" content="http://www.gutenberg.org/pics/logo-144x144.png">
+    <meta name="twitter:image:alt" content="book cover image">
+    <title>Books:  Language: German  - Project Gutenberg</title>
+    <link rel="self" title="This Page" href="/ebooks/search/">
+    <link rel="next" title="Next Page" href="/ebooks/search/?start_index=26">
+    <meta name="totalResults" content="26">
+    <meta name="startIndex" content="1">
+    <meta name="itemsPerPage" content="25">
+  </head>
+  <body class="search_results_page">
+    <header class="noprint">
+      <input type="radio" name="toggle" id="search-toggle" style="display: none">
+      <input type="radio" name="toggle" id="search-close" style="display: none">
+      <input type="checkbox" id="about-toggle" style="display: none">
+      <div class="logo-container">
+        <a href="#content" class="visually-hidden focusable skip-link">
+          Skip to main content
+        </a>
+        <a id="main_logo" href="/" class="no-hover">
+          <img src="/gutenberg/pg-logo-129x80.png" alt="Project Gutenberg" draggable="false">
+        </a>
+      </div>
+      <div class="top-header">
+        <form class="search-form" method="get" action="/ebooks/search/" accept-charset="utf-8">
+          <label for="search-toggle" class="search-icon-btn" aria-label="Open Search">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="currentColor" width="1em" height="1em">
+              <path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 0 0 1.48-5.34c-.47-2.78-2.79-5-5.59-5.34a6.505 6.505 0 0 0-7.27 7.27c.34 2.8 2.56 5.12 5.34 5.59a6.5 6.5 0 0 0 5.34-1.48l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"></path>
+              <path d="M0 0h24v24H0z" fill="none"></path>
+            </svg>
+          </label>
+          <label for="search-close" class="search-close-btn" aria-label="Close Search">X</label>
+          <input type="text" class="search-input" name="query" placeholder="Quick search" aria-label="Search books">
+          <button type="submit" class="search-button">Go!</button>
+        </form>
+        <div class="donate-container">
+          <form class="donatelink" action="https://www.paypal.com/cgi-bin/webscr" method="post" target="new">
+            <input type="hidden" name="cmd" value="_s-xclick">
+            <input type="hidden" name="hosted_button_id" value="XKAL6BZL3YPSN">
+            <input class="donbtn" type="image" src="/pics/en_US.gif" name="submit" alt="Donate via PayPal">
+          </form>
+          <a href="/donate/" class="donate-link"> Donate </a>
+        </div>
+      </div>
+      <label for="about-toggle" class="dropdown-overlay"></label>
+      <div class="lower-header">
+        <div class="dropdown" tabindex="0">
+          <label for="about-toggle" class="dropdown-button" aria-haspopup="true">About<span aria-hidden="true" class="dropdown-icon">▼</span></label>
+          <div class="dropdown-content">
+            <a href="/about/">About Project Gutenberg </a>
+            <a href="/about/contact_information.html">Contact Us</a>
+            <a href="/about/background/">History &amp; Philosophy</a>
+            <a href="/help/mobile.html">Kindle &amp; eReaders</a>
+            <a href="/help/">Help Pages</a>
+            <a href="/ebooks/offline_catalogs.html">Offline Catalogs</a>
+            <a href="/donate/">Donate</a>
+          </div>
+        </div>
+        <div class="main-links">
+          <a href="/browse/scores/top" class="link-freq-downloaded">Frequently Downloaded</a>
+          <a href="/ebooks/categories" class="link-main-categories">Main Categories</a>
+          <a href="/ebooks/bookshelf/" class="link-reading-lists">Reading Lists</a>
+          <a href="/ebooks/" class="link-advanced-search">Search Options</a>
+        </div>
+      </div>
+      <div class="tertiary-header">
+        <a href="/browse/scores/top" class="tertiary-link link-freq-downloaded">Frequently Downloaded</a>
+        <a href="/ebooks/categories" class="tertiary-link link-main-categories">Main Categories</a>
+      </div>
+    </header>
+    <div class="container">
+      <div id="content" class="page_content">
+        <h1><span class="icon icon_search"></span>Books:  Language: German </h1>
+        <div class="body">
+          <ul class="results">
+            <p>Sort By:</p>
+            <div class="sort-dropdown">
+              <button class="sort-dropdown-toggle" aria-haspopup="true" aria-expanded="false">
+                <span>Popularity</span><span>▼</span>
+              </button>
+              <div class="sort-dropdown-menu" role="menu">
+                <a href="/ebooks/search/?query=l.de&amp;sort_order=release_date" role="menuitem">Release Date</a>
+                <a href="/ebooks/search/?query=l.de&amp;sort_order=title" role="menuitem">Title</a>
+              </div>
+            </div>
+            <li class="statusline">
+              <div class="padded">
+                <span>Displaying results 1–25</span>
+                <span class="links">
+                  |
+                  <a title="Go to the next page of results." accesskey="+" href="/ebooks/search/?query=l.de&amp;start_index=26">Next</a>
+                </span>
+              </div>
+            </li>
+            <li class="booklink">
+              <a class="link" href="/ebooks/24571" accesskey="1">
+                <span class="cell leftcell with-cover">
+                  <img class="cover-thumb" src="/cache/epub/24571/pg24571.cover.small.jpg" alt="">
+                </span>
+                <span class="cell content">
+                  <span class="title">Der Struwwelpeter (German)</span>
+                  <span class="subtitle">Heinrich Hoffmann</span>
+                  <span class="extra">13699 downloads</span>
+                </span>
+                <span class="hstrut"></span>
+              </a>
+            </li>
+            <li class="statusline">
+              <div class="padded">
+                Displaying results 1–25
+                <span class="links">
+                  |
+                  <a title="Go to the next page of results." accesskey="+" href="/ebooks/search/?query=l.de&amp;start_index=26">Next</a>
+                </span>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="footer">
+      <footer>
+        <ul>
+          <li>
+            <a href="/about/" title="About Project Gutenberg">About Project Gutenberg</a>
+          </li>
+          <li>
+            <a href="/policy/privacy_policy.html" title="Privacy Policy">Privacy policy</a>
+          </li>
+          <li>
+            <a href="/policy/permission.html" title="Permissions, Licensing and other Common Requests">Permissions</a>
+          </li>
+          <li>
+            <a href="/policy/terms_of_use.html" title="Terms of Use">Terms of Use</a>
+          </li>
+          <li>
+            <a href="/about/contact_information.html" title="How to contact Project Gutenberg">Contact Us</a>
+          </li>
+          <li><a href="/help/" title="Help, How-To, Procedures, Guidance and Information">Help</a></li>
+        </ul>
+        <a href="https://www.ibiblio.org/" title="Project Gutenberg is hosted by ibiblio">
+          <img src="/gutenberg/ibiblio-logo.png" alt="ibiblio" width="110" height="32">
+        </a>
+      </footer>
+    </div>
+  </body>
+</html>
