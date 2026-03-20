@@ -1062,8 +1062,10 @@ If the file is already retrieved, will return file-location."
   (or (let ((fn (expand-file-name (format "%s.txt" filename) speed-type-directory))
             (url-request-method "GET"))
         (if (file-readable-p fn)
-            (find-file-noselect fn t)
+            (progn (message "Speed-type: Using cached version at FN(%s) for URL(%s)" fn url)
+                   (find-file-noselect fn t))
           (make-directory speed-type-directory 'parents)
+          (message "Speed-type: Going to retrieve FN(%s) from URL(%s)" fn url)
           (let ((buffer (url-retrieve-synchronously url nil nil 5)))
             (when (and buffer (= 200 (url-http-symbol-value-in-buffer
                                       'url-http-response-status
@@ -1293,8 +1295,9 @@ Expects CURRENT-BUFFER to be buffer of speed-type session."
   (if action-fn
       (let ((cb (current-buffer)))
         (unless speed-type--max-point-on-complete (save-excursion (speed-type-complete)))
-        (funcall action-fn)
-        (kill-buffer cb))
+        (let ((ab (funcall action-fn)))
+          (kill-buffer cb)
+          ab))
     (user-error "Action not available")))
 
 (defun speed-type-replay ()
@@ -1576,35 +1579,37 @@ Bounds search to END.
 Optional OBJECT can be a string. It will be inserted into a temp-buffer
 and property adjusted. A new string is returned with adjusted
 properties."
-  (dolist (pair map)
-    (let ((from (car pair))
-          (to   (cdr pair)))
-      (while (search-forward from end t 1)
-        (let* ((mstart (match-beginning 0))
-               (mend   (match-end 0))
-               (prop-start (previous-single-property-change mstart property speed-type--buffer (point-min)))
-               (prop-end   (next-single-property-change mend property speed-type--buffer (point-max)))
-               (len-from (- mend mstart))
-               (len-to   (length to))
-               (old-property-value (get-text-property mstart property)))
-          (replace-match to t t)
+  (let ((preset (point)))
+    (dolist (pair map)
+      (let ((from (car pair))
+            (to   (cdr pair)))
+        (goto-char preset)
+        (while (search-forward from end t 1)
+          (let* ((mstart (match-beginning 0))
+                 (mend   (match-end 0))
+                 (prop-start (previous-single-property-change mstart property speed-type--buffer (point-min)))
+                 (prop-end   (next-single-property-change mend property speed-type--buffer (point-max)))
+                 (len-from (- mend mstart))
+                 (len-to   (length to))
+                 (old-property-value (get-text-property mstart property)))
+            (replace-match to t t)
 
-          (cond
-           ;; TO longer → extend property region
-           ((> len-to len-from)
-            (setq end (+ end (- len-to len-from)))
-            (put-text-property
-             prop-start (+ prop-end (- len-to len-from))
-             property old-property-value))
-           ;; FROM longer → shrink property region
-           ((< len-to len-from)
-            (setq end (- end (- len-from len-to)))
-            (let ((new-prop-end (- prop-end (- len-from len-to))))
-              (when (and (> len-to 0) (> new-prop-end prop-start))
-                (put-text-property
-                 prop-start new-prop-end
-                 property old-property-value))))
-           (t (put-text-property prop-start prop-end property old-property-value))))))))
+            (cond
+             ;; TO longer → extend property region
+             ((> len-to len-from)
+              (setq end (+ end (- len-to len-from)))
+              (put-text-property
+               prop-start (+ prop-end (- len-to len-from))
+               property old-property-value))
+             ;; FROM longer → shrink property region
+             ((< len-to len-from)
+              (setq end (- end (- len-from len-to)))
+              (let ((new-prop-end (- prop-end (- len-from len-to))))
+                (when (and (> len-to 0) (> new-prop-end prop-start))
+                  (put-text-property
+                   prop-start new-prop-end
+                   property old-property-value))))
+             (t (put-text-property prop-start prop-end property old-property-value)))))))))
 
 (defun speed-type-re-forward-replace-map-adjust-properties (map property end)
   "Replace each FROM/TO pair in MAP while adjusting PROPERTY regions.
@@ -1616,37 +1621,39 @@ Bounds search to END.
 Optional OBJECT can be a string. It will be inserted into a temp-buffer
 and property adjusted. A new string is returned with adjusted
 properties."
-  (dolist (pair map)
-    (let ((from (car pair))
-          (to   (cdr pair)))
-      (while (re-search-forward from end t 1)
-        (let* ((mstart (match-beginning 0))
-               (mend   (match-end 0))
-               (prop-start (previous-single-property-change mstart property speed-type--buffer (point-min)))
-               (prop-end   (next-single-property-change mend property speed-type--buffer (point-max)))
-               (len-from (- mend mstart))
-               (replacement (match-substitute-replacement to t))
-               (len-to   (length replacement))
-               (old-property-value (get-text-property mstart property)))
-          (replace-match replacement t t)
+  (let ((preset (point)))
+    (dolist (pair map)
+      (let ((from (car pair))
+            (to   (cdr pair)))
+        (goto-char preset)
+        (while (re-search-forward from end t 1)
+          (let* ((mstart (match-beginning 0))
+                 (mend   (match-end 0))
+                 (prop-start (previous-single-property-change mstart property speed-type--buffer (point-min)))
+                 (prop-end   (next-single-property-change mend property speed-type--buffer (point-max)))
+                 (len-from (- mend mstart))
+                 (replacement (match-substitute-replacement to t))
+                 (len-to   (length replacement))
+                 (old-property-value (get-text-property mstart property)))
+            (replace-match replacement t t)
 
-          (cond
-           ;; TO longer → extend property region
-           ((> len-to len-from)
-            (setq end (+ end (- len-to len-from)))
-            (put-text-property
-             prop-start (+ prop-end (- len-to len-from))
-             property old-property-value))
+            (cond
+             ;; TO longer → extend property region
+             ((> len-to len-from)
+              (setq end (+ end (- len-to len-from)))
+              (put-text-property
+               prop-start (+ prop-end (- len-to len-from))
+               property old-property-value))
 
-           ;; FROM longer → shrink property region
-           ((< len-to len-from)
-            (setq end (- end (- len-from len-to)))
-            (let ((new-prop-end (- prop-end (- len-from len-to))))
-              (when (and (> len-to 0) (> new-prop-end prop-start))
-                (put-text-property
-                 prop-start new-prop-end
-                 property old-property-value))))
-           (t (put-text-property prop-start prop-end ',property old-property-value))))))))
+             ;; FROM longer → shrink property region
+             ((< len-to len-from)
+              (setq end (- end (- len-from len-to)))
+              (let ((new-prop-end (- prop-end (- len-from len-to))))
+                (when (and (> len-to 0) (> new-prop-end prop-start))
+                  (put-text-property
+                   prop-start new-prop-end
+                   property old-property-value))))
+             (t (put-text-property prop-start prop-end ',property old-property-value)))))))))
 
 (defun speed-type--connect-preview-buffer (s-buf c-buf)
   "Create preview-buffer and connect it to S-BUF and C-BUF.
@@ -2599,40 +2606,41 @@ will be used.  Else some text will be picked randomly."
                        (speed-type--retrieve-random-book-num speed-type-default-lang)
                      (nth (random (length speed-type-gb-book-list)) speed-type-gb-book-list)))
          (buffer (speed-type--gb-retrieve book-num)))
-    (if speed-type-randomize
-        (let* ((buf (speed-type-prepare-content-buffer-from-buffer buffer))
-               (title (with-current-buffer buf
-                        (save-excursion
-                          (when (re-search-forward "^Title: " nil t)
-                            (buffer-substring (point) (line-end-position))))))
-               (author (with-current-buffer buf
-                         (save-excursion
-                           (when (re-search-forward "^Author: " nil t)
-                             (buffer-substring (point) (line-end-position))))))
-               (start (with-current-buffer buf
-                        (when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
-                          (end-of-line 1)
-                          (forward-line 1)
-                          (point))))
-               (end (with-current-buffer buf
-                      (when (re-search-forward "***.END.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
-                        (beginning-of-line 1)
-                        (forward-line -1)
-                        (point)))))
-          (speed-type--setup buf
-                   start
-                   end
-                   'random-text-section
-                   :file-name (buffer-file-name buffer)
-                   :title title
-                   :author author
-                   :randomize t
-                   :replay-fn #'speed-type--get-replay-fn
-                   :go-next-fn #'speed-type-text
-                   :continue-fn (lambda () (speed-type--get-continue-fn end))
-                   :add-extra-word-content-fn (lambda () (speed-type--get-next-word-rolling buf))))
-      (speed-type-continue #'speed-type-text (buffer-file-name buffer)))
-    (kill-buffer buffer)))
+    (let ((stb (if speed-type-randomize
+                  (let* ((buf (speed-type-prepare-content-buffer-from-buffer buffer))
+                         (title (with-current-buffer buf
+                                  (save-excursion
+                                    (when (re-search-forward "^Title: " nil t)
+                                      (buffer-substring (point) (line-end-position))))))
+                         (author (with-current-buffer buf
+                                   (save-excursion
+                                     (when (re-search-forward "^Author: " nil t)
+                                       (buffer-substring (point) (line-end-position))))))
+                         (start (with-current-buffer buf
+                                  (when (re-search-forward "***.START.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+                                    (end-of-line 1)
+                                    (forward-line 1)
+                                    (point))))
+                         (end (with-current-buffer buf
+                                (when (re-search-forward "***.END.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
+                                  (beginning-of-line 1)
+                                  (forward-line -1)
+                                  (point)))))
+                    (speed-type--setup buf
+                             start
+                             end
+                             'random-text-section
+                             :file-name (buffer-file-name buffer)
+                             :title title
+                             :author author
+                             :randomize t
+                             :replay-fn #'speed-type--get-replay-fn
+                             :go-next-fn #'speed-type-text
+                             :continue-fn (lambda () (speed-type--get-continue-fn end))
+                             :add-extra-word-content-fn (lambda () (speed-type--get-next-word-rolling buf))))
+                 (speed-type-continue #'speed-type-text (buffer-file-name buffer)))))
+      (kill-buffer buffer)
+      stb)))
 
 ;;;###autoload
 (defun speed-type-quotes (&optional arg)
@@ -2761,7 +2769,7 @@ The file-name of the content is a converted form of URL."
   (let* ((buffer (speed-type-retrieve-pandoc url))
          (fn (buffer-file-name buffer))
          (go-next-fn (lambda () (call-interactively #'speed-type-pandoc))))
-    (if speed-type-randomize
+    (let ((stb (if speed-type-randomize
         (let* ((buf (speed-type-prepare-content-buffer-from-buffer buffer))
                (title (format "Text section of url %s" url))
                (start (with-current-buffer buf (point-min)))
@@ -2779,8 +2787,9 @@ The file-name of the content is a converted form of URL."
                    :add-extra-word-content-fn (lambda () (speed-type--get-next-word-rolling buf))
                    :syntax-table (with-current-buffer buf (syntax-table))
                    :fldf (with-current-buffer buf font-lock-defaults)))
-      (speed-type-continue go-next-fn fn))
-    (kill-buffer buffer) ;; buffer is retrieved, remove it again to not clutter the buffer-list
+        (speed-type-continue go-next-fn fn))))
+      (kill-buffer buffer) ;; buffer is retrieved, remove it again to not clutter the buffer-list
+      stb)
     ))
 
 ;;;###autoload
