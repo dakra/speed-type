@@ -1234,7 +1234,11 @@ Whitespace is determined using `char-syntax'."
 
 (defun speed-type--handle-del (start end)
   "Keep track of the statistics when a deletion occurs between START and END."
-  (delete-region start end)
+  (unless (and overwrite-mode ;; only insert old char, when not in overwrite-mode or del-key pressed
+               (not (= start end))
+               (not (eq this-command (key-binding (kbd "<deletechar>"))))
+               (not (eq this-command (key-binding (kbd "DEL")))))
+    (delete-region start end))
   (setq start (if (<= (point-max) start) (point-max) start))
   (setq end (if (<= (point-max) end) (point-max) end))
   (dotimes (i (- end start))
@@ -1465,6 +1469,8 @@ END is a point where the check stops to scan for diff."
                                           (or (and (eq speed-type-point-motion-on-error 'point-stay) (not (eq (get-text-property (1+ pos0) 'speed-type-char-status) 'error))) ;; staying, no movement, check current
                                               (and (> pos0 0) (eq speed-type-point-motion-on-error 'point-move) (not (eq (get-text-property pos0 'speed-type-char-status) 'error))))))) ;; moving, check previous
 
+        (message "new: %s old: %s" (char-to-string (aref new i)) (char-to-string (aref orig i)))
+
         (if (speed-type--check-same i orig new)
             (progn (setq is-same t)
                    (cl-incf speed-type--current-correct-streak)
@@ -1478,8 +1484,10 @@ END is a point where the check stops to scan for diff."
                  (setq speed-type--current-correct-streak 0)
                  (when non-consecutive-error-p (cl-incf speed-type--non-consecutive-errors))
                  (add-text-properties pos (1+ pos) '(speed-type-char-status error))
+                 (when overwrite-mode
+                   (add-text-properties pos (1+ pos) (list 'speed-type-orig-char (aref orig i))))
                  (speed-type-add-extra-words (+ (or speed-type-add-extra-words-on-error 0)
-                                                (or (and non-consecutive-error-p speed-type-add-extra-words-on-non-consecutive-errors) 0)))))
+                                      (or (and non-consecutive-error-p speed-type-add-extra-words-on-non-consecutive-errors) 0)))))
         (cl-incf speed-type--entries)
         (let ((f (if is-same 'speed-type-correct-face (if non-consecutive-error-p 'speed-type-error-face 'speed-type-consecutive-error-face))))
           (let ((overlay (make-overlay pos (1+ pos))))
@@ -1540,6 +1548,20 @@ content-buffer manually if there is a add-extra-word-function."
                     (not (save-excursion (text-property-search-backward 'speed-type-char-status 'error t)))
                     (not (text-property-any (point-min) (point-max) 'speed-type-char-status 'error)))))))
 
+(defun speed-type--swap-orig-char (str)
+  "Read any text-property: speed-type-oirg-char in STR and make a new string."
+  (with-temp-buffer
+    (insert str)
+    (goto-char (point-min))
+    (let ((m nil))
+      (while (setq m (text-property-search-forward 'speed-type-orig-char nil (lambda (_ v) v)))
+        (let* ((p-orig-char (apply 'propertize (char-to-string (get-text-property (prop-match-beginning m) 'speed-type-orig-char)) (text-properties-at (prop-match-beginning m))))
+               (new-orig-char (char-after (prop-match-beginning m))))
+          (delete-region (prop-match-beginning m) (prop-match-end m))
+          (insert p-orig-char)
+          (put-text-property (prop-match-beginning m) (prop-match-end m) 'speed-type-orig-char new-orig-char))))
+    (buffer-string)))
+
 (defun speed-type--change (start end _length)
   "Handle buffer change between START and END.
 LENGTH is ignored. Used for hook AFTER-CHANGE-FUNCTIONS.
@@ -1554,14 +1576,16 @@ are color coded and stats are gathered about the typing performance."
              (let ((new-text (buffer-substring start end))
                    (old-text speed-type--last-changed-text))
                (speed-type--handle-del start end)
-               (insert old-text)
+               (unless (and overwrite-mode ;; only insert old char, when not in overwrite-mode or del-key pressed
+                            (not (eq this-command (key-binding (kbd "<deletechar>"))))
+                            (not (eq this-command (key-binding (kbd "DEL")))))
+                 (insert (speed-type--swap-orig-char old-text)))
                (if (< start (point-max))
                    (let* ((end (if (> end (point-max)) (point-max) end))
-                          (orig (buffer-substring start end)))
-                     (when-let* ((overlay (and (equal new-text "")
-                                               (car (overlays-at end)))))
+                          (orig (if overwrite-mode old-text (buffer-substring start end))))
+                     (when-let* ((overlay (and (equal new-text "") (car (overlays-at end)))))
                        (move-overlay overlay (1- (overlay-end overlay)) (overlay-end overlay)) (current-buffer))
-                     (speed-type--diff orig new-text start end)
+                     (unless (string-blank-p orig) (speed-type--diff (speed-type--swap-orig-char orig) new-text start end))
                      (when (speed-type-complete-p) (speed-type-complete)))
                  (beep)
                  (message "End of buffer")))))))
