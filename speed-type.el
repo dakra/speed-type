@@ -427,7 +427,9 @@ Note: 'nil' values are excluded from the calculations.
   "C-c C-k" #'speed-type-complete
   "C-c C-f" #'speed-type-finish-animation
   "TAB" #'speed-type-code-tab
-  "RET" #'speed-type-code-ret)
+  "RET" #'speed-type-code-ret
+  "DEL" #'speed-type-delete-backward-char
+  "<deletechar>" #'speed-type-delete-forward-char)
 
 (define-derived-mode speed-type-mode fundamental-mode "SpeedType"
   "Major mode for practicing touch typing."
@@ -1476,6 +1478,7 @@ END is a point where the check stops to scan for diff."
                    (cl-incf speed-type--current-correct-streak)
                    (when (> speed-type--current-correct-streak speed-type--best-correct-streak)
                      (setq speed-type--best-correct-streak speed-type--current-correct-streak))
+                   (remove-text-properties pos (1+ pos) '(speed-type-orig-char nil))
                    (let ((char-status (get-text-property i 'speed-type-char-status orig)))
                      (when (eq char-status 'error) (cl-incf speed-type--corrections))
                      (add-text-properties pos (1+ pos) '(speed-type-char-status correct))))
@@ -1484,7 +1487,7 @@ END is a point where the check stops to scan for diff."
                  (setq speed-type--current-correct-streak 0)
                  (when non-consecutive-error-p (cl-incf speed-type--non-consecutive-errors))
                  (add-text-properties pos (1+ pos) '(speed-type-char-status error))
-                 (when overwrite-mode
+                 (when (and overwrite-mode (null (get-text-property i 'speed-type-oirg-char orig)))
                    (add-text-properties pos (1+ pos) (list 'speed-type-orig-char (aref orig i))))
                  (speed-type-add-extra-words (+ (or speed-type-add-extra-words-on-error 0)
                                       (or (and non-consecutive-error-p speed-type-add-extra-words-on-non-consecutive-errors) 0)))))
@@ -1497,7 +1500,7 @@ END is a point where the check stops to scan for diff."
     (if (or (eq speed-type-point-motion-on-error 'point-move)
             (string= new "")
             (not any-error))
-        (goto-char (- end (if overwrite-mode 1 0)))
+        (goto-char (- end (if (and overwrite-mode (not (member this-command (list (key-binding (kbd "<deletechar>")) (key-binding (kbd "DEL")))))) 1 0)))
       (goto-char (- end (if overwrite-mode 2 1)))
       (beep)
       (message "Wrong key"))
@@ -1576,16 +1579,17 @@ are color coded and stats are gathered about the typing performance."
              (let ((new-text (buffer-substring start end))
                    (old-text speed-type--last-changed-text))
                (speed-type--handle-del start end)
-               (unless (and overwrite-mode ;; only insert old char, when not in overwrite-mode or del-key pressed
-                            (not (eq this-command (key-binding (kbd "<deletechar>"))))
-                            (not (eq this-command (key-binding (kbd "DEL")))))
-                 (insert (speed-type--swap-orig-char old-text)))
+               (when (or (not overwrite-mode)
+                         (member this-command (list (key-binding (kbd "<deletechar>")) (key-binding (kbd "DEL")))))
+                 (let ((before-insert (point)))
+                   (insert (speed-type--swap-orig-char old-text))
+                   (remove-text-properties before-insert (point) '(speed-type-orig-char nil))))
                (if (< start (point-max))
                    (let* ((end (if (> end (point-max)) (point-max) end))
                           (orig (if overwrite-mode old-text (buffer-substring start end))))
                      (when-let* ((overlay (and (equal new-text "") (car (overlays-at end)))))
                        (move-overlay overlay (1- (overlay-end overlay)) (overlay-end overlay)) (current-buffer))
-                     (unless (string-blank-p orig) (speed-type--diff (speed-type--swap-orig-char orig) new-text start end))
+                     (speed-type--diff (speed-type--swap-orig-char orig) new-text start end)
                      (when (speed-type-complete-p) (speed-type-complete)))
                  (beep)
                  (message "End of buffer")))))))
@@ -2422,6 +2426,101 @@ LIMIT is supplied to the random-function."
         (add-hook 'after-change-functions #'speed-type--change nil t)))
     (goto-char (point)) ;; this is for undo making the "jump-back" part of this undo-group
     ))
+
+(defun speed-type-delete-forward-char (n &optional killflag)
+  "Delete the following N characters (previous if N is negative).
+If Transient Mark mode is enabled, the mark is active, and N is 1,
+delete the text in the region and deactivate the mark instead.
+To disable this, set variable `delete-active-region' to nil.
+
+If N is positive, characters composed into a single grapheme cluster
+count as a single character and are deleted together.  Thus,
+\"\\[universal-argument] 2 \\[delete-forward-char]\" when two grapheme clusters follow point will
+delete the characters composed into both of the grapheme clusters.
+
+Optional second arg KILLFLAG non-nil means to kill (save in kill
+ring) instead of delete.  If called interactively, a numeric
+prefix argument specifies N, and KILLFLAG is also set if a prefix
+argument is used.
+
+When killing, the killed text is filtered by
+`filter-buffer-substring' before it is saved in the kill ring, so
+the actual saved text might be different from what was killed."
+  (declare (interactive-only delete-char))
+  (interactive "p\nP")
+  (unless (integerp n)
+    (signal 'wrong-type-argument (list 'integerp n)))
+  (cond ((and (use-region-p)
+              delete-active-region
+              (= n 1))
+         ;; If a region is active, kill or delete it.
+         (if (eq delete-active-region 'kill)
+             (kill-region (region-beginning) (region-end) 'region)
+           (funcall region-extract-function 'delete-only)))
+
+        ;; For forward deletion, treat composed characters as a single
+        ;; character to delete.
+        ((>= n 1)
+         (let ((pos (point))
+               start cmp)
+           (setq start pos)
+           (while (> n 0)
+             ;; 'find-composition' will return (FROM TO ....) or nil.
+             (setq cmp (find-composition pos))
+             (setq pos
+                   (if cmp
+                       (let ((from (car cmp))
+                             (to (cadr cmp)))
+                         (cond
+                          ((and (= (length cmp) 3) ; static composition
+                                (booleanp (nth 2 cmp)))
+                           to)
+                          ;; TO can be at POS, in which case we want
+                          ;; to make sure we advance at least by 1
+                          ;; character.
+                          ((<= to pos)
+                           (1+ pos))
+                          (t
+                           (lgstring-glyph-boundary (nth 2 cmp)
+                                                    from (1+ pos)))))
+                     (1+ pos)))
+             (setq n (1- n)))
+           (delete-char (- pos start) killflag)))
+
+        ;; Otherwise, do simple deletion.
+        (t (delete-char n killflag))))
+
+(defun speed-type-delete-backward-char (n &optional killflag)
+  "Delete the previous N characters (following if N is negative).
+If Transient Mark mode is enabled, the mark is active, and N is 1,
+delete the text in the region and deactivate the mark instead.
+To disable this, set option `delete-active-region' to nil.
+
+Optional second arg KILLFLAG, if non-nil, means to kill (save in
+kill ring) instead of delete.  If called interactively, a numeric
+prefix argument specifies N, and KILLFLAG is also set if a prefix
+argument is used.
+
+When killing, the killed text is filtered by
+`filter-buffer-substring' before it is saved in the kill ring, so
+the actual saved text might be different from what was killed.
+
+In Overwrite mode, single character backward deletion may replace
+tabs with spaces so as to back over columns, unless point is at
+the end of the line."
+  (declare (interactive-only delete-char))
+  (interactive "p\nP")
+  (unless (integerp n)
+    (signal 'wrong-type-argument (list 'integerp n)))
+  (cond ((and (use-region-p)
+              delete-active-region
+              (= n 1))
+         ;; If a region is active, kill or delete it.
+         (if (eq delete-active-region 'kill)
+             (kill-region (region-beginning) (region-end) 'region)
+           (funcall region-extract-function 'delete-only)))
+        ;; Otherwise, do simple deletion.
+        (t (delete-char (- n) killflag))))
 
 (defun speed-type-code-tab ()
   "A command to be mapped to TAB when speed typing code."
