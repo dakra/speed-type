@@ -41,6 +41,9 @@
 (defun speed-type-test-user-input (str)
   "Helper function to simulate an insertion from user."
   (cond
+   ((string= "RET" str)
+    (let ((this-command (keymap-lookup nil str)))
+      (funcall this-command)))
    ((string= "DEL" str)
     (let ((this-command (keymap-lookup nil str)))
       (funcall this-command 1)))
@@ -361,7 +364,7 @@ Also assure when that added words are downcased too."
 
 (ert-deftest speed-type-test/general-overwrite-region ()
   "Do a general test with `speed-type-region' with fundamental mode and a prog-mode, checking content, overlays, point and point-motion, buffer-variables and statistic file."
-  (let ((content "abcde")
+  (let ((content "abcde\n\nabcde")
         (mode (nth (random 2) '(fundamental-mode emacs-lisp-mode)))
         (speed-type-statistic-filename (concat (temporary-file-directory) "speed-type-statistic.el")))
     (with-temp-buffer
@@ -381,10 +384,13 @@ Also assure when that added words are downcased too."
               (speed-type-test-user-input "c")
               (speed-type-test-user-input "!")
               (speed-type-test-user-input "!")
+              (speed-type-test-user-input "RET")
+              (speed-type-test-user-input "RET")
+              (speed-type-test-user-input "a")
                                         ;       (should (= speed-type--start-time 1753299414.2124302))
               (should (eq speed-type--buffer (current-buffer)))
                                         ; (should (eq speed-type--content-buffer (get-buffer "*speed-type-content-buffer*")))
-              (should (= speed-type--entries 5))
+              (should (= speed-type--entries 7))
               (should (= speed-type--errors 4))
               (should (= speed-type--non-consecutive-errors 2))
               (should (= speed-type--corrections 1))
