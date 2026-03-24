@@ -1236,10 +1236,8 @@ Whitespace is determined using `char-syntax'."
 
 (defun speed-type--handle-del (start end)
   "Keep track of the statistics when a deletion occurs between START and END."
-  (unless (and overwrite-mode ;; only insert old char, when not in overwrite-mode or del-key pressed
-               (not (= start end))
-               (not (eq this-command (key-binding (kbd "<deletechar>"))))
-               (not (eq this-command (key-binding (kbd "DEL")))))
+  (when (or (not overwrite-mode) ;; only insert old char, when not in overwrite-mode or del-key pressed
+            (member this-command (list (key-binding (kbd "<deletechar>")) (key-binding (kbd "DEL")))))
     (delete-region start end))
   (setq start (if (<= (point-max) start) (point-max) start))
   (setq end (if (<= (point-max) end) (point-max) end))
@@ -1470,8 +1468,6 @@ END is a point where the check stops to scan for diff."
              (non-consecutive-error-p (or (and (<= pos0 0) (= speed-type--non-consecutive-errors 0)) ;; first char is always a non-consecutive error if counter is 0
                                           (or (and (eq speed-type-point-motion-on-error 'point-stay) (not (eq (get-text-property (1+ pos0) 'speed-type-char-status) 'error))) ;; staying, no movement, check current
                                               (and (> pos0 0) (eq speed-type-point-motion-on-error 'point-move) (not (eq (get-text-property pos0 'speed-type-char-status) 'error))))))) ;; moving, check previous
-
-        (message "new: %s old: %s" (char-to-string (aref new i)) (char-to-string (aref orig i)))
 
         (if (speed-type--check-same i orig new)
             (progn (setq is-same t)
