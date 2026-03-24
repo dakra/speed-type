@@ -220,7 +220,7 @@ E.g. if you always want lowercase words, set:
                  (const :tag "Telugu" te)
                  (const :tag "Welsh" cy)))
 
-(defcustom speed-type-replace-regexs '()
+(defcustom speed-type-replace-regexs '(("\\^(\\(\\[[0-9]+\\]\\)+)" . ""))
   "Alist of regex to replace and their replacement, in the form:
 `(bad-regex . good-regex)'
 To remove without replacement, use the form: `(bad-regex . \"\")'.
