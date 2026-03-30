@@ -1236,8 +1236,8 @@ Whitespace is determined using `char-syntax'."
 
 (defun speed-type--handle-del (start end)
   "Keep track of the statistics when a deletion occurs between START and END."
-  (when (or (not overwrite-mode) ;; only insert old char, when not in overwrite-mode or del-key pressed
-            (member this-command (list (key-binding (kbd "<deletechar>")) (key-binding (kbd "DEL")))))
+  (when (or (not overwrite-mode)
+            (member this-command (list (key-binding (kbd "<deletechar>")) (key-binding (kbd "DEL")) (key-binding (kbd "RET")))))
     (delete-region start end))
   (setq start (if (<= (point-max) start) (point-max) start))
   (setq end (if (<= (point-max) end) (point-max) end))
@@ -1496,7 +1496,7 @@ END is a point where the check stops to scan for diff."
     (if (or (eq speed-type-point-motion-on-error 'point-move)
             (string= new "")
             (not any-error))
-        (goto-char (- end (if (and overwrite-mode (not (member this-command (list (key-binding (kbd "<deletechar>")) (key-binding (kbd "DEL")))))) 1 0)))
+        (goto-char (- end (if (and overwrite-mode (not (member this-command (list (key-binding (kbd "<deletechar>")) (key-binding (kbd "DEL")) (key-binding (kbd "RET")))))) 1 0)))
       (goto-char (- end (if overwrite-mode 2 1)))
       (beep)
       (message "Wrong key"))
@@ -1582,7 +1582,9 @@ are color coded and stats are gathered about the typing performance."
                    (remove-text-properties before-insert (point) '(speed-type-orig-char nil))))
                (if (< start (point-max))
                    (let* ((end (if (> end (point-max)) (point-max) end))
-                          (orig (if overwrite-mode old-text (buffer-substring start end))))
+                          (orig (if (or (not overwrite-mode)
+                                        (member this-command (list (key-binding (kbd "<deletechar>")) (key-binding (kbd "DEL")) (key-binding (kbd "RET")))))
+                                    (buffer-substring start end) old-text)))
                      (when-let* ((overlay (and (equal new-text "") (car (overlays-at end)))))
                        (move-overlay overlay (1- (overlay-end overlay)) (overlay-end overlay)) (current-buffer))
                      (speed-type--diff (speed-type--swap-orig-char orig) new-text start end)
