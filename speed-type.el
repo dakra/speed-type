@@ -107,9 +107,9 @@ When undo is disabled this behaves like `progn'."
          46 4300 345 1080 2500 829 1260 6130 1184 768 32032 521 1399 55)
   "List of book numbers to use from the gutenberg web site.
 
-+Book numbers can be picked from https://www.gutenberg.org, when looking
-+at a book url (e.g for url https://www.gutenberg.org/ebooks/14577,
-+14577 is the book number)."
+Book numbers can be picked from https://www.gutenberg.org, when looking
+at a book url (e.g for url https://www.gutenberg.org/ebooks/14577,
+14577 is the book number)."
   :type '(repeat integer))
 
 (defcustom speed-type-directory (locate-user-emacs-file "speed-type")
