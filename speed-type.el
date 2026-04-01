@@ -427,7 +427,9 @@ Note: 'nil' values are excluded from the calculations.
   "C-c C-k" #'speed-type-complete
   "C-c C-f" #'speed-type-finish-animation
   "TAB" #'speed-type-code-tab
-  "RET" #'speed-type-code-ret)
+  "RET" #'speed-type-code-ret
+  "DEL" #'speed-type-delete-backward-char
+  "<deletechar>" #'speed-type-delete-forward-char)
 
 (define-derived-mode speed-type-mode fundamental-mode "SpeedType"
   "Major mode for practicing touch typing."
@@ -990,7 +992,7 @@ Therefore `secure-hash-algorithms' should provide sha1 or md5 else
               (short-hash-str (substring hash-str 0 (min 7 (length hash-str)))))
          short-hash-str)))))
 
-(defconst speed-type-pandoc-request-header "\"User-Agent:Emacs: speed-type/1.4 https://github.com/dakra/speed-type\""
+(defconst speed-type-pandoc-request-header "\"User-Agent:Emacs: speed-type/1.7 https://github.com/dakra/speed-type\""
   "This const is used when pandoc is retrieving content from an url.")
 
 (defun speed-type--pandoc-top-filename (url)
@@ -1236,7 +1238,35 @@ Whitespace is determined using `char-syntax'."
 
 (defun speed-type--handle-del (start end)
   "Keep track of the statistics when a deletion occurs between START and END."
-  (delete-region start end)
+  (when (speed-type-handle-overwrite-mode-p)
+    (if (and overwrite-mode (member this-original-command '(yank)))
+        (progn
+          (goto-char start)
+          (while (search-forward "\n" end t 1)
+            (delete-char -1)
+            (insert (speed-type-prepare-string " " speed-type-ignore-whitespace-for-complete
+                                     nil
+                                     speed-type-transform-hook
+                                     (make-speed-type-transform-context :major-mode (with-current-buffer speed-type--content-buffer major-mode)
+                                                                   :text-type speed-type--text-type
+                                                                   :start nil
+                                                                   :end nil
+                                                                   :entries speed-type--entries
+                                                                   :errors speed-type--errors
+                                                                   :non-consecutive-errors speed-type--non-consecutive-errors
+                                                                   :corrections speed-type--corrections
+                                                                   :best-correct-streak speed-type--best-correct-streak))))
+          (setq speed-type--last-changed-text (buffer-substring end (min (+ end (- end start)) (point-max))))
+          (delete-region end (min (+ end (- end start)) (point-max)))
+          (goto-char start)
+          (let ((mstart nil))
+            (while (string-match "\n" speed-type--last-changed-text mstart)
+              (setq mstart (match-end 0))
+              (goto-char (+ start (match-beginning 0)))
+              (unless (looking-at "\n")
+                (delete-char 1)
+                (insert (match-string 0 speed-type--last-changed-text))))))
+      (delete-region start end)))
   (setq start (if (<= (point-max) start) (point-max) start))
   (setq end (if (<= (point-max) end) (point-max) end))
   (dotimes (i (- end start))
@@ -1473,6 +1503,7 @@ END is a point where the check stops to scan for diff."
                    (cl-incf speed-type--current-correct-streak)
                    (when (> speed-type--current-correct-streak speed-type--best-correct-streak)
                      (setq speed-type--best-correct-streak speed-type--current-correct-streak))
+                   (remove-text-properties pos (1+ pos) '(speed-type-orig-char nil))
                    (let ((char-status (get-text-property i 'speed-type-char-status orig)))
                      (when (eq char-status 'error) (cl-incf speed-type--corrections))
                      (add-text-properties pos (1+ pos) '(speed-type-char-status correct))))
@@ -1481,8 +1512,10 @@ END is a point where the check stops to scan for diff."
                  (setq speed-type--current-correct-streak 0)
                  (when non-consecutive-error-p (cl-incf speed-type--non-consecutive-errors))
                  (add-text-properties pos (1+ pos) '(speed-type-char-status error))
+                 (when (and overwrite-mode (null (get-text-property i 'speed-type-oirg-char orig)))
+                   (add-text-properties pos (1+ pos) (list 'speed-type-orig-char (aref orig i))))
                  (speed-type-add-extra-words (+ (or speed-type-add-extra-words-on-error 0)
-                                                (or (and non-consecutive-error-p speed-type-add-extra-words-on-non-consecutive-errors) 0)))))
+                                      (or (and non-consecutive-error-p speed-type-add-extra-words-on-non-consecutive-errors) 0)))))
         (cl-incf speed-type--entries)
         (let ((f (if is-same 'speed-type-correct-face (if non-consecutive-error-p 'speed-type-error-face 'speed-type-consecutive-error-face))))
           (let ((overlay (make-overlay pos (1+ pos))))
@@ -1492,8 +1525,8 @@ END is a point where the check stops to scan for diff."
     (if (or (eq speed-type-point-motion-on-error 'point-move)
             (string= new "")
             (not any-error))
-        (goto-char (- end (if overwrite-mode 1 0)))
-      (goto-char (- end (if overwrite-mode 2 1)))
+        (goto-char (- end (if (speed-type-handle-overwrite-mode-p) 0 1)))
+      (goto-char (- end (if (speed-type-handle-overwrite-mode-p) 2 1)))
       (beep)
       (message "Wrong key"))
     (not any-error)))
@@ -1543,6 +1576,21 @@ content-buffer manually if there is a add-extra-word-function."
                     (not (save-excursion (text-property-search-backward 'speed-type-char-status 'error t)))
                     (not (text-property-any (point-min) (point-max) 'speed-type-char-status 'error)))))))
 
+(defun speed-type--swap-orig-char (str)
+  "Read any text-property: speed-type-oirg-char in STR and make a new string."
+  (with-temp-buffer
+    (insert str)
+    (goto-char (point-min))
+    (while (not (eobp))
+      (when (get-text-property (point) 'speed-type-orig-char)
+        (let* ((p-orig-char (apply 'propertize (char-to-string (get-text-property (point) 'speed-type-orig-char)) (text-properties-at (point))))
+               (new-orig-char (char-after (point))))
+          (delete-region (point) (1+ (point)))
+          (save-excursion (insert p-orig-char))
+          (put-text-property (point) (1+ (point)) 'speed-type-orig-char new-orig-char)))
+      (forward-char))
+    (buffer-string)))
+
 (defun speed-type--change (start end _length)
   "Handle buffer change between START and END.
 LENGTH is ignored. Used for hook AFTER-CHANGE-FUNCTIONS.
@@ -1554,20 +1602,23 @@ are color coded and stats are gathered about the typing performance."
          nil)
         (t (progn
              (speed-type--resume)
-             (let ((new-text (buffer-substring start end))
-                   (old-text speed-type--last-changed-text))
+             (let ((new-text (buffer-substring start end)))
                (speed-type--handle-del start end)
-               (insert old-text)
-               (if (< start (point-max))
-                   (let* ((end (if (> end (point-max)) (point-max) end))
-                          (orig (buffer-substring start end)))
-                     (when-let* ((overlay (and (equal new-text "")
-                                               (car (overlays-at end)))))
-                       (move-overlay overlay (1- (overlay-end overlay)) (overlay-end overlay)) (current-buffer))
-                     (speed-type--diff orig new-text start end)
-                     (when (speed-type-complete-p) (speed-type-complete)))
-                 (beep)
-                 (message "End of buffer")))))))
+               (let ((old-text speed-type--last-changed-text))
+                 (when (and (speed-type-handle-overwrite-mode-p) (not (and overwrite-mode (member this-original-command '(yank)))))
+                   (let ((before-insert (point)))
+                     (insert (speed-type--swap-orig-char old-text))
+                     (remove-text-properties before-insert (point) '(speed-type-orig-char nil))))
+                 (if (< start (point-max))
+                     (let* ((end (if (> end (point-max)) (point-max) end))
+                            (orig (if (and (speed-type-handle-overwrite-mode-p) (not (and overwrite-mode (member this-original-command '(yank)))))
+                                      (buffer-substring start end) old-text)))
+                       (when-let* ((overlay (and (equal new-text "") (car (overlays-at end)))))
+                         (move-overlay overlay (1- (overlay-end overlay)) (overlay-end overlay)) (current-buffer))
+                       (speed-type--diff (speed-type--swap-orig-char orig) new-text start end)
+                       (when (speed-type-complete-p) (speed-type-complete)))
+                   (beep)
+                   (message "End of buffer"))))))))
 
 (defun speed-type-forward-replace-map-adjust-properties (map property end)
   "Replace each FROM/TO pair in MAP while adjusting PROPERTY regions.
@@ -2405,6 +2456,30 @@ LIMIT is supplied to the random-function."
         (add-hook 'after-change-functions #'speed-type--change nil t)))
     (goto-char (point)) ;; this is for undo making the "jump-back" part of this undo-group
     ))
+
+(defun speed-type-handle-overwrite-mode-p ()
+  "Check if special logic is needed because of `overwrite-mode'."
+  (or (not overwrite-mode)
+      (not (member this-command '(self-insert-command)))
+      (eolp)))
+
+(defun speed-type-delete-forward-char (n &optional killflag)
+  "Delete char forward while in a speed-type session.
+
+N and KILLFLAG are described in `delete-forward-char' from simple.el."
+  (declare (interactive-only delete-char))
+  (interactive "p\nP")
+  (let ((overwrite-mode nil))
+    (call-interactively 'delete-forward-char)))
+
+(defun speed-type-delete-backward-char (n &optional killflag)
+  "Delete char backward while in an speed-type session.
+
+N and KILLFLAG are described in `delete-backward-char' from simple.el."
+  (declare (interactive-only delete-char))
+  (interactive "p\nP")
+  (let ((overwrite-mode nil))
+    (call-interactively 'delete-backward-char)))
 
 (defun speed-type-code-tab ()
   "A command to be mapped to TAB when speed typing code."

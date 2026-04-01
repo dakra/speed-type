@@ -93,6 +93,18 @@ See all custom variables of speed-type pressing:
 M-x customize-group speed-type RET
 ```
 
+### Transform or filter content with regex
+To replace certain regexs with a replacement there exists
+`speed-type-replace-regexs`. It's a list of pairs which are replaced
+in order. You can also define the empty-string as replacement to
+"filter" certain annyoing patterns.
+
+For example, filter wikipedia references when using `speed-type-pandoc`
+```emacs-lisp
+;; replace wikipedia references
+(add-to-list 'speed-type-replace-regexs '("\\^(\\(\\[[0-9]+\\]\\)+)" . ""))
+```
+
 ### Customize cursor motion
 
 By default the cursor moves forward with each typed character and
