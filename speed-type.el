@@ -1240,17 +1240,32 @@ Whitespace is determined using `char-syntax'."
   "Keep track of the statistics when a deletion occurs between START and END."
   (when (speed-type-handle-overwrite-mode-p)
     (if (and overwrite-mode (member this-original-command '(yank)))
-        (progn (setq speed-type--last-changed-text (buffer-substring end (min (+ end (- end start)) (point-max))))
-               (delete-region end (min (+ end (- end start)) (point-max)))
-               (goto-char start)
-               (let ((mstart nil))
-                 (while (string-match "\n" speed-type--last-changed-text mstart)
-                   (setq mstart (match-end 0))
-                   (goto-char (+ start (match-beginning 0)))
-                   (unless (looking-at "\n")
-                     (delete-char 1)
-                     (insert "\n"))
-                   )))
+        (progn
+          (goto-char start)
+          (while (search-forward "\n" end t 1)
+            (delete-char -1)
+            (insert (speed-type-prepare-string " " speed-type-ignore-whitespace-for-complete
+                                     nil
+                                     speed-type-transform-hook
+                                     (make-speed-type-transform-context :major-mode (with-current-buffer speed-type--content-buffer major-mode)
+                                                                   :text-type speed-type--text-type
+                                                                   :start nil
+                                                                   :end nil
+                                                                   :entries speed-type--entries
+                                                                   :errors speed-type--errors
+                                                                   :non-consecutive-errors speed-type--non-consecutive-errors
+                                                                   :corrections speed-type--corrections
+                                                                   :best-correct-streak speed-type--best-correct-streak))))
+          (setq speed-type--last-changed-text (buffer-substring end (min (+ end (- end start)) (point-max))))
+          (delete-region end (min (+ end (- end start)) (point-max)))
+          (goto-char start)
+          (let ((mstart nil))
+            (while (string-match "\n" speed-type--last-changed-text mstart)
+              (setq mstart (match-end 0))
+              (goto-char (+ start (match-beginning 0)))
+              (unless (looking-at "\n")
+                (delete-char 1)
+                (insert (match-string 0 speed-type--last-changed-text))))))
       (delete-region start end)))
   (setq start (if (<= (point-max) start) (point-max) start))
   (setq end (if (<= (point-max) end) (point-max) end))
@@ -1566,13 +1581,14 @@ content-buffer manually if there is a add-extra-word-function."
   (with-temp-buffer
     (insert str)
     (goto-char (point-min))
-    (let ((m nil))
-      (while (setq m (text-property-search-forward 'speed-type-orig-char nil (lambda (_ v) v)))
-        (let* ((p-orig-char (apply 'propertize (char-to-string (get-text-property (prop-match-beginning m) 'speed-type-orig-char)) (text-properties-at (prop-match-beginning m))))
-               (new-orig-char (char-after (prop-match-beginning m))))
-          (delete-region (prop-match-beginning m) (prop-match-end m))
-          (insert p-orig-char)
-          (put-text-property (prop-match-beginning m) (prop-match-end m) 'speed-type-orig-char new-orig-char))))
+    (while (not (eobp))
+      (when (get-text-property (point) 'speed-type-orig-char)
+        (let* ((p-orig-char (apply 'propertize (char-to-string (get-text-property (point) 'speed-type-orig-char)) (text-properties-at (point))))
+               (new-orig-char (char-after (point))))
+          (delete-region (point) (1+ (point)))
+          (save-excursion (insert p-orig-char))
+          (put-text-property (point) (1+ (point)) 'speed-type-orig-char new-orig-char)))
+      (forward-char))
     (buffer-string)))
 
 (defun speed-type--change (start end _length)
@@ -1589,8 +1605,6 @@ are color coded and stats are gathered about the typing performance."
              (let ((new-text (buffer-substring start end)))
                (speed-type--handle-del start end)
                (let ((old-text speed-type--last-changed-text))
-                 (message "new last-changed-text %s" speed-type--last-changed-text)
-                 (message "new last-changed-text swapped %s" (speed-type--swap-orig-char old-text))
                  (when (and (speed-type-handle-overwrite-mode-p) (not (and overwrite-mode (member this-original-command '(yank)))))
                    (let ((before-insert (point)))
                      (insert (speed-type--swap-orig-char old-text))
