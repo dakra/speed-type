@@ -2800,7 +2800,11 @@ If FILE-NAME is nil, will use file-name of CURRENT-BUFFER."
                             (end-of-line 1)
                             (forward-line 1)
                             (point))
-                          (point-min)))
+                          (when (string-match-p "wikipedia" fn)
+                            (re-search-forward "^\\([^ |-]+ \\).*\\." nil t 2)
+                            (beginning-of-line)
+                            (point))
+                         (point-min)))
                (end (or (when (re-search-forward "***.END.OF.\\(THIS\\|THE\\).PROJECT.GUTENBERG.EBOOK" nil t)
                           (beginning-of-line 1)
                           (forward-line -1)
@@ -2847,7 +2851,13 @@ The file-name of the content is a converted form of URL."
     (let ((stb (if speed-type-randomize
         (let* ((buf (speed-type-prepare-content-buffer-from-buffer buffer))
                (title (format "Text section of url %s" url))
-               (start (with-current-buffer buf (point-min)))
+               (start (with-current-buffer buf
+                        (or
+                         (when (string-match-p "wikipedia" fn)
+                           (re-search-forward "^\\([^ |-]+ \\).*\\." nil t 2)
+                           (beginning-of-line)
+                           (point))
+                         (point-min))))
                (end (with-current-buffer buf (point-max))))
           (speed-type--setup buf
                    start
