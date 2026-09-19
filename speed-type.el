@@ -389,6 +389,7 @@ Total time:                   %s
 Total chars:                  %d
 Corrections:                  %d
 Best correct streak:          %d
+Worst error streak:           %d
 Total errors:                 %d
 Total non-consecutive errors: %d
 %s")
@@ -410,6 +411,7 @@ Note: 'nil' values are excluded from the calculations.
 | Total chars:            | %7d | %7d | %7d | %7d | %7d |
 | Corrections:            | %7d | %7d | %7d | %7d | %7d |
 | Best correct streak:    | %7d | %7d | %7d | %7d | %7d |
+| Worst error streak:     | %7d | %7d | %7d | %7d | %7d |
 | Total errors:           | %7d | %7d | %7d | %7d | %7d |
 | Non-consecutive errors: | %7d | %7d | %7d | %7d | %7d |")
 
@@ -474,6 +476,8 @@ It's used in the before-change-hook.")
 (defvar-local speed-type--errors 0 "Counts mistyped characters.")
 (defvar-local speed-type--current-correct-streak 0 "Tracks the correct streak since last error or beginning.")
 (defvar-local speed-type--best-correct-streak 0 "The highest count of consecutively correct typed characters.")
+(defvar-local speed-type--current-error-streak 0 "Tracks the error streak since last error or beginning.")
+(defvar-local speed-type--worst-error-streak 0 "The highest count of consecutively falsely typed characters.")
 (defvar-local speed-type--non-consecutive-errors 0 "Counts mistyped characters but only if previous was correct.")
 (defvar-local speed-type--corrections 0
   "Counts the speed-type-status transition of characters from error to correct.")
@@ -627,7 +631,8 @@ SPEED-TYPE-MAYBE-UPGRADE-FILE-FORMAT."
           (cons 'speed-type--accuracy (speed-type--accuracy entries (- entries errors) corrections))
           (cons 'speed-type--continue-at-point (unless speed-type--randomize (speed-type--get-continue-point)))
           (cons 'speed-type--file-name speed-type--file-name)
-          (cons 'speed-type--best-correct-streak speed-type--best-correct-streak))))
+          (cons 'speed-type--best-correct-streak speed-type--best-correct-streak)
+          (cons 'speed-type--worst-error-streak speed-type--worst-error-streak))))
 
 (defun speed-type--stop-word-p (word)
   "Return given WORD when it is a stop-word.
@@ -899,9 +904,10 @@ Additional provide length and skill-value."
          (speed-type--calc-median 'speed-type--entries stats) (speed-type--calc-avg 'speed-type--entries stats) (speed-type--calc-standard-deviation 'speed-type--entries stats) (speed-type--calc-min 'speed-type--entries stats) (speed-type--calc-max 'speed-type--entries stats)
          (speed-type--calc-median 'speed-type--corrections stats) (speed-type--calc-avg 'speed-type--corrections stats) (speed-type--calc-standard-deviation 'speed-type--corrections stats) (speed-type--calc-min 'speed-type--corrections stats) (speed-type--calc-max 'speed-type--corrections stats)
          (speed-type--calc-median 'speed-type--best-correct-streak stats) (speed-type--calc-avg 'speed-type--best-correct-streak stats) (speed-type--calc-standard-deviation 'speed-type--best-correct-streak stats) (speed-type--calc-min 'speed-type--best-correct-streak stats) (speed-type--calc-max 'speed-type--best-correct-streak stats)
+         (speed-type--calc-median 'speed-type-worst-error-streak stats) (speed-type--calc-avg 'speed-type-worst-error-streak stats) (speed-type--calc-standard-deviation 'speed-type-worst-error-streak stats) (speed-type--calc-min 'speed-type-worst-error-streak stats) (speed-type--calc-max 'speed-type-worst-error-streak stats)
          (speed-type--calc-median 'speed-type--errors stats) (speed-type--calc-avg 'speed-type--errors stats) (speed-type--calc-standard-deviation 'speed-type--errors stats) (speed-type--calc-min 'speed-type--errors stats) (speed-type--calc-max 'speed-type--errors stats)
          (speed-type--calc-median 'speed-type--non-consecutive-errors stats) (speed-type--calc-avg 'speed-type--non-consecutive-errors stats) (speed-type--calc-standard-deviation 'speed-type--non-consecutive-errors stats) (speed-type--calc-min 'speed-type--non-consecutive-errors stats) (speed-type--calc-max 'speed-type--non-consecutive-errors stats)))
-    '(0 "empty" "empty" "empty" "empty" "empty" 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)))
+    '(0 "empty" "empty" "empty" "empty" "empty" 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0)))
 
 (defun speed-type-display-menu ()
   "Display and set controls the user can make in this speed-type session.
@@ -1324,7 +1330,7 @@ Expects CURRENT-BUFFER to be buffer of speed-type session."
   (setq speed-type--last-changed-text (buffer-substring start end)
         speed-type--last-modified-tick (buffer-chars-modified-tick)))
 
-(defun speed-type-format-stats (entries actions errors non-consecutive-errors corrections best-correct-streak seconds)
+(defun speed-type-format-stats (entries actions errors non-consecutive-errors corrections best-correct-streak worst-error-streak seconds)
   "Format statistic data using given arguments:
 ENTRIES ACTIONS ERRORS NON-CONSECUTIVE-ERRORS CORRECTIONS BEST-CORRECT-STREAK SECONDS."
   (format speed-type-stats-format
@@ -1340,6 +1346,7 @@ ENTRIES ACTIONS ERRORS NON-CONSECUTIVE-ERRORS CORRECTIONS BEST-CORRECT-STREAK SE
           entries
           corrections
           best-correct-streak
+          worst-error-streak
           errors
           non-consecutive-errors
           speed-type-explaining-message))
@@ -1371,6 +1378,7 @@ ENTRIES ACTIONS ERRORS NON-CONSECUTIVE-ERRORS CORRECTIONS BEST-CORRECT-STREAK SE
                speed-type--non-consecutive-errors
                speed-type--corrections
                speed-type--best-correct-streak
+               speed-type--worst-error-streak
                (speed-type--elapsed-time speed-type--time-register)))
       (speed-type-display-menu))))
 
@@ -1473,10 +1481,14 @@ END is a point where the check stops to scan for diff."
                    (cl-incf speed-type--current-correct-streak)
                    (when (> speed-type--current-correct-streak speed-type--best-correct-streak)
                      (setq speed-type--best-correct-streak speed-type--current-correct-streak))
+                   (setq speed-type--current-error-streak 0)
                    (let ((char-status (get-text-property i 'speed-type-char-status orig)))
                      (when (eq char-status 'error) (cl-incf speed-type--corrections))
                      (add-text-properties pos (1+ pos) '(speed-type-char-status correct))))
           (progn (unless any-error (setq any-error t))
+                 (cl-incf speed-type--current-error-streak)
+                 (when (> speed-type--current-error-streak speed-type--worst-error-streak)
+                   (setq speed-type--worst-error-streak speed-type--current-error-streak))
                  (cl-incf speed-type--errors)
                  (setq speed-type--current-correct-streak 0)
                  (when non-consecutive-error-p (cl-incf speed-type--non-consecutive-errors))
